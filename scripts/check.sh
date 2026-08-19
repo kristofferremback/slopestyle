@@ -14,6 +14,7 @@ fi
 bash -n "$repo_root/scripts/install.sh"
 
 python3 - "$repo_root" <<'PY'
+import hashlib
 import json
 import re
 import sys
@@ -41,7 +42,7 @@ for skill in manifest.get("skills", []):
         raise SystemExit(f"Invalid targets for {name}: {targets}")
 
     provenance = skill.get("provenance")
-    if provenance not in {"original", "adapted", "pointer", "synchronized"}:
+    if provenance not in {"original", "adapted", "forked", "pointer", "synchronized"}:
         raise SystemExit(f"Invalid provenance for {name}: {provenance!r}")
 
     path = root / skill["path"]
@@ -68,6 +69,25 @@ for skill in manifest.get("skills", []):
         for provenance_file in ("LICENSE", "NOTICE.md"):
             if not (path / provenance_file).is_file():
                 raise SystemExit(f"Adapted skill {name} is missing {provenance_file}")
+    if provenance == "forked":
+        for provenance_file in ("LICENSE", "NOTICE.md", "PATCH.md"):
+            if not (path / provenance_file).is_file():
+                raise SystemExit(f"Forked skill {name} is missing {provenance_file}")
+        upstream_commit = skill.get("upstreamCommit", "")
+        if not str(skill.get("source", "")).startswith("https://"):
+            raise SystemExit(f"Forked skill {name} needs a resolvable source URL")
+        if not re.fullmatch(r"[0-9a-f]{40}", upstream_commit):
+            raise SystemExit(f"Forked skill {name} needs a pinned upstreamCommit")
+        notice = (path / "NOTICE.md").read_text()
+        patch = (path / "PATCH.md").read_text()
+        if upstream_commit not in notice or upstream_commit not in patch:
+            raise SystemExit(f"Forked skill {name} metadata does not match upstreamCommit")
+        if not re.search(r"Unmodified `SKILL\.md` SHA-256: `[0-9a-f]{64}`", patch):
+            raise SystemExit(f"Forked skill {name} PATCH.md needs its unmodified upstream hash")
+        fork_hash = re.search(r"Current fork `SKILL\.md` SHA-256: `([0-9a-f]{64})`", patch)
+        actual_fork_hash = hashlib.sha256(skill_file.read_bytes()).hexdigest()
+        if not fork_hash or fork_hash.group(1) != actual_fork_hash:
+            raise SystemExit(f"Forked skill {name} PATCH.md does not match its current SKILL.md")
     if provenance == "synchronized":
         if not (path / "NOTICE.md").is_file():
             raise SystemExit(f"Synchronized skill {name} is missing NOTICE.md")
@@ -139,12 +159,6 @@ for skill in manifest["skills"]:
 PY
   )
 
-  for target in "$HOME/.pi/agent/skills/unslop" "$HOME/.claude/skills/unslop"; do
-    if [[ ! -e "$target/SKILL.md" ]]; then
-      printf 'Missing required upstream unslop skill: %s\n' "$target" >&2
-      exit 1
-    fi
-  done
 fi
 
 printf 'Slop(e)style checks passed.\n'
