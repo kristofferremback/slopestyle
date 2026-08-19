@@ -12,16 +12,20 @@ Read the model and provider from the harness or runtime environment. Never copy 
 
 ## Public developer prose
 
-Add a small harness marker before PR descriptions and comments, then detailed model and harness attribution after the message.
+Put the actual model before PR descriptions and comments:
 
 ```markdown
-_by <harness>_
+_by <actual model>_
 
 [message]
-
----
-
-🤖 <actual model> via [<harness>](<official harness URL>)
 ```
 
-Use `Claude` with [Claude Code](https://claude.com/claude-code), or `Pi` with [Pi](https://github.com/badlogic/pi-mono). Read the actual model at runtime. Do not include session links.
+Where the platform does not already identify the harness, add it as secondary provenance after the message:
+
+```markdown
+---
+
+via [<harness>](<official harness URL>)
+```
+
+Use [Claude Code](https://claude.com/claude-code) or [Pi](https://github.com/badlogic/pi-mono). Omit the harness footer in Threa and other contexts where the author identity already carries it. Read the actual model at runtime. Do not include session links.
