@@ -2,9 +2,23 @@
   "schemaVersion": 1,
   "skills": [
     {
+      "name": "ai",
+      "path": "skills/ai",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "blast-radius",
       "path": "skills/blast-radius",
-      "targets": ["pi", "claude-code"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
       "requires": [],
       "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/blast-radius",
       "provenance": "adapted"
@@ -12,39 +26,153 @@
     {
       "name": "build",
       "path": "skills/build",
-      "targets": ["pi", "claude-code"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
       "requires": [],
       "source": "slopestyle",
       "provenance": "original"
+    },
+    {
+      "name": "debug",
+      "path": "skills/debug",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [],
+      "source": "https://github.com/mattpocock/skills/tree/main/skills/engineering/diagnosing-bugs",
+      "provenance": "adapted"
     },
     {
       "name": "deploy",
       "path": "skills/deploy",
-      "targets": ["pi", "claude-code"],
-      "requires": ["explicit developer approval", "repository deployment runbook"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "explicit developer approval",
+        "repository deployment runbook"
+      ],
       "source": "slopestyle",
       "provenance": "original"
     },
     {
+      "name": "frontend",
+      "path": "skills/frontend",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
+      "name": "grill",
+      "path": "skills/grill",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [],
+      "source": "https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling",
+      "provenance": "adapted"
+    },
+    {
       "name": "handover",
       "path": "skills/handover",
-      "targets": ["pi", "claude-code"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
       "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
+      "name": "how",
+      "path": "skills/how",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [],
+      "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/how",
+      "provenance": "adapted"
+    },
+    {
+      "name": "migrate",
+      "path": "skills/migrate",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "repository migration tooling"
+      ],
       "source": "slopestyle",
       "provenance": "original"
     },
     {
       "name": "monitor",
       "path": "skills/monitor",
-      "targets": ["pi", "claude-code"],
-      "requires": ["repository production signals and runbook"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "repository production signals and runbook"
+      ],
       "source": "slopestyle",
       "provenance": "original"
     },
     {
+      "name": "prototype",
+      "path": "skills/prototype",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [],
+      "source": "https://github.com/mattpocock/skills/tree/main/skills/engineering/prototype",
+      "provenance": "adapted"
+    },
+    {
+      "name": "recall",
+      "path": "skills/recall",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "access to relevant local transcripts and shared records"
+      ],
+      "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/recall",
+      "provenance": "adapted"
+    },
+    {
+      "name": "reflect",
+      "path": "skills/reflect",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "access to the active transcript"
+      ],
+      "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/reflect",
+      "provenance": "adapted"
+    },
+    {
       "name": "review",
       "path": "skills/review",
-      "targets": ["pi", "claude-code"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
       "requires": [],
       "source": "slopestyle",
       "provenance": "original"
@@ -52,31 +180,89 @@
     {
       "name": "seer",
       "path": "skills/seer",
-      "targets": ["pi", "claude-code"],
-      "requires": ["network access to https://seer.build/skill.md"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "network access to https://seer.build/skill.md"
+      ],
       "source": "https://seer.build/skill.md",
       "provenance": "pointer"
     },
     {
       "name": "shepherd",
       "path": "skills/shepherd",
-      "targets": ["pi", "claude-code"],
-      "requires": ["GitHub access", "background execution for non-blocking mode"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "GitHub access",
+        "background execution for non-blocking mode"
+      ],
       "source": "slopestyle",
       "provenance": "original"
     },
     {
       "name": "ship",
       "path": "skills/ship",
-      "targets": ["pi", "claude-code"],
-      "requires": ["git"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "git"
+      ],
       "source": "slopestyle",
       "provenance": "original"
     },
     {
+      "name": "test",
+      "path": "skills/test",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
+      "name": "threa",
+      "path": "skills/threa",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "threa CLI or MCP tools",
+        "Threa workspace credentials"
+      ],
+      "source": "https://github.com/threahq/threa/tree/main/.agents/skills/threa-cli",
+      "upstreamCommit": "820fddf57901ea486712faccd3061b7a3553a7a9",
+      "provenance": "synchronized"
+    },
+    {
+      "name": "why",
+      "path": "skills/why",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "access to relevant primary records"
+      ],
+      "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/why",
+      "provenance": "adapted"
+    },
+    {
       "name": "writing-for-agents",
       "path": "skills/writing-for-agents",
-      "targets": ["pi", "claude-code"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
       "requires": [],
       "source": "https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-for-agents",
       "provenance": "adapted"
@@ -86,8 +272,14 @@
     {
       "name": "unslop",
       "package": "https://github.com/cursor/plugins/tree/main/pstack",
-      "targets": ["pi", "claude-code"],
-      "requires": ["node", "network access during installation"],
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "node",
+        "network access during installation"
+      ],
       "source": "https://github.com/cursor/plugins/blob/main/pstack/skills/unslop/SKILL.md"
     }
   ]

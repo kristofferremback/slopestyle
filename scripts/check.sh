@@ -41,7 +41,7 @@ for skill in manifest.get("skills", []):
         raise SystemExit(f"Invalid targets for {name}: {targets}")
 
     provenance = skill.get("provenance")
-    if provenance not in {"original", "adapted", "pointer"}:
+    if provenance not in {"original", "adapted", "pointer", "synchronized"}:
         raise SystemExit(f"Invalid provenance for {name}: {provenance!r}")
 
     path = root / skill["path"]
@@ -68,6 +68,13 @@ for skill in manifest.get("skills", []):
         for provenance_file in ("LICENSE", "NOTICE.md"):
             if not (path / provenance_file).is_file():
                 raise SystemExit(f"Adapted skill {name} is missing {provenance_file}")
+    if provenance == "synchronized":
+        if not (path / "NOTICE.md").is_file():
+            raise SystemExit(f"Synchronized skill {name} is missing NOTICE.md")
+        if not str(skill.get("source", "")).startswith("https://"):
+            raise SystemExit(f"Synchronized skill {name} needs a resolvable source URL")
+        if not re.fullmatch(r"[0-9a-f]{40}", skill.get("upstreamCommit", "")):
+            raise SystemExit(f"Synchronized skill {name} needs a pinned upstreamCommit")
 
 actual_dirs = {
     path.parent.resolve()

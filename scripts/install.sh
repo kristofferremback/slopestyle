@@ -22,12 +22,14 @@ done
 
 backup_target() {
   local target="$1"
-  local stamp backup
+  local stamp relative backup
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-  backup="${target}.slopestyle-backup-${stamp}"
+  relative="${target#"$HOME"/}"
+  backup="$HOME/.slopestyle/backups/$stamp/$relative"
   while [[ -e "$backup" || -L "$backup" ]]; do
     backup="${backup}-1"
   done
+  mkdir -p -- "$(dirname "$backup")"
   mv -- "$target" "$backup"
   printf 'Backed up %s to %s\n' "$target" "$backup"
 }
@@ -38,7 +40,7 @@ link_owned() {
 
   mkdir -p -- "$(dirname "$target")"
 
-  if [[ -L "$target" ]] && [[ "$(readlink -f "$target")" == "$(readlink -f "$source")" ]]; then
+  if [[ -L "$target" ]] && [[ "$(readlink "$target")" == "$source" ]]; then
     printf 'Already linked: %s\n' "$target"
     return
   fi
@@ -71,6 +73,17 @@ if ((!skip_external)); then
     --skill unslop \
     --yes
 fi
+
+for legacy in "$HOME/.pi/agent/skills/threa-cli" "$HOME/.claude/skills/threa-cli"; do
+  if [[ -e "$legacy" || -L "$legacy" ]]; then
+    if ((replace)); then
+      backup_target "$legacy"
+    else
+      printf 'Legacy skill %s conflicts with canonical threa. Re-run with --replace after reviewing it.\n' "$legacy" >&2
+      exit 1
+    fi
+  fi
+done
 
 link_owned "$repo_root/agents/AGENTS.md" "$HOME/.pi/agent/AGENTS.md"
 link_owned "$repo_root/agents/AGENTS.md" "$HOME/.claude/AGENTS.md"
