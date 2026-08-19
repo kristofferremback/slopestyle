@@ -33,18 +33,9 @@ Treat dependencies like source code. Prefer permissive licenses, and add one onl
 - Test observable behavior at the highest practical layer. Prefer integrations over mocks. Green means green. Regression tests are earned.
 - Mobile is feature completeness, not a reduced product.
 
-## Required skills
+## Writing to Kristoffer
 
-Load and follow these skills when their trigger applies. If a required skill is unavailable, report that instead of silently proceeding.
-
-- `unslop` is required for all agent-authored prose people will read. Preserve quotations, exact requested wording, code, identifiers, commands, citations, attribution templates, and established project vocabulary.
-- `writing-for-agents` is required when creating or editing skills, `AGENTS.md`, `CLAUDE.md`, or documents reached from them.
-- `build` is required for substantial implementation. Work is planned unless dead obvious or exploratory.
-- `frontend` is required before planning or editing product UI, frontend components, styling, or interaction.
-- `test` is required whenever behavior changes or tests need designing, selecting, running, or reviewing.
-- `ai` is required whenever work adds, changes, or evaluates AI behavior.
-- `migrate` is required whenever work changes persistent data, schemas, migrations, or backfills.
-- `debug` is required for hard bugs and performance regressions.
+Before writing anything Kristoffer will read, load and follow `unslop`. Preserve quotations, exact requested wording, code, identifiers, commands, citations, attribution templates, and established project vocabulary. If `unslop` is unavailable, say so.
 
 ## Guidance ownership
 
