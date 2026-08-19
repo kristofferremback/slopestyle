@@ -147,4 +147,4 @@ PY
   done
 fi
 
-printf 'Slopestyle checks passed.\n'
+printf 'Slop(e)style checks passed.\n'

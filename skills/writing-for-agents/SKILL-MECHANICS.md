@@ -1,6 +1,6 @@
 # Skill mechanics
 
-This is the Slopestyle skill-specific companion to [`writing-for-agents`](SKILL.md). Matt Pocock's main writing guidance remains unchanged. Slopestyle replaces only its invocation model so one canonical skill tree behaves consistently across Pi and Claude Code.
+This is the Slop(e)style skill-specific companion to [`writing-for-agents`](SKILL.md). Matt Pocock's main writing guidance remains unchanged. Slop(e)style replaces only its invocation model so one canonical skill tree behaves consistently across Pi and Claude Code.
 
 ## Invocation is a mode
 

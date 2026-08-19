@@ -1,15 +1,15 @@
-# Slopestyle
+# Slop(e)style
 
 Kris's cross-machine collaboration contract and reusable skills for coding agents.
 
 ## Layout
 
 - `agents/`: shared global guidance loaded by Pi and Claude Code
-- `skills/`: canonical Slopestyle skills plus their target manifest
+- `skills/`: canonical Slop(e)style skills plus their target manifest
 - `scripts/install.sh`: safe, repeatable global installation
 - `scripts/check.sh`: source and installed-state validation
 
-Vendor-hosted skills remain external dependencies. Slopestyle installs pstack's upstream `unslop` rather than maintaining another writing-pattern catalog. Seer stays a small pointer to its hosted skill.
+Vendor-hosted skills remain external dependencies. Slop(e)style installs pstack's upstream `unslop` rather than maintaining another writing-pattern catalog. Seer stays a small pointer to its hosted skill.
 
 ## Install
 

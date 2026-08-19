@@ -1,4 +1,4 @@
-# Slopestyle
+# Slop(e)style
 
 This repository is the source of truth for Kris's cross-machine agent setup.
 

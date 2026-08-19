@@ -108,4 +108,4 @@ for skill in manifest["skills"]:
 PY
 )
 
-printf 'Slopestyle installation complete. Start fresh Pi and Claude Code sessions to load it.\n'
+printf 'Slop(e)style installation complete. Start fresh Pi and Claude Code sessions to load it.\n'
