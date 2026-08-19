@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 installed=0
 
 if [[ "${1:-}" == "--installed" ]]; then
@@ -11,7 +11,13 @@ elif (($#)); then
   exit 2
 fi
 
-bash -n "$repo_root/scripts/install.sh"
+while IFS= read -r script; do
+  bash -n "$script"
+  if [[ ! -x "$script" ]]; then
+    printf 'Shell entry point is not executable: %s\n' "$script" >&2
+    exit 1
+  fi
+done < <(find "$repo_root/scripts" "$repo_root/tests" -type f -name '*.sh' -print 2>/dev/null | sort)
 
 python3 - "$repo_root" <<'PY'
 import hashlib
@@ -109,19 +115,34 @@ if missing or extra:
         f"unlisted directories: {sorted(map(str, extra))}"
     )
 
+external_names = set()
 for external in manifest.get("external", []):
-    if external.get("name") in names:
-        raise SystemExit(f"External skill duplicates a local skill: {external['name']}")
-    if not external.get("package") or not external.get("targets"):
+    name = external.get("name", "")
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
+        raise SystemExit(f"Invalid external skill name: {name!r}")
+    if name in names or name in external_names:
+        raise SystemExit(f"Duplicate local or external skill: {name}")
+    external_names.add(name)
+    targets = external.get("targets")
+    if not external.get("package") or not targets or any(t not in {"pi", "claude-code"} for t in targets):
         raise SystemExit(f"Incomplete external skill entry: {external}")
 
 print(f"Validated {len(expected_dirs)} local skills and {len(manifest.get('external', []))} external skills.")
 PY
 
-(
-  cd "$repo_root/skills/writing-for-agents"
-  sha256sum --check <(printf '%s  SKILL.md\n' "$(<UPSTREAM.sha256)")
-)
+python3 - "$repo_root/skills/writing-for-agents/UPSTREAM.sha256" "$repo_root/skills/writing-for-agents/SKILL.md" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+checksum_path = Path(sys.argv[1])
+skill_path = Path(sys.argv[2])
+expected = checksum_path.read_text().strip()
+actual = hashlib.sha256(skill_path.read_bytes()).hexdigest()
+if actual != expected:
+    raise SystemExit(f"{skill_path}: checksum mismatch")
+print(f"{skill_path.name}: OK")
+PY
 
 if ((installed)); then
   check_link() {
@@ -131,7 +152,20 @@ if ((installed)); then
       printf 'Expected installed symlink: %s\n' "$target" >&2
       exit 1
     fi
-    if [[ "$(readlink -f "$target")" != "$(readlink -f "$source")" ]]; then
+    local resolved_target resolved_source
+    resolved_target="$(python3 - "$target" <<'PY'
+import sys
+from pathlib import Path
+print(Path(sys.argv[1]).resolve())
+PY
+)"
+    resolved_source="$(python3 - "$source" <<'PY'
+import sys
+from pathlib import Path
+print(Path(sys.argv[1]).resolve())
+PY
+)"
+    if [[ "$resolved_target" != "$resolved_source" ]]; then
       printf 'Wrong installed target: %s\n' "$target" >&2
       exit 1
     fi
@@ -141,10 +175,18 @@ if ((installed)); then
   check_link "$HOME/.claude/AGENTS.md" "$repo_root/agents/AGENTS.md"
   check_link "$HOME/.claude/CLAUDE.md" "$repo_root/agents/CLAUDE.md"
 
+  expected_pi='|'
+  expected_claude='|'
   while IFS=$'\t' read -r name relative_path target; do
     case "$target" in
-      pi) target_root="$HOME/.pi/agent/skills" ;;
-      claude-code) target_root="$HOME/.claude/skills" ;;
+      pi)
+        target_root="$HOME/.pi/agent/skills"
+        expected_pi="${expected_pi}${name}|"
+        ;;
+      claude-code)
+        target_root="$HOME/.claude/skills"
+        expected_claude="${expected_claude}${name}|"
+        ;;
     esac
     check_link "$target_root/$name" "$repo_root/$relative_path"
   done < <(
@@ -158,6 +200,35 @@ for skill in manifest["skills"]:
         print(f'{skill["name"]}\t{skill["path"]}\t{target}')
 PY
   )
+
+  check_retired_links() {
+    local target_root="$1"
+    local expected="$2"
+    local candidate name source
+
+    [[ -d "$target_root" ]] || return
+    for candidate in "$target_root"/*; do
+      [[ -L "$candidate" ]] || continue
+      source="$(python3 - "$candidate" <<'PY'
+import sys
+from pathlib import Path
+print(Path(sys.argv[1]).resolve())
+PY
+)"
+      [[ "$source" == "$repo_root/skills/"* ]] || continue
+      name="$(basename "$candidate")"
+      case "$expected" in
+        *"|$name|"*) ;;
+        *)
+          printf 'Retired Slop(e)style skill link remains installed: %s\n' "$candidate" >&2
+          exit 1
+          ;;
+      esac
+    done
+  }
+
+  check_retired_links "$HOME/.pi/agent/skills" "$expected_pi"
+  check_retired_links "$HOME/.claude/skills" "$expected_claude"
 
 fi
 
