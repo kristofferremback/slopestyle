@@ -4,16 +4,14 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 manifest="$repo_root/skills/manifest.json"
 replace=0
-skip_external=0
 
 usage() {
-  printf 'Usage: %s [--replace] [--skip-external]\n' "$0"
+  printf 'Usage: %s [--replace]\n' "$0"
 }
 
 while (($#)); do
   case "$1" in
     --replace) replace=1 ;;
-    --skip-external) skip_external=1 ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown argument: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -60,26 +58,57 @@ link_owned() {
   printf 'Linked %s -> %s\n' "$target" "$source"
 }
 
-if ((!skip_external)); then
-  command -v npx >/dev/null || {
-    printf 'npx is required to install upstream skills.\n' >&2
-    exit 1
-  }
-  npx -y skills@1.5.23 add \
-    https://github.com/cursor/plugins/tree/main/pstack \
-    --global \
-    --agent pi \
-    --agent claude-code \
-    --skill unslop \
-    --yes
-fi
-
 for legacy in "$HOME/.pi/agent/skills/threa-cli" "$HOME/.claude/skills/threa-cli"; do
   if [[ -e "$legacy" || -L "$legacy" ]]; then
     if ((replace)); then
       backup_target "$legacy"
     else
       printf 'Legacy skill %s conflicts with canonical threa. Re-run with --replace after reviewing it.\n' "$legacy" >&2
+      exit 1
+    fi
+  fi
+done
+
+legacy_unslop_hash="$(python3 - "$repo_root/skills/unslop/PATCH.md" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+patch = Path(sys.argv[1]).read_text()
+match = re.search(r"Unmodified `SKILL\.md` SHA-256: `([0-9a-f]{64})`", patch)
+if not match:
+    raise SystemExit("unslop PATCH.md is missing its upstream hash")
+print(match.group(1))
+PY
+)"
+for target in "$HOME/.pi/agent/skills/unslop" "$HOME/.claude/skills/unslop"; do
+  source="$repo_root/skills/unslop"
+  if [[ -L "$target" ]] && [[ "$(readlink "$target")" == "$source" ]]; then
+    continue
+  fi
+  if [[ -f "$target/SKILL.md" ]]; then
+    legacy_exact="$(python3 - "$target" "$legacy_unslop_hash" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+directory = Path(sys.argv[1]).resolve()
+entries = sorted(path.name for path in directory.iterdir())
+skill_hash = hashlib.sha256((directory / "SKILL.md").read_bytes()).hexdigest()
+print("yes" if entries == ["SKILL.md"] and skill_hash == sys.argv[2] else "no")
+PY
+)"
+    if [[ "$legacy_exact" == "yes" ]]; then
+      backup_target "$target"
+      printf 'Migrating unmodified external unslop to the managed local fork.\n'
+      continue
+    fi
+  fi
+  if [[ -e "$target" || -L "$target" ]]; then
+    if ((replace)); then
+      backup_target "$target"
+    else
+      printf 'Installed unslop differs from the pinned upstream base. Review it before using --replace: %s\n' "$target" >&2
       exit 1
     fi
   fi

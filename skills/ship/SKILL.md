@@ -31,6 +31,7 @@ If a merge or rebase conflicts, follow [conflict resolution](references/conflict
 
 ## Push and file
 
+- Never open an issue, pull request, comment, or maintainer message in someone else's repository unless Kristoffer explicitly asked while working on that repository.
 - Check whether the branch already has a PR before creating one.
 - Preserve the stack and review shape chosen by `build`.
 - Open a ready PR by default so checks and reviewers run. Use draft only when requested or when the review contract is genuinely incomplete.

@@ -9,7 +9,7 @@ Kris's cross-machine collaboration contract and reusable skills for coding agent
 - `scripts/install.sh`: safe, repeatable global installation
 - `scripts/check.sh`: source and installed-state validation
 
-Vendor-hosted skills remain external dependencies. Slop(e)style installs pstack's upstream `unslop` rather than maintaining another writing-pattern catalog. Seer stays a small pointer to its hosted skill.
+Unmodified vendor skills remain external dependencies. Patched skills live here as managed local forks with pinned provenance and a `PATCH.md` explaining every intentional delta. Seer stays a small pointer to its hosted skill.
 
 ## Install
 
@@ -19,7 +19,7 @@ Review the diff and existing global files first, then run:
 ./scripts/install.sh
 ```
 
-The installer refuses to replace existing files or skill directories. After reviewing a conflict, allow a one-time backup and replacement with:
+The installer automatically backs up and migrates the known unmodified external `unslop` installation. It refuses modified copies and every other existing file or skill directory. After reviewing a conflict, allow a one-time backup and replacement with:
 
 ```bash
 ./scripts/install.sh --replace

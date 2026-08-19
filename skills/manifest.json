@@ -218,6 +218,20 @@
       "provenance": "original"
     },
     {
+      "name": "sync-fork",
+      "path": "skills/sync-fork",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [
+        "git",
+        "network access to the fork's upstream source"
+      ],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "test",
       "path": "skills/test",
       "targets": [
@@ -244,6 +258,18 @@
       "provenance": "synchronized"
     },
     {
+      "name": "unslop",
+      "path": "skills/unslop",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [],
+      "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/unslop",
+      "upstreamCommit": "60c641e4fad674784b30abcf9f8915dea39df38d",
+      "provenance": "forked"
+    },
+    {
       "name": "why",
       "path": "skills/why",
       "targets": [
@@ -268,19 +294,5 @@
       "provenance": "adapted"
     }
   ],
-  "external": [
-    {
-      "name": "unslop",
-      "package": "https://github.com/cursor/plugins/tree/main/pstack",
-      "targets": [
-        "pi",
-        "claude-code"
-      ],
-      "requires": [
-        "node",
-        "network access during installation"
-      ],
-      "source": "https://github.com/cursor/plugins/blob/main/pstack/skills/unslop/SKILL.md"
-    }
-  ]
+  "external": []
 }

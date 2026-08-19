@@ -1,10 +1,9 @@
 # Skills
 
-Slop(e)style keeps one canonical directory per adapted or original skill. `manifest.json` records harness targets, requirements, upstream sources, and whether each skill is original, adapted, or a remote pointer. Adapted skills include their upstream license and a provenance notice.
+Slop(e)style keeps one canonical directory per original, adapted, synchronized, or forked skill. `manifest.json` records harness targets, requirements, upstream sources, and provenance.
 
-Vendor skills stay external when no adaptation is needed:
+Adapted skills bundle their upstream license and provenance notice. A locally patched fork also includes `PATCH.md`, a pinned upstream commit, and the hash of its unmodified upstream base. Use `sync-fork` to bring upstream changes into a fork without losing documented local intent.
 
-- `unslop` installs from pstack through the `skills` CLI.
-- Railway's `use-railway` remains vendor-managed.
+Vendor skills stay external when no adaptation is needed. Railway's `use-railway` remains vendor-managed. Seer remains a pointer to its hosted source.
 
 Every runtime description is a short invocation pointer. Workflow details belong in `SKILL.md` bodies and progressively disclosed references.

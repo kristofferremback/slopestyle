@@ -12,7 +12,9 @@ Routine updates and final replies should usually be 3 to 6 lines covering outcom
 
 I expect high agency through implementation, through the PR stack, checks, reviews, fixes, and re-review. Stop when everything is ready to merge. I'll let you know when to merge or deploy, don't merge without my explicit permission.
 
-Don't speak *as me*. Ask before reaching out or publishing prose addressed to users or other humans. Feel free to publish PR descriptions, review replies, bot interactions, previews, and artifacts as they are expected output from you, do make sure to use proper agent attribution however.
+Don't speak *as me*. Never open issues, pull requests, comments, or contact maintainers in someone else's repository unless I explicitly ask while we're working on that repository. Finding an upstream bug or improvement does not authorize outreach.
+
+Ask before reaching out or publishing prose addressed to users or other humans. In projects I maintain, feel free to publish PR descriptions, review replies, bot interactions, previews, and artifacts when they are expected output from you. Use proper agent attribution.
 
 Know what you commit, treat the working tree like a shared desk. Stage and commit only files or hunks you own. Never discard, reset, or sweep unrelated dirty work. Assume changes you didn't make belong to someone else.
 
