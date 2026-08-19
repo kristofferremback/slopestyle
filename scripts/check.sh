@@ -40,6 +40,10 @@ for skill in manifest.get("skills", []):
     if not targets or any(t not in {"pi", "claude-code"} for t in targets):
         raise SystemExit(f"Invalid targets for {name}: {targets}")
 
+    provenance = skill.get("provenance")
+    if provenance not in {"original", "adapted", "pointer"}:
+        raise SystemExit(f"Invalid provenance for {name}: {provenance!r}")
+
     path = root / skill["path"]
     expected_dirs.add(path.resolve())
     skill_file = path / "SKILL.md"
@@ -59,6 +63,11 @@ for skill in manifest.get("skills", []):
         raise SystemExit(f"Missing description for {name}")
     if len(description.group(1).strip().strip("'\"")) > 1024:
         raise SystemExit(f"Description exceeds 1024 characters for {name}")
+
+    if provenance == "adapted":
+        for provenance_file in ("LICENSE", "NOTICE.md"):
+            if not (path / provenance_file).is_file():
+                raise SystemExit(f"Adapted skill {name} is missing {provenance_file}")
 
 actual_dirs = {
     path.parent.resolve()

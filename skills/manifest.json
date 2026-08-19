@@ -2,18 +2,84 @@
   "schemaVersion": 1,
   "skills": [
     {
+      "name": "blast-radius",
+      "path": "skills/blast-radius",
+      "targets": ["pi", "claude-code"],
+      "requires": [],
+      "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/blast-radius",
+      "provenance": "adapted"
+    },
+    {
+      "name": "build",
+      "path": "skills/build",
+      "targets": ["pi", "claude-code"],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
+      "name": "deploy",
+      "path": "skills/deploy",
+      "targets": ["pi", "claude-code"],
+      "requires": ["explicit developer approval", "repository deployment runbook"],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
+      "name": "handover",
+      "path": "skills/handover",
+      "targets": ["pi", "claude-code"],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
+      "name": "monitor",
+      "path": "skills/monitor",
+      "targets": ["pi", "claude-code"],
+      "requires": ["repository production signals and runbook"],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
+      "name": "review",
+      "path": "skills/review",
+      "targets": ["pi", "claude-code"],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "seer",
       "path": "skills/seer",
       "targets": ["pi", "claude-code"],
       "requires": ["network access to https://seer.build/skill.md"],
-      "source": "https://seer.build/skill.md"
+      "source": "https://seer.build/skill.md",
+      "provenance": "pointer"
+    },
+    {
+      "name": "shepherd",
+      "path": "skills/shepherd",
+      "targets": ["pi", "claude-code"],
+      "requires": ["GitHub access", "background execution for non-blocking mode"],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
+      "name": "ship",
+      "path": "skills/ship",
+      "targets": ["pi", "claude-code"],
+      "requires": ["git"],
+      "source": "slopestyle",
+      "provenance": "original"
     },
     {
       "name": "writing-for-agents",
       "path": "skills/writing-for-agents",
       "targets": ["pi", "claude-code"],
       "requires": [],
-      "source": "https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-for-agents"
+      "source": "https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-for-agents",
+      "provenance": "adapted"
     }
   ],
   "external": [

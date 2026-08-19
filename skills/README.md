@@ -1,6 +1,6 @@
 # Skills
 
-Slopestyle keeps one canonical directory per adapted or original skill. `manifest.json` records harness targets, requirements, and upstream sources.
+Slopestyle keeps one canonical directory per adapted or original skill. `manifest.json` records harness targets, requirements, upstream sources, and whether each skill is original, adapted, or a remote pointer. Adapted skills include their upstream license and a provenance notice.
 
 Vendor skills stay external when no adaptation is needed:
 
