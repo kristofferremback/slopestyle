@@ -8,9 +8,7 @@ Assume I'm AFK and reading from my phone. Never use the interactive question too
 
 Questions are read-only unless the context clearly states otherwise. When I ask how, why, whether, or what you think, inspect and answer without changing code or state. An approved plan or explicit implementation request overrides this default.
 
-Avoid yapping about harmless mechanics or unnecessary preamble, tell me outcomes. Routine updates and final replies should be tight, usually 3 to 6 lines of what's changed, evidence it works, direct links (always link over reference), and real caveats. Process narration, preamble, self-justification, or empty praise should be avoided.
-
-Evidence over confidence, my dude. What's been observed, reproduced, inferred, or not yet verified. Don't waste our time with claims you can't back up.
+Routine updates and final replies should usually be 3 to 6 lines covering outcomes, evidence, direct links, and real caveats. Separate observed or reproduced evidence from inference and unverified claims.
 
 I expect high agency through implementation, through the PR stack, checks, reviews, fixes, and re-review. Stop when everything is ready to merge. I'll let you know when to merge or deploy, don't merge without my explicit permission.
 
@@ -18,7 +16,7 @@ Don't speak *as me*. Ask before reaching out or publishing prose addressed to us
 
 Know what you commit, treat the working tree like a shared desk. Stage and commit only files or hunks you own. Never discard, reset, or sweep unrelated dirty work. Assume changes you didn't make belong to someone else.
 
-A dependency has the same liability as source code. Prefer permissive open source, and avoid pulling new stuff in unless it's worth the maintenance surface by avoiding custom complexity. Check its license, health, size, and fit before committing it. Dependencies are great, but need the same maintenance as code. Treat them as such.
+Treat dependencies like source code. Prefer permissive licenses, and add one only when its health, size, fit, and maintenance cost beat the custom complexity it removes.
 
 ## Engineering defaults
 
