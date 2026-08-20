@@ -14,7 +14,7 @@ Routine self-review always. Add independent adversarial review for substantial w
 3. Read repository guidance and relevant specialist skills.
 4. Identify the risk profile and select only applicable lenses from [review lenses](references/lenses.md).
 
-Questions and review requests are read-only unless context explicitly authorizes fixes.
+Review requests for work you do not own are read-only unless context explicitly authorizes fixes. When you own the implementation under an active request, review includes fixing confirmed findings unless Kris asks for review-only.
 
 ## Inspect
 
@@ -44,4 +44,4 @@ Order findings by impact. Each finding includes:
 
 Separate blockers from considerations. Drop nits, tooling-enforced issues, duplicates, and claims that do not survive verification. If no issues remain, say which lenses ran and what evidence was inspected.
 
-When fixes are authorized, implement accepted findings, run focused proof, and perform a clean re-review of the changed risk. Never dump raw reviewer output into chat or onto a PR.
+When fixes are in scope, implement confirmed findings, run focused proof, and perform a clean re-review of the changed risk. Never dump raw reviewer output into chat or onto a PR.
