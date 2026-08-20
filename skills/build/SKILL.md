@@ -17,6 +17,8 @@ Planning is required unless the work is dead obvious or explicitly exploratory.
 4. Wait for agreement on that high-level plan.
 5. Write a separate implementer blueprint detailed enough that execution does not require rediscovering intent. Plans live outside the repository. Seer is optional.
 
+Agreement is the go-ahead for the full accepted scope. Iteration before agreement is planning; feedback that leaves the contract intact refines work in flight. An opened PR or its review does not create a pause. During execution, pause only when Kris asks or remaining work is blocked.
+
 Load required specialist skills while planning. UI work requires `frontend`; behavior changes require `test`; AI work requires `ai`; persistent-data work requires `migrate`; hard bugs require `debug`.
 
 ## 2. Shape reviewable delivery
@@ -48,10 +50,10 @@ At each completed review boundary:
 1. Load `review` for self-review and any independent scrutiny the change warrants.
 2. Load `ship` to verify, commit owned work, push, and open or update the PR or stack.
 3. Start `shepherd` in the background for each opened PR.
-4. Continue the next unblocked slice while shepherding runs.
+4. Continue the next unblocked slice while shepherding runs. Opened PRs are reviewed in parallel, not used as checkpoints between slices. A dependent slice stacks on its unmerged parent; waiting for the parent to merge is not a blocker.
 
 Background shepherding is part of the contract. If the harness cannot run it concurrently, report that limitation. Do not silently turn the workflow into a blocking watch loop.
 
 ## 5. Finish at ready
 
-Reconcile every slice against the agreed outcome and blueprint. Report what is ready, how it was proved, direct links, and real caveats. The work ends when the complete stack is ready to merge. Never merge or deploy without explicit developer approval.
+Reconcile every slice against the agreed outcome and blueprint. Report what is ready, how it was proved, direct links, and real caveats. The work ends when the complete accepted scope is ready to merge as a stack, not when one PR is ready. Never merge or deploy without explicit developer approval.
