@@ -1,0 +1,35 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate source
+        run: ./scripts/check.sh
+      - name: Check shell scripts
+        if: runner.os == 'Linux'
+        run: >-
+          docker run --rm -v "$PWD:/mnt:ro"
+          koalaman/shellcheck@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
+          /mnt/scripts/check.sh /mnt/scripts/install.sh /mnt/scripts/schedule-sync.sh
+          /mnt/scripts/sync.sh /mnt/tests/sync.sh
+      - name: Test synchronization
+        run: ./tests/sync.sh
