@@ -1,0 +1,14 @@
+{
+  "name": "slopestyle",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "bun scripts/check.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "6.0.3"
+  }
+}
