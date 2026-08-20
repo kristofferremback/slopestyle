@@ -175,11 +175,13 @@ PATH="$fake_bin:$PATH" HOME="$test_home" SLOPESTYLE_TEST_PLATFORM=Darwin SLOPEST
 python3 - "$test_home/Library/LaunchAgents/dev.slopestyle.sync.plist" "$runtime" <<'PY'
 import plistlib
 import sys
+from pathlib import Path
 
 with open(sys.argv[1], "rb") as file:
     data = plistlib.load(file)
-expected = f"{sys.argv[2]}/scripts/sync.sh"
-if data["ProgramArguments"] != [expected] or data["StartInterval"] != 1800:
+expected = Path(sys.argv[2], "scripts", "sync.sh").resolve()
+actual = Path(data["ProgramArguments"][0]).resolve()
+if actual != expected or data["StartInterval"] != 1800:
     raise SystemExit("macOS LaunchAgent has the wrong synchronization contract")
 if not data["EnvironmentVariables"]["PATH"]:
     raise SystemExit("macOS LaunchAgent is missing its tool PATH")
