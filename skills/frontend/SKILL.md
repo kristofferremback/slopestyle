@@ -14,6 +14,14 @@ Build feature-complete product behavior for every applicable surface. Start from
 - Identify desktop, mobile, keyboard, screen-reader, dark-mode, light-mode, loading, empty, error, and reverse-action behavior that applies.
 - For a novel interaction with no prior art, use `prototype` to compare meaningfully different options before production code.
 
+## Visual language
+
+- Build hierarchy with composition, spacing, shape, imagery, and established iconography. Copy carries information; it does not hold the layout together.
+- Every visible string must help the user decide or understand something they cannot infer from structure, state, or controls. Cut headings, labels, helper text, and status prose that narrate the obvious.
+- Treat visible copy and semantic labels separately. Preserve accessible names, roles, relationships, and landmarks when visible copy is absent. Keep persistent visible labels for data-entry controls; placeholders are examples, not labels.
+- Use established icons for familiar actions. Give icon controls accessible names. Add a visible label when the icon would be ambiguous, the action is consequential, or the product term itself matters. Tooltips may supplement a clear control, never rescue an unclear one.
+- Audit each string in context and across sibling surfaces. Remove it unless it prevents ambiguity, makes a consequential action explicit, or carries information the user needs. Apply the chosen visual pattern consistently across affected surfaces. If sibling consistency falls outside the task scope, flag it rather than inventing a one-off.
+
 ## Interaction contract
 
 - Mobile is the full product. No hover-only requirements, tiny touch targets, or reduced capability unless requested.
