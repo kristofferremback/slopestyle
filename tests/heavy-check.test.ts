@@ -9,9 +9,7 @@ const scratch = mkdtempSync(resolve(tmpdir(), "slopestyle-heavy-check-test."));
 const helper = resolve(scratch, "helper.ts");
 
 writeFileSync(helper, `
-import { Database } from "bun:sqlite";
-import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 
 const [mode, first, second] = process.argv.slice(2);
 if (mode === "hold") {
@@ -20,12 +18,6 @@ if (mode === "hold") {
   appendFileSync(second, "first:end\\n");
 } else if (mode === "mark") {
   appendFileSync(first, second + "\\n");
-} else if (mode === "lock") {
-  mkdirSync(dirname(first), { recursive: true });
-  const lock = new Database(first, { create: true });
-  lock.exec("BEGIN EXCLUSIVE;");
-  writeFileSync(second, "ready\\n");
-  await new Promise(() => {});
 } else if (mode === "signal") {
   writeFileSync(first, String(process.pid));
   await new Promise(() => {});
@@ -55,10 +47,11 @@ async function waitForExit(pid: number): Promise<void> {
   }
 }
 
-function run(home: string, label: string, command: string[], wait?: number) {
+function run(home: string, label: string, command: string[], wait?: number, inheritedToken?: string) {
   const waitArgs = wait === undefined ? [] : ["--wait", String(wait)];
   const env: Record<string, string | undefined> = { ...process.env, HOME: home };
-  delete env.SLOPESTYLE_HEAVY_CHECK;
+  if (inheritedToken === undefined) delete env.SLOPESTYLE_HEAVY_CHECK;
+  else env.SLOPESTYLE_HEAVY_CHECK = inheritedToken;
   return Bun.spawn([process.execPath, heavyCheck, "--label", label, ...waitArgs, "--", ...command], {
     detached: true,
     env,
@@ -181,27 +174,58 @@ test("bounds lock waits and identifies the owner", async () => {
   }
 }, 10_000);
 
-test("recovers the lock after its owner is killed", async () => {
+test("keeps successors waiting when the wrapper dies before its workload", async () => {
   const home = resolve(scratch, "crash-home");
-  const lock = resolve(home, ".local/state/slopestyle/heavy-check-lock.sqlite");
-  const ready = resolve(scratch, "crash-ready");
+  const releasePath = resolve(scratch, "release-crashed-workload");
   const log = resolve(scratch, "crash.log");
+  const ownerPath = resolve(home, ".local/state/slopestyle/heavy-check-owner.json");
   writeFileSync(log, "");
 
-  const holder = Bun.spawn([process.execPath, helper, "lock", lock, ready], { detached: true, stdout: "ignore", stderr: "ignore" });
+  const first = run(home, "crashed wrapper", [process.execPath, helper, "hold", releasePath, log]);
+  const subprocesses = [first];
   try {
-    await waitFor(ready);
-  } finally {
-    terminate(holder);
-    await holder.exited;
-  }
+    await waitFor(log, "first:start");
+    await waitFor(ownerPath, "processGroupId");
+    const workloadPid = (JSON.parse(readFileSync(ownerPath, "utf8")) as { workloadPid: number }).workloadPid;
+    const second = run(home, "successor", [process.execPath, helper, "mark", log, "second:start"]);
+    subprocesses.push(second);
 
-  const recovered = run(home, "after crash", [process.execPath, helper, "mark", log, "recovered"]);
-  try {
-    expect(await recovered.exited).toBe(0);
-    expect(readFileSync(log, "utf8")).toBe("recovered\n");
+    await Bun.sleep(300);
+    expect(second.exitCode).toBeNull();
+    first.kill("SIGKILL");
+    expect(await first.exited).toBe(137);
+    await Bun.sleep(300);
+    expect(second.exitCode).toBeNull();
+    expect(readFileSync(log, "utf8")).toBe("first:start\n");
+
+    writeFileSync(releasePath, "go\n");
+    expect(await second.exited).toBe(0);
+    await waitForExit(workloadPid);
+    expect(readFileSync(log, "utf8")).toBe("first:start\nfirst:end\nsecond:start\n");
+    expect(await new Response(second.stderr).text()).toContain("Waiting for orphaned heavy check \"crashed wrapper\"");
   } finally {
-    await release([recovered]);
+    await release(subprocesses, releasePath);
+  }
+}, 10_000);
+
+test("does not trust an inherited token from another owner", async () => {
+  const home = resolve(scratch, "stale-token-home");
+  const releasePath = resolve(scratch, "release-token-owner");
+  const log = resolve(scratch, "stale-token.log");
+  writeFileSync(log, "");
+
+  const first = run(home, "token owner", [process.execPath, helper, "hold", releasePath, log]);
+  try {
+    await waitFor(log, "first:start");
+    const stale = run(home, "stale token", [process.execPath, helper, "mark", log, "bypassed"], 0, "expired-token");
+    try {
+      expect(await stale.exited).toBe(75);
+      expect(readFileSync(log, "utf8")).toBe("first:start\n");
+    } finally {
+      await release([stale]);
+    }
+  } finally {
+    await release([first], releasePath);
   }
 }, 10_000);
 

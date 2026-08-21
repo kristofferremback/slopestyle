@@ -11,16 +11,19 @@ const args = process.argv.slice(2);
 let label: string | undefined;
 let waitSeconds = 1_800;
 const separator = args.indexOf("--");
+if (separator === -1) usage(2, "Separate the command with --.");
 
-for (let index = 0; index < (separator === -1 ? args.length : separator); index += 1) {
+for (let index = 0; index < separator; index += 1) {
   switch (args[index]) {
-    case "--label":
-      label = args[++index];
-      if (!label || label === "--") usage(2, "--label requires a value.");
+    case "--label": {
+      const value = args[++index];
+      if (!value || value.startsWith("--")) usage(2, "--label requires a value.");
+      label = value;
       break;
+    }
     case "--wait": {
       const value = args[++index];
-      if (!value || value === "--" || !/^\d+$/.test(value)) usage(2, "--wait requires a non-negative number of seconds.");
+      if (!value || !/^\d+$/.test(value)) usage(2, "--wait requires a non-negative number of seconds.");
       waitSeconds = Number.parseInt(value, 10);
       break;
     }
@@ -33,7 +36,6 @@ for (let index = 0; index < (separator === -1 ? args.length : separator); index 
   }
 }
 
-if (separator === -1) usage(2, "Separate the command with --.");
 const command = args.slice(separator + 1);
 if (command.length === 0) usage(2, "A command is required after --.");
 label ??= basename(command[0]);
@@ -44,12 +46,73 @@ function usage(exitCode: number, message?: string): never {
   process.exit(exitCode);
 }
 
+const home = process.env.HOME;
+if (!home) throw new Error("HOME is required.");
+const state = stateRoot(home);
+const lockPath = resolve(state, "heavy-check-lock.sqlite");
+const ownerPath = resolve(state, "heavy-check-owner.json");
+mkdirSync(state, { recursive: true });
+
+interface Owner {
+  token: string;
+  pid: number;
+  label: string;
+  startedAt: string;
+  workloadPid?: number;
+  processGroupId?: number;
+}
+
+function currentOwner(): Owner | undefined {
+  if (!existsSync(ownerPath)) return undefined;
+  try {
+    return JSON.parse(readFileSync(ownerPath, "utf8")) as Owner;
+  } catch {
+    return undefined;
+  }
+}
+
+function targetAlive(target: number): boolean {
+  try {
+    process.kill(target, 0);
+    return true;
+  } catch (error) {
+    return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "EPERM";
+  }
+}
+
+function workloadAlive(owner: Owner): boolean {
+  if (owner.processGroupId !== undefined) return targetAlive(-owner.processGroupId);
+  if (owner.workloadPid !== undefined) return targetAlive(owner.workloadPid);
+  return false;
+}
+
 function signalExitCode(signal: NodeJS.Signals): number {
   return 128 + constants.signals[signal];
 }
 
-async function runCommand(env: Record<string, string | undefined>): Promise<number> {
-  const detached = !process.stdin.isTTY;
+async function stopDetachedGroup(processGroupId: number): Promise<void> {
+  if (!targetAlive(-processGroupId)) return;
+  try {
+    process.kill(-processGroupId, "SIGTERM");
+  } catch {
+    return;
+  }
+  const deadline = Date.now() + 5_000;
+  while (targetAlive(-processGroupId) && Date.now() < deadline) await Bun.sleep(50);
+  if (!targetAlive(-processGroupId)) return;
+  try {
+    process.kill(-processGroupId, "SIGKILL");
+  } catch {
+    return;
+  }
+  while (targetAlive(-processGroupId) && Date.now() < deadline + 1_000) await Bun.sleep(50);
+}
+
+async function runCommand(
+  env: Record<string, string | undefined>,
+  detached: boolean,
+  onSpawn?: (child: Bun.Subprocess) => void,
+): Promise<number> {
   const child = Bun.spawn(command, {
     detached,
     env,
@@ -57,14 +120,19 @@ async function runCommand(env: Record<string, string | undefined>): Promise<numb
     stdout: "inherit",
     stderr: "inherit",
   });
+  onSpawn?.(child);
+
   const signals: NodeJS.Signals[] = ["SIGHUP", "SIGINT", "SIGQUIT", "SIGTERM"];
   const handlers = new Map<NodeJS.Signals, () => void>();
+  let forwardedSignals = 0;
   for (const signal of signals) {
     const handler = (): void => {
+      forwardedSignals += 1;
+      const forwarded = forwardedSignals > 1 ? "SIGKILL" : signal;
       try {
-        process.kill(detached ? -child.pid : child.pid, signal);
+        process.kill(detached ? -child.pid : child.pid, forwarded);
       } catch {
-        // The child group may already have exited.
+        // The child or process group may already have exited.
       }
     };
     handlers.set(signal, handler);
@@ -73,50 +141,27 @@ async function runCommand(env: Record<string, string | undefined>): Promise<numb
 
   try {
     const exitCode = await child.exited;
+    if (detached) await stopDetachedGroup(child.pid);
     return child.signalCode ? signalExitCode(child.signalCode) : exitCode;
   } finally {
     for (const [signal, handler] of handlers) process.off(signal, handler);
   }
 }
 
-if (process.env.SLOPESTYLE_HEAVY_CHECK === "1") {
-  process.exitCode = await runCommand(process.env);
+const inheritedToken = process.env.SLOPESTYLE_HEAVY_CHECK;
+const inheritedOwner = inheritedToken ? currentOwner() : undefined;
+if (inheritedToken && inheritedOwner?.token === inheritedToken && targetAlive(inheritedOwner.pid)) {
+  process.exitCode = await runCommand(process.env, false);
 } else {
-  const home = process.env.HOME;
-  if (!home) throw new Error("HOME is required.");
-  const state = stateRoot(home);
-  const lockPath = resolve(state, "heavy-check-lock.sqlite");
-  const ownerPath = resolve(state, "heavy-check-owner.json");
-  mkdirSync(state, { recursive: true });
-
-  interface Owner {
-    token: string;
-    pid: number;
-    label: string;
-    startedAt: string;
-  }
-
-  const currentOwner = (): Owner | undefined => {
-    if (!existsSync(ownerPath)) return undefined;
-    try {
-      return JSON.parse(readFileSync(ownerPath, "utf8")) as Owner;
-    } catch {
-      return undefined;
-    }
-  };
-
   const busyCode = (error: unknown): boolean => {
     if (typeof error !== "object" || error === null || !("code" in error)) return false;
     const code = (error as { code?: unknown }).code;
     return code === "SQLITE_BUSY" || code === "SQLITE_LOCKED";
   };
 
-  const describeWait = (): string => {
-    const owner = currentOwner();
-    return owner
-      ? `heavy check ${JSON.stringify(owner.label)} held by PID ${owner.pid} since ${owner.startedAt}`
-      : "another heavy check";
-  };
+  const describeOwner = (owner = currentOwner()): string => owner
+    ? `heavy check ${JSON.stringify(owner.label)} held by PID ${owner.pid} since ${owner.startedAt}`
+    : "another heavy check";
 
   const lock = new Database(lockPath, { create: true });
   lock.exec("PRAGMA busy_timeout = 0;");
@@ -124,6 +169,27 @@ if (process.env.SLOPESTYLE_HEAVY_CHECK === "1") {
   const waitDeadline = waitStarted + waitSeconds * 1_000;
   let nextNotice = waitStarted;
   let waiting = false;
+
+  const waitOrExit = async (description: string): Promise<void> => {
+    const now = Date.now();
+    if (now >= waitDeadline) {
+      console.error(`Timed out waiting for ${description}.`);
+      try {
+        lock.exec("ROLLBACK;");
+      } catch {
+        // A transaction is absent while waiting to acquire the SQLite lock.
+      }
+      lock.close();
+      process.exit(75);
+    }
+    if (now >= nextNotice) {
+      console.error(`Waiting for ${description}.`);
+      nextNotice = now + 60_000;
+    }
+    waiting = true;
+    await Bun.sleep(Math.min(250, waitDeadline - now));
+  };
+
   while (true) {
     try {
       lock.exec("BEGIN EXCLUSIVE;");
@@ -133,19 +199,14 @@ if (process.env.SLOPESTYLE_HEAVY_CHECK === "1") {
         lock.close();
         throw error;
       }
-      const now = Date.now();
-      if (now >= waitDeadline) {
-        console.error(`Timed out waiting for ${describeWait()}.`);
-        lock.close();
-        process.exit(75);
-      }
-      if (now >= nextNotice) {
-        console.error(`Waiting for ${describeWait()}.`);
-        nextNotice = now + 60_000;
-      }
-      waiting = true;
-      await Bun.sleep(Math.min(250, waitDeadline - now));
+      await waitOrExit(describeOwner());
     }
+  }
+
+  const previousOwner = currentOwner();
+  if (previousOwner && workloadAlive(previousOwner)) nextNotice = Date.now();
+  while (previousOwner && workloadAlive(previousOwner)) {
+    await waitOrExit(`orphaned ${describeOwner(previousOwner)}`);
   }
 
   const owner: Owner = {
@@ -158,7 +219,15 @@ if (process.env.SLOPESTYLE_HEAVY_CHECK === "1") {
   if (waiting) console.error(`Heavy-check slot acquired for ${JSON.stringify(label)}.`);
 
   try {
-    process.exitCode = await runCommand({ ...process.env, SLOPESTYLE_HEAVY_CHECK: "1" });
+    process.exitCode = await runCommand(
+      { ...process.env, SLOPESTYLE_HEAVY_CHECK: owner.token },
+      !process.stdin.isTTY,
+      (child) => {
+        owner.workloadPid = child.pid;
+        if (!process.stdin.isTTY) owner.processGroupId = child.pid;
+        writeAtomic(ownerPath, `${JSON.stringify(owner)}\n`, 0o600);
+      },
+    );
   } finally {
     const recorded = currentOwner();
     if (recorded?.token === owner.token) rmSync(ownerPath, { force: true });
@@ -167,7 +236,6 @@ if (process.env.SLOPESTYLE_HEAVY_CHECK === "1") {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Could not release the heavy-check transaction cleanly: ${message}`);
-      if (!process.exitCode) process.exitCode = 1;
     } finally {
       lock.close();
     }

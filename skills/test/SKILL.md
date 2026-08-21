@@ -23,7 +23,7 @@ The coordinating agent owns one verification plan across implementers, reviewers
 - Run each warranted integrated or broad local check once, after the relevant work has converged.
 - Treat repository-wide lint, typecheck, build, browser, end-to-end, and worker-pool commands as heavy. Run each through `$HOME/.local/bin/slopestyle-heavy -- COMMAND`. If the guard is unavailable, report it, inspect active processes, and wait until other heavy work finishes.
 - Use one worker for local browser and worker-pool checks. CI owns parallel execution.
-- When a hook starts heavy checks, run the initiating command through `$HOME/.local/bin/slopestyle-heavy` and let the hook own checks it already runs instead of pre-running them.
+- When a hook starts heavy checks, run the initiating command through `$HOME/.local/bin/slopestyle-heavy` and let the hook own checks it already runs instead of pre-running them. Exit 75 means the guard timed out waiting for the reported owner, not that the check failed.
 - Stop background services and browsers started for verification when the check ends. Never disturb processes another worker owns.
 
 ## Design
