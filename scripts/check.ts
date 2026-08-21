@@ -36,6 +36,7 @@ for (const pattern of ["scripts/**/*.ts", "tests/**/*.ts"]) {
 
 const entryPoints = [
   "scripts/check.ts",
+  "scripts/heavy-check.ts",
   "scripts/install.ts",
   "scripts/schedule-sync.ts",
   "scripts/sync.ts",
@@ -137,6 +138,7 @@ if (installed) {
   checkLink(resolve(home, ".pi/agent/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/CLAUDE.md"), resolve(repoRoot, "agents/CLAUDE.md"));
+  checkLink(resolve(home, ".local/bin/slopestyle-heavy"), resolve(repoRoot, "scripts/heavy-check.ts"));
 
   const expected = new Map<Target, Set<string>>([
     ["pi", new Set()],

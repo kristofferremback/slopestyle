@@ -10,9 +10,21 @@ Prove observable behavior at the highest practical layer. Prefer integrations ov
 ## Choose the radius
 
 - During development, run the smallest test that can fail for the current change.
-- Before committing, run broad lint and type checks plus warranted focused tests.
-- Leave the full suite to CI unless risk or repository guidance warrants it locally.
+- Before committing, run warranted focused tests and lint or type checks scoped to the changed package.
+- Let CI own repository-wide checks and full suites unless repository guidance or a named risk warrants them locally.
 - Never hide failure with skips, TODOs, changed expectations, or a pre-existing label. Green means observed green.
+
+## Coordinate the run
+
+The coordinating agent owns one verification plan across implementers, reviewers, worktrees, and commit hooks.
+
+- Give implementers only slice-local red and green checks. They return the exact commands and results.
+- Reuse passing evidence while the covered code, dependencies, and test configuration remain unchanged. Reviewers run new checks only for a concrete unresolved risk.
+- Run each warranted integrated or broad local check once, after the relevant work has converged.
+- Treat repository-wide lint, typecheck, build, browser, end-to-end, and worker-pool commands as heavy. Run each through `$HOME/.local/bin/slopestyle-heavy -- COMMAND`. If the guard is unavailable, report it, inspect active processes, and wait until other heavy work finishes.
+- Use one worker for local browser and worker-pool checks. CI owns parallel execution.
+- When a hook starts heavy checks, run the initiating command through `$HOME/.local/bin/slopestyle-heavy` and let the hook own checks it already runs instead of pre-running them.
+- Stop background services and browsers started for verification when the check ends. Never disturb processes another worker owns.
 
 ## Design
 
