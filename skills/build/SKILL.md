@@ -39,7 +39,7 @@ A blank repository, local-only task, or explicit developer direction may use foc
 
 ### Delegation
 
-You plan it, you own it. Give each implementer a complete blueprint, explicit ownership, constraints, and proof obligations. Keep concurrent workers out of the same files or mutable state. Verify their work yourself. Delegation never transfers accountability.
+You plan it, you own it. Give each implementer a complete blueprint, explicit ownership, constraints, and slice-local proof obligations. The coordinating agent owns integrated verification under `test`. Run delegated implementers serially; keep only lightweight review and shepherding concurrent. Keep concurrent workers out of the same files or mutable state. Verify their work yourself. Delegation never transfers accountability.
 
 For long, ambitious, or unattended work, keep the decision trail described in [decision trails](references/decision-trails.md).
 

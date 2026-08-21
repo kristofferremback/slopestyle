@@ -58,6 +58,7 @@ if (mode === "install") {
 }
 
 const manifest = loadManifest();
+const heavyCheckTarget = resolve(home, ".local/bin/slopestyle-heavy");
 const legacyThrea = [resolve(home, ".pi/agent/skills/threa-cli"), resolve(home, ".claude/skills/threa-cli")];
 for (const path of legacyThrea) {
   if (pathExists(path) && (mode === "preflight" || !replace)) {
@@ -89,6 +90,7 @@ if (mode === "preflight") {
   canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".pi/agent/AGENTS.md"));
   canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
   canLink(resolve(preflightRoot!, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
+  canLink(resolve(preflightRoot!, "scripts/heavy-check.ts"), heavyCheckTarget);
   for (const skill of manifest.skills) {
     for (const target of skill.targets) canLink(resolve(preflightRoot!, skill.path), resolve(targetRoot(home, target), skill.name));
   }
@@ -146,6 +148,7 @@ for (const target of [resolve(home, ".pi/agent/skills/unslop"), resolve(home, ".
 linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".pi/agent/AGENTS.md"));
 linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
 linkOwned(resolve(repoRoot, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
+linkOwned(resolve(repoRoot, "scripts/heavy-check.ts"), heavyCheckTarget);
 
 const expected = new Map<Target, Set<string>>([
   ["pi", new Set()],

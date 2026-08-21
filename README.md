@@ -70,6 +70,17 @@ Remove the scheduler without removing guidance or the checkout:
 
 Start fresh Pi and Claude Code sessions after an update. Existing sessions retain the guidance loaded at startup.
 
+## Heavy local checks
+
+The installer links `slopestyle-heavy` into `~/.local/bin`. It holds a user-wide SQLite lock while the wrapped command runs, so agents and worktrees under the same account queue resource-heavy local checks instead of exhausting memory. If a wrapper crashes, its recorded workload keeps successors waiting until that workload exits. Catchable termination signals propagate to guarded commands and, for non-interactive runs, their process groups. Waiting exits with status 75 after 30 minutes by default.
+
+```bash
+"$HOME/.local/bin/slopestyle-heavy" -- bun test path/to/focused.test.ts
+"$HOME/.local/bin/slopestyle-heavy" --label "commit hooks" -- git commit -m "..."
+```
+
+Use the wrapper for repository-wide lint, typecheck, build, browser, end-to-end, and worker-pool commands. Nested wrapper calls reuse the active owner's token; inherited tokens stop bypassing the lock after their owner exits. CI remains responsible for full suites unless repository guidance or a named risk requires local proof.
+
 ## Development
 
 Use a separate checkout:
@@ -84,6 +95,7 @@ Repository layout:
 - `agents/`: shared global guidance loaded by Pi and Claude Code
 - `skills/`: canonical Slop(e)style skills and their target manifest
 - `scripts/install.ts`: safe runtime installation
+- `scripts/heavy-check.ts`: user-wide serialization for resource-heavy local commands
 - `scripts/sync.ts`: validated fast-forward synchronization
 - `scripts/schedule-sync.ts`: Linux and macOS scheduler management
 - `scripts/check.ts`: source and installed-state validation
