@@ -11,7 +11,7 @@ const helper = resolve(scratch, "helper.ts");
 writeFileSync(helper, `
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 
-const [mode, first, second] = process.argv.slice(2);
+const [mode, first, second, third, fourth] = process.argv.slice(2);
 if (mode === "hold") {
   appendFileSync(second, "first:start\\n");
   while (!existsSync(first)) await Bun.sleep(20);
@@ -21,6 +21,15 @@ if (mode === "hold") {
 } else if (mode === "signal") {
   writeFileSync(first, String(process.pid));
   await new Promise(() => {});
+} else if (mode === "orphan-nested") {
+  writeFileSync(first, String(process.pid));
+  while (!existsSync(second)) await Bun.sleep(20);
+  const nested = Bun.spawn([process.execPath, fourth, "--wait", "1", "--", process.execPath, "-e", "process.exit(0)"], {
+    env: process.env,
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  writeFileSync(third, String(await nested.exited));
 }
 `);
 
@@ -205,6 +214,37 @@ test("keeps successors waiting when the wrapper dies before its workload", async
     expect(await new Response(second.stderr).text()).toContain("Waiting for orphaned heavy check \"crashed wrapper\"");
   } finally {
     await release(subprocesses, releasePath);
+  }
+}, 10_000);
+
+test("lets an orphaned workload re-enter its active guard", async () => {
+  const home = resolve(scratch, "orphan-nested-home");
+  const ready = resolve(scratch, "orphan-nested-ready");
+  const trigger = resolve(scratch, "orphan-nested-trigger");
+  const result = resolve(scratch, "orphan-nested-result");
+  const ownerPath = resolve(home, ".local/state/slopestyle/heavy-check-owner.json");
+
+  const first = run(home, "orphan with hook", [process.execPath, helper, "orphan-nested", ready, trigger, result, heavyCheck]);
+  try {
+    await waitFor(ready);
+    await waitFor(ownerPath, "processGroupId");
+    const workloadPid = Number.parseInt(readFileSync(ready, "utf8"), 10);
+    first.kill("SIGKILL");
+    expect(await first.exited).toBe(137);
+
+    writeFileSync(trigger, "go\n");
+    await waitFor(result);
+    expect(readFileSync(result, "utf8")).toBe("0");
+    await waitForExit(workloadPid);
+
+    const successor = run(home, "after orphan hook", [process.execPath, "-e", "process.exit(0)"]);
+    try {
+      expect(await successor.exited).toBe(0);
+    } finally {
+      await release([successor]);
+    }
+  } finally {
+    await release([first]);
   }
 }, 10_000);
 

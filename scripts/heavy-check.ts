@@ -150,7 +150,8 @@ async function runCommand(
 
 const inheritedToken = process.env.SLOPESTYLE_HEAVY_CHECK;
 const inheritedOwner = inheritedToken ? currentOwner() : undefined;
-if (inheritedToken && inheritedOwner?.token === inheritedToken && targetAlive(inheritedOwner.pid)) {
+const inheritedOwnerActive = inheritedOwner && (targetAlive(inheritedOwner.pid) || workloadAlive(inheritedOwner));
+if (inheritedToken && inheritedOwner?.token === inheritedToken && inheritedOwnerActive) {
   process.exitCode = await runCommand(process.env, false);
 } else {
   const busyCode = (error: unknown): boolean => {
