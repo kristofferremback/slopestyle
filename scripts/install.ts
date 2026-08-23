@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameS
 import { basename, dirname, relative, resolve } from "node:path";
 import {
   assert,
+  binRoot,
   isSymlink,
   linkAtomic,
   loadManifest,
@@ -89,6 +90,7 @@ if (mode === "preflight") {
   canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".pi/agent/AGENTS.md"));
   canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
   canLink(resolve(preflightRoot!, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
+  canLink(resolve(preflightRoot!, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
   for (const skill of manifest.skills) {
     for (const target of skill.targets) canLink(resolve(preflightRoot!, skill.path), resolve(targetRoot(home, target), skill.name));
   }
@@ -146,6 +148,7 @@ for (const target of [resolve(home, ".pi/agent/skills/unslop"), resolve(home, ".
 linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".pi/agent/AGENTS.md"));
 linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
 linkOwned(resolve(repoRoot, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
+linkOwned(resolve(repoRoot, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
 
 const expected = new Map<Target, Set<string>>([
   ["pi", new Set()],

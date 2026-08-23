@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "n
 import { dirname, resolve } from "node:path";
 import {
   assert,
+  binRoot,
   isSymlink,
   loadManifest,
   pathExists,
@@ -37,6 +38,7 @@ for (const pattern of ["scripts/**/*.ts", "tests/**/*.ts"]) {
 const entryPoints = [
   "scripts/check.ts",
   "scripts/install.ts",
+  "scripts/ports.ts",
   "scripts/schedule-sync.ts",
   "scripts/sync.ts",
 ];
@@ -137,6 +139,7 @@ if (installed) {
   checkLink(resolve(home, ".pi/agent/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/CLAUDE.md"), resolve(repoRoot, "agents/CLAUDE.md"));
+  checkLink(resolve(binRoot(home), "slopestyle-ports"), resolve(repoRoot, "scripts/ports.ts"));
 
   const expected = new Map<Target, Set<string>>([
     ["pi", new Set()],
