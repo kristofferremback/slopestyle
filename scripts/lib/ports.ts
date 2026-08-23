@@ -17,10 +17,7 @@ export function openRegistry(home: string): Database {
   const database = new Database(path, { create: true, readwrite: true });
   try {
     chmodSync(path, 0o600);
-    // busy_timeout first: the very first open performs the WAL switch, which itself
-    // needs the bounded wait when several processes start at once.
     database.exec("PRAGMA busy_timeout = 10000;");
-    database.exec("PRAGMA journal_mode = WAL;");
     database.exec("PRAGMA foreign_keys = ON;");
     migrate(database);
   } catch (error) {
