@@ -546,7 +546,7 @@ test("leaves a compound Tailscale port untouched on serve and unserve", () => {
   expect(box.serveConfig()).toEqual(compound);
 });
 
-test("refuses every operation on a lease owned by another app", () => {
+test("keeps activation owner-scoped while cleanup follows the checkout lease", () => {
   const box = sandbox();
   const shared = box.directory("shared-checkout");
   const elsewhere = box.directory("other-checkout");
@@ -560,12 +560,10 @@ test("refuses every operation on a lease owned by another app", () => {
   box.ok(shared, "serve", "--app", "mine", "frontend");
   expect(box.serveConfig().Web[`stub-machine.tail1234.ts.net:${port}`]).toBeDefined();
 
-  // serve and unserve are app-scoped: the wrong app can neither expose nor hide the lease.
-  for (const args of [["serve", "frontend"], ["unserve", "frontend"]]) {
-    const wrong = box.ports(shared, args[0], "--app", "theirs", ...args.slice(1));
-    expect(wrong.exitCode).not.toBe(0);
-    expect(wrong.stderr).toContain("not for theirs (manual:theirs)");
-  }
+  // Activation remains app-scoped: another app cannot expose this checkout's lease.
+  const wrongServe = box.ports(shared, "serve", "--app", "theirs", "frontend");
+  expect(wrongServe.exitCode).not.toBe(0);
+  expect(wrongServe.stderr).toContain("not for theirs (manual:theirs)");
   expect(box.serveConfig().Web[`stub-machine.tail1234.ts.net:${port}`]).toBeDefined();
 
   // show and release are checkout-scoped, so the wrong app sees the same lease and is
@@ -585,7 +583,10 @@ test("refuses every operation on a lease owned by another app", () => {
   expect(stillMine.entries).toHaveLength(1);
   expect(stillMine.entries[0].block.start).toBe(mine.block.start);
 
-  box.ok(shared, "unserve", "--app", "mine", "frontend");
+  // Exact teardown follows the checkout lease and its stored owner, so an identity
+  // change cannot strand an active route. The block owner does not change.
+  box.ok(shared, "unserve", "--app", "theirs", "frontend");
+  expect(box.serveConfig().Web[`stub-machine.tail1234.ts.net:${port}`]).toBeUndefined();
   box.setListeners([]);
   // A quiet lease releases under the wrong app, and the block keeps its real owner.
   expect(box.ok(shared, "release", "--app", "theirs").stdout).toContain("It stays owned by mine (manual:mine)");
@@ -594,14 +595,17 @@ test("refuses every operation on a lease owned by another app", () => {
   expect(box.claimJson(shared, "--app", "mine", "frontend").block.start).toBe(mine.block.start);
 });
 
-test("releases a lease whose app identity changed under the checkout", () => {
+test("removes a route and releases after the repository identity changes", () => {
   const box = sandbox();
   const repository = box.repository("repo");
   const worktree = box.worktree(repository, "repo-wt2");
   const leased = box.claimJson(worktree, "frontend").block.start;
+  box.setListeners([leased]);
+  box.ok(worktree, "serve", "frontend");
+  box.setListeners([]); // The backend stopped, but its background Tailscale route remains.
 
   // Moving the repository changes the common dir, so the worktree now derives a
-  // different app identity while its own path, and its lease, stay put.
+  // different app identity while its own path, lease, and route stay put.
   const moved = resolve(box.path, "repo-moved");
   renameSync(repository, moved);
   git(moved, "worktree", "repair", worktree);
@@ -612,6 +616,8 @@ test("releases a lease whose app identity changed under the checkout", () => {
   expect(blocked.stderr).toContain('Run "slopestyle-ports release" from this checkout');
 
   expect(box.ok(worktree, "show").stdout).toContain(`${leased}-${leased + 9}`);
+  expect(box.ports(worktree, "release").stderr).toContain("has a Tailscale route");
+  expect(box.ok(worktree, "unserve", "frontend").stdout).toContain(`Removed the Tailscale route for port ${leased}`);
   expect(box.ok(worktree, "release").stdout).toContain(`Released block ${leased}`);
   expect(box.claimJson(worktree, "frontend").block.start).not.toBe(leased);
 });

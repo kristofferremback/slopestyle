@@ -49,9 +49,9 @@ Contract:
   released block is never handed to another application and browser origins stay
   stable. A block is active while any of its ports has a local listener or a
   Tailscale Serve route; claim and release refuse to act on an active block.
-  show and release are checkout-scoped: they act on whatever lease this checkout
-  holds and name the app that owns the block. serve and unserve additionally
-  require the block to be owned by this app.
+  show, release, and unserve are checkout-scoped: they act on whatever lease this
+  checkout holds and use the stored block owner. serve additionally requires the
+  block to be owned by the app currently derived from this checkout.
   Servers must bind 127.0.0.1 exactly. A wildcard, IPv6-only, or other loopback
   address is not enough for serve. The Tailscale HTTPS port equals the local port.
 `;
@@ -250,10 +250,10 @@ function appById(database: Database, id: number): AppRow {
   return database.query<AppRow, [number]>("SELECT id, identity, display_name FROM apps WHERE id = ?").get(id)!;
 }
 
-// release and show are checkout-scoped: a lease belongs to the directory that took it,
-// and an app identity derived from cwd can change under a checkout (a repository move,
+// Cleanup and discovery are checkout-scoped: a lease belongs to the directory that took
+// it, and an app identity derived from cwd can change under a checkout (a repository move,
 // "git worktree repair", or switching between Git identity and --app). Refusing on the
-// block's app owner would strand the lease with no way to release it.
+// block's app owner would strand the lease and its Tailscale route.
 function checkoutLease(database: Database, identity: Identity): { owner: AppRow; block: BlockRow } | null {
   const lease = leaseFor(database, identity.checkoutIdentity);
   if (!lease) return null;
@@ -261,8 +261,8 @@ function checkoutLease(database: Database, identity: Identity): { owner: AppRow;
   return { owner: appById(database, block.app_id), block };
 }
 
-// serve and unserve operate on one block, and a block belongs to one app. Checkout identity
-// alone is not ownership: the same directory can name a different app via --app.
+// Starting a route requires the current app to own the block. Checkout identity alone is
+// not ownership: the same directory can name a different app via --app.
 function ownedLease(database: Database, identity: Identity, hint: string): { app: AppRow; block: BlockRow } {
   const app = findApp(database, identity.appIdentity);
   if (!app) throw new Error(`No ports are allocated for ${identity.appIdentity}. Run "slopestyle-ports claim ${hint}" first.`);
@@ -465,12 +465,23 @@ function commandShow(database: Database, identity: Identity | null, options: Opt
   }
 }
 
-function resolveServicePort(database: Database, identity: Identity, options: Options): { port: number; name: string } {
-  const name = options.services[0];
-  const { app, block } = ownedLease(database, identity, name);
+function servicePort(database: Database, app: AppRow, block: BlockRow, name: string): { port: number; name: string } {
   const service = appServices(database, app.id).find((candidate) => candidate.name === name);
   if (!service || service.offset >= block.size) fail(`Service ${JSON.stringify(name)} is not part of this lease. Claim it first.`);
   return { port: block.start + service.offset, name };
+}
+
+function resolveOwnedServicePort(database: Database, identity: Identity, options: Options): { port: number; name: string } {
+  const name = options.services[0];
+  const { app, block } = ownedLease(database, identity, name);
+  return servicePort(database, app, block, name);
+}
+
+function resolveCheckoutServicePort(database: Database, identity: Identity, options: Options): { port: number; name: string } {
+  const name = options.services[0];
+  const held = checkoutLease(database, identity);
+  if (!held) fail(`${identity.checkoutPath} holds no port lease. Run "slopestyle-ports claim ${name}" first.`);
+  return servicePort(database, held.owner, held.block, name);
 }
 
 function requireTailscale(): void {
@@ -487,7 +498,7 @@ function requireLoopbackListener(port: number, name: string): void {
 
 function commandServe(database: Database, identity: Identity, options: Options): void {
   requireTailscale();
-  const { port, name } = resolveServicePort(database, identity, options);
+  const { port, name } = resolveOwnedServicePort(database, identity, options);
   const target = `http://127.0.0.1:${port}`;
   requireLoopbackListener(port, name);
   const existing = serveRoutes().get(port);
@@ -506,7 +517,7 @@ function commandServe(database: Database, identity: Identity, options: Options):
 
 function commandUnserve(database: Database, identity: Identity, options: Options): void {
   requireTailscale();
-  const { port, name } = resolveServicePort(database, identity, options);
+  const { port, name } = resolveCheckoutServicePort(database, identity, options);
   const target = `http://127.0.0.1:${port}`;
   const existing = serveRoutes().get(port);
   if (!existing) {
