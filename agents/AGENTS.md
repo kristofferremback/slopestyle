@@ -34,7 +34,7 @@ Treat dependencies like source code. Prefer permissive licenses, and add one onl
 - Comments explain what code cannot. Dead code is deleted. Good code is boring, explicit, and typed.
 - Test observable behavior at the highest practical layer. Prefer integrations over mocks. Green means green. Regression tests are earned.
 - Mobile is feature completeness, not a reduced product.
-- Before starting local services or exposing them through Tailscale, claim ports with `$HOME/.local/bin/slopestyle-ports claim SERVICE...` and use what it prints. Its `--help` owns the operational detail.
+- Before starting local services or exposing them through Tailscale, use the repository's own port or development-environment workflow when it has one. Otherwise claim ports with `$HOME/.local/bin/slopestyle-ports claim SERVICE...`; its `--help` owns the operational detail.
 
 ## Writing to Kristoffer
 
