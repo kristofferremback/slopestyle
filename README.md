@@ -70,6 +70,42 @@ Remove the scheduler without removing guidance or the checkout:
 
 Start fresh Pi and Claude Code sessions after an update. Existing sessions retain the guidance loaded at startup.
 
+## Local development ports
+
+`scripts/ports.ts` installs as `~/.local/bin/slopestyle-ports`. It leases aligned blocks of ten ports from the managed range `20000`-`29999` so every checkout keeps one stable set of numbers, and so a browser origin is never reused by a different application.
+
+Claim once per checkout and read the ports it prints:
+
+```bash
+slopestyle-ports claim frontend api
+```
+
+Or bind them straight into the shell that starts the servers:
+
+```bash
+ports="$(slopestyle-ports claim --format=sh frontend api)" \
+  && eval "$ports" \
+  && bun run dev --port "$SLOPESTYLE_PORT_FRONTEND"
+```
+
+The assignment runs before `eval`, so a failed `claim` stops the chain instead of
+being swallowed by `eval` and starting the server with an empty `--port`.
+
+`slopestyle-ports show` prints this checkout's lease, `show --all` prints every lease on the machine, and `release` gives the block back.
+
+All linked worktrees of one repository share an app identity and its service offsets, so `frontend` keeps the same offset everywhere, while each worktree gets its own block. Outside a Git worktree, pass `--app NAME` to group checkouts manually.
+
+Lifetime is explicit. A block ever assigned to an app stays owned by that app on this machine, so a released block can only ever come back to the same app. A live checkout keeps its lease until `release`, even while nothing is running. A block is active while any of its ports has a local listener or a Tailscale Serve route; `claim` and `release` report the conflict and exit nonzero rather than allocating a second block or dropping a live one. Nothing is ever killed or rewritten on your behalf.
+
+Servers must bind `127.0.0.1`. The Tailscale HTTPS port equals the local port, which keeps one number to remember and one origin per service:
+
+```bash
+slopestyle-ports serve frontend
+slopestyle-ports unserve frontend
+```
+
+`serve` requires a listener bound to `127.0.0.1:PORT` exactly, since that is the address Tailscale proxies to, so a wildcard, IPv6-only, or `127.0.0.2` bind is refused. It leaves any route that is not the exact route for that service alone. `unserve` removes the port only when it carries the exclusive shape this CLI creates: one HTTPS entry with a single `/` handler proxying to `http://127.0.0.1:PORT`. Because `tailscale serve --https=PORT off` deletes the whole port, any extra path or host entry sharing it is reported and left untouched. Claim and show print the future Tailscale URL as reserved; it becomes live only after `serve`. Without the Tailscale CLI local allocation still works and these two commands fail with installation guidance. State lives in `~/.local/state/slopestyle/ports.sqlite`, and concurrent allocations serialize through a SQLite transaction. Run `slopestyle-ports --help` for the full contract.
+
 ## Development
 
 Use a separate checkout:
@@ -87,9 +123,10 @@ Repository layout:
 - `scripts/sync.ts`: validated fast-forward synchronization
 - `scripts/schedule-sync.ts`: Linux and macOS scheduler management
 - `scripts/check.ts`: source and installed-state validation
+- `scripts/ports.ts`: persistent local and Tailscale port allocation
 - `scripts/lib/`: shared TypeScript primitives
 - `scripts/*.sh`: compatibility handoff only; no workflow logic
-- `tests/`: synchronization integration tests
+- `tests/`: synchronization and port allocation integration tests
 
 Install pinned development dependencies and validate changes with:
 

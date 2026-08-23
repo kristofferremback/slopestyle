@@ -55,6 +55,10 @@ export function stableRoot(home: string): string {
   return homePath(home, ".local/share/slopestyle");
 }
 
+export function binRoot(home: string): string {
+  return homePath(home, ".local/bin");
+}
+
 export function stateRoot(home: string): string {
   return homePath(home, ".local/state/slopestyle");
 }
