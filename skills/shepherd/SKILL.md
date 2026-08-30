@@ -11,7 +11,7 @@ Run in the background after each PR opens. Keep the PR or stack moving until it 
 
 Record the PR head SHA, base, stack relationships, current checks, reviews, comments, and unresolved threads. Read every relevant PR and review comment, including older unresolved threads, but validate each finding against the current head before acting.
 
-Use the harness's background or event mechanism when available. Otherwise poll with bounded backoff. If concurrent background work is unavailable, report that limitation instead of silently blocking the parent workflow.
+Use the harness's background or event mechanism when available. A watcher owns its bounded backoff inside one tool process, so each state change returns one result instead of spending model turns on waits. If concurrent background work is unavailable, report that limitation instead of blocking the parent workflow.
 
 ## Triage continuously
 
