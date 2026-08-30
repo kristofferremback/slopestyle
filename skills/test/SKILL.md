@@ -14,6 +14,11 @@ Prove observable behavior at the highest practical layer. Prefer integrations ov
 - Leave the full suite to CI unless risk or repository guidance warrants it locally.
 - Never hide failure with skips, TODOs, changed expectations, or a pre-existing label. Green means observed green.
 
+## Run commands
+
+- Set test and typecheck timeouts with enough margin for a slow run to finish.
+- Keep iterative output focused and bounded; request the full log only when the failure evidence needs it.
+
 ## Design
 
 - Name tests as `should do x when y` so the contract reads in English.
