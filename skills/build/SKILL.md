@@ -13,7 +13,7 @@ Planning is required unless the work is dead obvious or explicitly exploratory.
 
 1. Investigate prior art in code, history, docs, components, conventions, and dependencies.
 2. Resolve facts yourself. Ask Kris only for decisions, in ordinary text, and ask early.
-3. Propose a high-level plan covering outcome, scope, product contract, architecture, risks, and review boundaries.
+3. Propose a high-level plan covering outcome, scope, product contract, architecture, risks, and delivery slices cut by [PR slicing](references/pr-slicing.md). Each slice names one behavior a user can exercise end to end and the product surface where it is proved.
 4. Wait for agreement on that high-level plan.
 5. Write a separate implementer blueprint detailed enough that execution does not require rediscovering intent. Plans live outside the repository. Seer is optional.
 
@@ -23,7 +23,7 @@ Load required specialist skills while planning. UI work requires `frontend`; beh
 
 ## 2. Shape reviewable delivery
 
-Read [PR slicing](references/pr-slicing.md). A PR is a review unit, not an implementation step. Every boundary needs one focused review goal and a reason to land independently.
+Each planned slice becomes a PR. A PR is a review unit, not an implementation step. Every boundary needs one focused review goal and a reason to land independently.
 
 A blank repository, local-only task, or explicit developer direction may use focused commits without PR ceremony. Preserve the same review logic.
 
@@ -39,7 +39,7 @@ A blank repository, local-only task, or explicit developer direction may use foc
 
 ### Delegation
 
-You plan it, you own it. Give each implementer a complete blueprint, explicit ownership, constraints, and proof obligations. Keep concurrent workers out of the same files or mutable state. Verify their work yourself. Delegation never transfers accountability.
+You plan it, you own it. Give each implementer a complete blueprint, explicit ownership, constraints, and proof obligations. Give concurrent workers whole slices, and keep them out of the same files or mutable state. Verify their work yourself. Delegation never transfers accountability.
 
 For long, ambitious, or unattended work, keep the decision trail described in [decision trails](references/decision-trails.md).
 
