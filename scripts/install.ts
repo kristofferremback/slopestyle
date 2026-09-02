@@ -17,6 +17,7 @@ import {
   targetRoot,
   type Target,
 } from "./lib/core.ts";
+import { serviceInstalled } from "./lib/usage/service.ts";
 
 const args = process.argv.slice(2);
 let replace = false;
@@ -187,6 +188,9 @@ const schedulerInstalled = process.platform === "linux"
   : process.platform === "darwin" && existsSync(resolve(home, "Library/LaunchAgents/dev.slopestyle.sync.plist"));
 if (schedulerInstalled) {
   runOrThrow([process.execPath, resolve(repoRoot, "scripts/schedule-sync.ts"), "refresh"]);
+}
+if (serviceInstalled(home)) {
+  runOrThrow([process.execPath, resolve(repoRoot, "scripts/usage.ts"), "service", "refresh"]);
 }
 
 console.log("Slop(e)style installation complete. Start fresh Pi and Claude Code sessions to load it.");

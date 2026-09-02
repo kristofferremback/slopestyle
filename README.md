@@ -81,6 +81,16 @@ slopestyle-usage report --since 13:00  # spend by session, limits, and insights 
 
 The page shows spend per session over a range, defaulting to today, with subagents rolled into their parent, drilldown into a session's context growth and compactions, the current limit percentages with their windows, and rule-based insights. `slopestyle-ports serve usage` exposes it over Tailscale. The `usage` skill points agents at the same `report --json` output and the `/api` routes.
 
+Keep the server running in the background:
+
+```bash
+slopestyle-usage service install    # LaunchAgent on macOS, systemd user service on Linux
+slopestyle-usage service status
+slopestyle-usage service uninstall
+```
+
+The service starts at login and restarts after a crash. The installer restarts it after every sync so it serves the current code. On macOS it runs in the login session, which is what the Keychain needs for the limit percentages.
+
 ## Local development ports
 
 `scripts/ports.ts` installs as `~/.local/bin/slopestyle-ports`. It leases aligned blocks of ten ports from the managed range `20000`-`29999` so every checkout keeps one stable set of numbers, and so a browser origin is never reused by a different application.
