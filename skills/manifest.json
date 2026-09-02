@@ -270,6 +270,17 @@
       "provenance": "forked"
     },
     {
+      "name": "usage",
+      "path": "skills/usage",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "why",
       "path": "skills/why",
       "targets": [
