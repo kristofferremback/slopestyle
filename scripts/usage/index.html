@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Claude usage</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="presets" role="group" aria-label="Time range">
+        <button type="button" data-preset="today">Today</button>
+        <button type="button" data-preset="yesterday">Yesterday</button>
+        <button type="button" data-preset="24h">Last 24h</button>
+        <button type="button" data-preset="week">This week</button>
+        <button type="button" data-preset="7d">Last 7 days</button>
+        <button type="button" data-preset="window">Current 5h window</button>
+      </div>
+      <details class="custom" id="custom">
+        <summary>Custom range</summary>
+        <div class="fields">
+          <label>From <input id="from" type="datetime-local" step="60" /></label>
+          <label>To <input id="to" type="datetime-local" step="60" /></label>
+          <label>Bucket
+            <select id="bucket">
+              <option value="">Auto</option>
+              <option value="15m">15 min</option>
+              <option value="hour">Hour</option>
+              <option value="day">Day</option>
+            </select>
+          </label>
+          <label class="narrow-only">Sort
+            <select id="sort">
+              <option value="cost_usd">Cost</option>
+              <option value="cost_sub_usd">Subagents</option>
+              <option value="requests">Requests</option>
+              <option value="peak_context">Peak context</option>
+              <option value="started_ms">Started</option>
+              <option value="title">Title</option>
+            </select>
+          </label>
+        </div>
+      </details>
+      <div class="total" aria-live="polite">
+        <span id="total">$0.00</span>
+        <span class="hint">API list prices</span>
+      </div>
+    </header>
+    <main>
+      <section aria-label="Plan limits" class="limits">
+        <div id="limits" class="tiles"></div>
+        <div id="limits-chart" class="chart small" role="img" aria-label="Limit utilization over time"></div>
+        <p id="limits-notice" class="notice" hidden></p>
+      </section>
+      <section aria-label="Insights">
+        <ul id="insights" class="insights"></ul>
+      </section>
+      <section aria-label="Spend by session">
+        <div id="chart" class="chart" role="img" aria-label="Stacked spend per bucket by session"></div>
+        <p id="notice" class="notice" hidden></p>
+      </section>
+      <section aria-label="Sessions" class="table-wrap">
+        <table id="sessions">
+          <thead>
+            <tr>
+              <th scope="col"><span class="swatch-head"></span></th>
+              <th scope="col"><button type="button" data-sort="title">Session</button></th>
+              <th scope="col" class="num"><button type="button" data-sort="cost_usd">Cost</button></th>
+              <th scope="col" class="num"><button type="button" data-sort="cost_sub_usd">Subagents</button></th>
+              <th scope="col" class="num"><button type="button" data-sort="requests">Requests</button></th>
+              <th scope="col" class="num"><button type="button" data-sort="peak_context">Peak context</button></th>
+              <th scope="col"><button type="button" data-sort="models">Models</button></th>
+              <th scope="col"><button type="button" data-sort="started_ms">Started</button></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p id="empty" class="notice" hidden>No requests in this range.</p>
+      </section>
+    </main>
+    <aside id="detail" class="detail" hidden aria-label="Session detail">
+      <header class="detail-header">
+        <h2 id="detail-title"></h2>
+        <button type="button" id="detail-close" aria-label="Close session detail">×</button>
+      </header>
+      <p id="detail-meta" class="meta"></p>
+      <h3>Context per request</h3>
+      <div id="context-chart" class="chart small" role="img" aria-label="Context size per request with compaction markers"></div>
+      <h3>Cost per request</h3>
+      <div id="cost-chart" class="chart small" role="img" aria-label="Cost per request"></div>
+      <h3>Subagents</h3>
+      <div class="table-wrap">
+      <table id="agents">
+        <thead>
+          <tr>
+            <th scope="col">Agent</th>
+            <th scope="col" class="num">Cost</th>
+            <th scope="col" class="num">Requests</th>
+            <th scope="col" class="num">Peak context</th>
+            <th scope="col">Model</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      </div>
+      <p id="agents-empty" class="notice" hidden>No subagents in this range.</p>
+    </aside>
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>
