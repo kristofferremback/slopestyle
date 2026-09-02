@@ -38,6 +38,8 @@ When a repository lacks a scripted path to drive its real UI, CLI, service, or l
 - **Evidence:** action plus resulting visible and persistent side effects
 - **Cleanup:** remove only processes and scratch state created by this run
 
+A scenario is one round trip whether the orchestrator or a delegate drives it: one scripted command performs the actions and captures the evidence at its end. A delegated driver does mechanical work, so it runs on a cheaper model than the orchestrator and gets the scenario list and evidence contract in its brief.
+
 Capture process identity when launching. Never kill by broad process name, guessed port ownership, or a pattern that can hit the user's running environment. Execute the generated skill end to end once before calling it usable. Report unrelated startup blockers instead of creating hidden fallback scaffolding.
 
 ## Report
