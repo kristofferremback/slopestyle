@@ -70,6 +70,17 @@ Remove the scheduler without removing guidance or the checkout:
 
 Start fresh Pi and Claude Code sessions after an update. Existing sessions retain the guidance loaded at startup.
 
+## Usage dashboard
+
+`scripts/usage.ts` installs as `~/.local/bin/slopestyle-usage`. It indexes every Claude Code transcript under `~/.claude/projects` into `~/.local/state/slopestyle/usage.sqlite`, prices each request at API list prices as a proxy for subscription usage, and polls the plan's 5-hour and weekly limits with the OAuth token Claude Code keeps in its credentials.
+
+```bash
+slopestyle-usage serve                 # page on a slopestyle-ports port, bound to 127.0.0.1
+slopestyle-usage report --since 13:00  # spend by session, limits, and insights in the terminal
+```
+
+The page shows spend per session over a range, defaulting to today, with subagents rolled into their parent, drilldown into a session's context growth and compactions, the current limit percentages with their windows, and rule-based insights. `slopestyle-ports serve usage` exposes it over Tailscale. The `usage` skill points agents at the same `report --json` output and the `/api` routes.
+
 ## Local development ports
 
 `scripts/ports.ts` installs as `~/.local/bin/slopestyle-ports`. It leases aligned blocks of ten ports from the managed range `20000`-`29999` so every checkout keeps one stable set of numbers, and so a browser origin is never reused by a different application.
