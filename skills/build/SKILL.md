@@ -11,7 +11,7 @@ Own the accepted outcome from discovery through review-ready work. Stop before m
 
 Planning is required unless the work is dead obvious or explicitly exploratory.
 
-1. Investigate prior art in code, history, docs, components, conventions, and dependencies.
+1. Investigate prior art in code, history, docs, components, conventions, and dependencies. Discovery is scoped to the first slice: read the files that slice touches yourself and dispatch one explorer per open question at medium breadth. Findings land in the blueprint; the explorer's transcript does not.
 2. Resolve facts yourself. Ask Kris only for decisions, in ordinary text, and ask early.
 3. Propose a high-level plan covering outcome, scope, product contract, architecture, risks, and delivery slices cut by [PR slicing](references/pr-slicing.md). Each slice names one behavior a user can exercise end to end and the product surface where it is proved.
 4. Wait for agreement on that high-level plan.
