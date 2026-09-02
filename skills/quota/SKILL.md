@@ -1,5 +1,5 @@
 ---
-name: usage
+name: quota
 description: Use when Kris asks what is eating his Claude usage or quota, which sessions cost the most, how close a 5-hour or weekly limit is, or for spend by session, subagent, model, or time range.
 ---
 
