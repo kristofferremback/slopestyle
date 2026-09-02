@@ -455,8 +455,9 @@ function renderDetail(detail: SessionDetail): void {
   contextChart.setOption(
     {
       backgroundColor: "transparent",
-      grid: { left: 56, right: 16, top: 28, bottom: 32 },
-      legend: { top: 0, right: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
+      // Legend at the bottom keeps the top clear for mark line labels.
+      grid: { left: 56, right: 16, top: 28, bottom: 56 },
+      legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
       tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? `${tokens(value)} tokens` : "") },
       xAxis: axis,
       yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => tokens(value) }, splitLine: { lineStyle: { color: t.border } } },
@@ -492,8 +493,9 @@ function renderDetail(detail: SessionDetail): void {
   costChart.setOption(
     {
       backgroundColor: "transparent",
-      grid: { left: 56, right: 16, top: 28, bottom: 32 },
-      legend: { top: 0, right: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
+      // Legend at the bottom keeps the top clear for mark line labels.
+      grid: { left: 56, right: 16, top: 28, bottom: 56 },
+      legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
       tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? usdFine.format(value) : "") },
       xAxis: axis,
       yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => usd.format(value) }, splitLine: { lineStyle: { color: t.border } } },
