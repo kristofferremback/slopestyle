@@ -7,6 +7,7 @@ import { insights } from "./lib/usage/insights.ts";
 import { credentialsToken, limitsView } from "./lib/usage/limits.ts";
 import { sessions } from "./lib/usage/query.ts";
 import { createServer, parseRange } from "./lib/usage/server.ts";
+import { manageService, type ServiceAction, serviceActions } from "./lib/usage/service.ts";
 import homepage from "./usage/index.html";
 
 function usage(exitCode: number, message?: string): never {
@@ -25,6 +26,9 @@ Commands:
       Index, then print spend by session, current limits, and insights for a
       range. WHEN is ISO 8601, unix milliseconds, or a local HH:MM today.
       Defaults to today. --since sets --from and leaves --to at now.
+  service install|refresh|status|uninstall
+      Keep "serve" running in the login session as a macOS LaunchAgent or a
+      systemd user service. The installer refreshes it after every sync.
 
 Defaults:
   --projects  $HOME/.claude/projects
@@ -40,6 +44,12 @@ if (!home) throw new Error("HOME is required.");
 
 const args = process.argv.slice(2);
 const command = args.shift();
+if (command === "service") {
+  const action = args[0];
+  if (args.length !== 1 || !(serviceActions as readonly string[]).includes(action)) usage(2, "service needs exactly one of install, refresh, status, or uninstall");
+  manageService(action as ServiceAction, home);
+  process.exit(0);
+}
 const options = {
   port: undefined as number | undefined,
   projects: resolve(home, ".claude/projects"),

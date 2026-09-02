@@ -156,6 +156,34 @@ test("synchronizes a stable runtime safely", () => {
   }
   succeeds([resolve(runtime, "scripts/schedule-sync.ts"), "uninstall"]);
 
+  expect(execute([resolve(sourceRoot, "scripts/usage.ts"), "service", "install"]).exitCode).not.toBe(0);
+  succeeds([resolve(runtime, "scripts/usage.ts"), "service", "install"]);
+  const commandsBeforeServiceRefresh = readFileSync(commandLog, "utf8");
+  succeeds([resolve(runtime, "scripts/install.ts")]);
+  const serviceRefreshCommands = readFileSync(commandLog, "utf8").slice(commandsBeforeServiceRefresh.length);
+  if (process.platform === "linux") {
+    const unitPath = resolve(home, ".config/systemd/user/slopestyle-usage.service");
+    const unit = readFileSync(unitPath, "utf8");
+    expect(unit).toContain(`ExecStart=\"${Bun.which("bun") ?? process.execPath}\" \"${runtime}/scripts/usage.ts\" serve`);
+    expect(unit).toContain("Restart=on-failure");
+    if (Bun.which("systemd-analyze")) succeeds(["systemd-analyze", "verify", unitPath]);
+    expect(commandsBeforeServiceRefresh).toContain("systemctl --user enable --now slopestyle-usage.service");
+    expect(serviceRefreshCommands).toContain("systemctl --user try-restart slopestyle-usage.service");
+    succeeds([resolve(runtime, "scripts/usage.ts"), "service", "uninstall"]);
+    expect(existsSync(unitPath)).toBe(false);
+  } else {
+    const plistPath = resolve(home, "Library/LaunchAgents/dev.slopestyle.usage.plist");
+    succeeds(["plutil", "-lint", plistPath]);
+    const plist = readFileSync(plistPath, "utf8");
+    expect(plist).toContain(`${runtime}/scripts/usage.ts`);
+    expect(plist).toContain("<key>KeepAlive</key><true/>");
+    expect(plist).toContain("usage.log");
+    expect(commandsBeforeServiceRefresh).toContain(`launchctl bootstrap gui/${process.getuid!()} ${plistPath}`);
+    expect(serviceRefreshCommands).toContain("launchctl bootstrap");
+    succeeds([resolve(runtime, "scripts/usage.ts"), "service", "uninstall"]);
+    expect(existsSync(plistPath)).toBe(false);
+  }
+
   expect(sync().exitCode).toBe(0);
   const notificationsBeforePersistentFailure = readFileSync(notificationLog, "utf8").trim().split("\n").filter(Boolean).length;
   git(runtime, "checkout", "-q", "-b", "non-main");
