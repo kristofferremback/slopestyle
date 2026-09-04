@@ -6,6 +6,7 @@ import { ingest, openUsageDb } from "../scripts/lib/usage/ingest.ts";
 import { insights } from "../scripts/lib/usage/insights.ts";
 import { credentialsToken, limitsView, parseLimits, pollLimits } from "../scripts/lib/usage/limits.ts";
 import { cachedShare, tokenCount } from "../scripts/lib/usage/format.ts";
+import { groupResets, placeResetLabels } from "../scripts/lib/usage/resets.ts";
 import { baseModel, costUsd } from "../scripts/lib/usage/pricing.ts";
 import { sessionDetail, sessions, timeline } from "../scripts/lib/usage/query.ts";
 import { createServer, parseRange } from "../scripts/lib/usage/server.ts";
@@ -370,6 +371,32 @@ test("should explain the range with insights that name the numbers", () => {
   expect(rate.data.percent).toBe(36);
   expect(rate.text).toContain("14:00 UTC");
   expect(insights(db, { fromMs: 0, toMs: 1 })).toEqual({ total_usd: 0, insights: [] });
+});
+
+test("should group resets that would overprint their labels", () => {
+  const weekly = { end_ms: 1_000_000, label: "Weekly" };
+  const fable = { end_ms: 1_300_000, label: "Weekly Fable" };
+  const fiveHour = { end_ms: 5_000_000, label: "5-hour" };
+  expect(groupResets([fiveHour, fable, weekly], 600_000)).toEqual([[weekly, fable], [fiveHour]]);
+  expect(groupResets([fiveHour, fable, weekly], 200_000)).toEqual([[weekly], [fable], [fiveHour]]);
+  // A chain of close resets stays one group even when its ends are far apart.
+  const chain = [0, 500_000, 1_000_000, 1_500_000].map((end_ms) => ({ end_ms }));
+  expect(groupResets(chain, 600_000)).toEqual([chain]);
+  expect(groupResets([], 600_000)).toEqual([]);
+});
+
+test("should place reset labels so none overprint, weekly resets first", () => {
+  const mark = (x: number, width: number, important = false, wanted = true) => ({ x, width, important, wanted });
+  // Two 5-hour labels 100px apart with 80px labels both hang right.
+  expect(placeResetLabels([mark(100, 80), mark(200, 80)], 1000)).toEqual([{ show: true, align: "left" }, { show: true, align: "left" }]);
+  // The right half hangs left, and a label with no room on either side hides.
+  expect(placeResetLabels([mark(900, 80), mark(980, 200)], 1000)).toEqual([{ show: true, align: "right" }, { show: false, align: "left" }]);
+  // A crowded 5-hour label gives way to the weekly one placed after it.
+  expect(placeResetLabels([mark(20, 80), mark(70, 200, true)], 1000)).toEqual([{ show: false, align: "left" }, { show: true, align: "left" }]);
+  // A label the view does not want takes no space.
+  expect(placeResetLabels([mark(100, 80, false, false), mark(150, 80)], 1000)).toEqual([{ show: false, align: "left" }, { show: true, align: "left" }]);
+  // When its own side is taken a label flips to the other side of its line.
+  expect(placeResetLabels([mark(280, 40), mark(300, 80, true)], 1000)).toEqual([{ show: true, align: "right" }, { show: true, align: "left" }]);
 });
 
 test("should format token counts and cache shares for people", () => {
