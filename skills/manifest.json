@@ -229,6 +229,17 @@
       "provenance": "original"
     },
     {
+      "name": "simplify",
+      "path": "skills/simplify",
+      "targets": [
+        "pi",
+        "claude-code"
+      ],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "sync-fork",
       "path": "skills/sync-fork",
       "targets": [
