@@ -18,6 +18,8 @@ Ask before reaching out or publishing prose addressed to users or other humans. 
 
 Know what you commit, treat the working tree like a shared desk. Stage and commit only files or hunks you own. Never discard, reset, or sweep unrelated dirty work. Assume changes you didn't make belong to someone else.
 
+Subagents run at low effort on a cheaper model than the orchestrator. Raise effort only when a brief needs design judgement, and say so in the brief.
+
 Treat dependencies like source code. Prefer permissive licenses, and add one only when its health, size, fit, and maintenance cost beat the custom complexity it removes.
 
 ## Engineering defaults

@@ -15,7 +15,7 @@ Planning is required unless the work is dead obvious or explicitly exploratory.
 2. Resolve facts yourself. Ask Kris only for decisions, in ordinary text, and ask early.
 3. Propose a high-level plan covering outcome, scope, product contract, architecture, risks, and delivery slices cut by [PR slicing](references/pr-slicing.md). Each slice names one behavior a user can exercise end to end and the product surface where it is proved.
 4. Wait for agreement on that high-level plan.
-5. Write a separate implementer blueprint detailed enough that execution does not require rediscovering intent. Plans live outside the repository. Seer is optional.
+5. Write the implementer blueprint: numbered steps in execution order, each ending on a checkable completion criterion and naming the files it owns. Steps may cut finer than slices. The plan persists where the project keeps plans (decision records, test plans, tickets). The blueprint is ephemeral: it lives on local disk for the duration of the work and is never committed.
 
 Agreement is the go-ahead for the full accepted scope. Iteration before agreement is planning; feedback that leaves the contract intact refines work in flight. An opened PR or its review does not create a pause. During execution, pause only when Kris asks or remaining work is blocked.
 
@@ -39,7 +39,13 @@ A blank repository, local-only task, or explicit developer direction may use foc
 
 ### Delegation
 
-You plan it, you own it. Give each implementer a complete blueprint, explicit ownership, constraints, and proof obligations. Give concurrent workers whole slices, and keep them out of the same files or mutable state. Verify their work yourself. Delegation never transfers accountability.
+You plan it, you own it. Run the blueprint steps in order. Each step is three passes, each a fresh subagent on a cheaper model at low effort, handed the previous pass's result:
+
+1. **Implement.** The step's blueprint entry, the files it owns, constraints, and the proof it must run.
+2. **Verify and fix.** The diff and the step's completion criteria. Run the focused proof, fix what a criterion proves wrong, and report anything larger back instead of redesigning.
+3. **Simplify.** Load `simplify` against the diff, then re-run the same proof.
+
+Read nothing between passes; the passes hand off to each other. When every step is done, verify the whole stack yourself against the plan and the blueprint. Fixes smaller than a step you make by hand; larger ones become new steps through the same three passes. Concurrent steps own disjoint files and mutable state. Delegation never transfers accountability.
 
 For long, ambitious, or unattended work, keep the decision trail described in [decision trails](references/decision-trails.md).
 
