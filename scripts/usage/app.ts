@@ -1,9 +1,9 @@
 import { BarChart, LineChart } from "echarts/charts";
-import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
+import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, ToolboxComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 
-echarts.use([BarChart, LineChart, DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([BarChart, LineChart, DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, ToolboxComponent, TooltipComponent, CanvasRenderer]);
 
 type Bucket = "15m" | "hour" | "day";
 
@@ -242,12 +242,45 @@ function theme() {
   };
 }
 
+interface ZoomRange {
+  start: number;
+  end: number;
+}
+
+// Charts zoom by dragging out a span, never by scrolling, so a page scroll
+// that crosses a chart cannot get caught in it. The toolbox arrow steps back
+// out. The first dataZoom holds the range so a refresh can redraw in place.
+function zoomOptions(t: ReturnType<typeof theme>, filterMode: "filter" | "none", zoom: ZoomRange | undefined, slider: boolean) {
+  const range = { start: zoom?.start ?? 0, end: zoom?.end ?? 100 };
+  return {
+    toolbox: {
+      right: 16,
+      top: 0,
+      itemSize: 18,
+      itemGap: 12,
+      iconStyle: { borderColor: t.text },
+      emphasis: { iconStyle: { borderColor: css("--text-primary") } },
+      feature: { dataZoom: { yAxisIndex: "none", filterMode, title: { zoom: "Drag across a span to zoom", back: "Zoom out" } } },
+    },
+    dataZoom: [slider ? { type: "slider", bottom: 8, height: 20, borderColor: t.border, textStyle: { color: t.text }, ...range } : { type: "inside", disabled: true, filterMode, ...range }],
+  };
+}
+
+function currentZoom(instance: echarts.ECharts): ZoomRange | undefined {
+  const zoom = (instance.getOption()?.dataZoom as Partial<ZoomRange>[] | undefined)?.[0];
+  return zoom?.start !== undefined && zoom.end !== undefined ? { start: zoom.start, end: zoom.end } : undefined;
+}
+
+function armZoom(instance: echarts.ECharts): void {
+  instance.dispatchAction({ type: "takeGlobalCursor", key: "dataZoomSelect", dataZoomSelectActive: true });
+}
+
 function bucketLabel(ms: number, bucket: Bucket, span: number): string {
   if (bucket === "day") return dateFormat.format(ms);
   return span > day ? dateTimeFormat.format(ms) : timeFormat.format(ms);
 }
 
-function renderLimits(view: LimitsView): void {
+function renderLimits(view: LimitsView, keepZoom: boolean): void {
   currentWindows = view.windows;
   const t = theme();
   tilesEl.replaceChildren(
@@ -280,7 +313,8 @@ function renderLimits(view: LimitsView): void {
   limitsChart.setOption(
     {
       backgroundColor: "transparent",
-      grid: { left: 48, right: 16, top: 16, bottom: 52 },
+      grid: { left: 48, right: 16, top: 30, bottom: 52 },
+      ...zoomOptions(t, "none", keepZoom ? currentZoom(limitsChart) : undefined, false),
       legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
       tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? `${Math.round(value)}%` : "") },
       xAxis: { type: "time", min: state.fromMs, max: state.toMs, axisLabel: { color: t.text, formatter: (value: number) => timeFormat.format(value) }, axisLine: { lineStyle: { color: t.border } } },
@@ -306,6 +340,7 @@ function renderLimits(view: LimitsView): void {
     },
     true,
   );
+  armZoom(limitsChart);
   limitsChart.resize();
 }
 
@@ -323,8 +358,7 @@ function renderInsights(view: InsightsView): void {
 function renderTimeline(view: Timeline, keepZoom: boolean): void {
   const colors = palette();
   const t = theme();
-  // A refresh redraws in place, so the slider stays where the user left it.
-  const zoom = keepZoom ? (chart.getOption()?.dataZoom as { start?: number; end?: number }[] | undefined)?.[0] : undefined;
+  const zoom = keepZoom ? currentZoom(chart) : undefined;
   colorBySession = new Map(view.series.map((series, index) => [series.session_id, colors[index]!]));
   const span = state.toMs - state.fromMs;
   const series = view.series.map((entry, index) => ({
@@ -366,7 +400,8 @@ function renderTimeline(view: Timeline, keepZoom: boolean): void {
     {
       backgroundColor: "transparent",
       textStyle: { color: t.text },
-      grid: { left: narrow.matches ? 48 : 56, right: 16, top: 24, bottom: series.length > 0 ? 96 : 56, containLabel: false },
+      grid: { left: narrow.matches ? 48 : 56, right: 16, top: 30, bottom: series.length > 0 ? 96 : 56, containLabel: false },
+      ...zoomOptions(t, "filter", zoom, true),
       legend: { bottom: 40, type: "scroll", formatter: legendName, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
       tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (value: unknown) => (typeof value === "number" ? usd.format(value) : ""), ...t.tooltip },
       xAxis: {
@@ -377,11 +412,11 @@ function renderTimeline(view: Timeline, keepZoom: boolean): void {
         axisLabel: { color: t.text },
       },
       yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => usd.format(value) }, splitLine: { lineStyle: { color: t.border } } },
-      dataZoom: [{ type: "slider", bottom: 8, height: 20, borderColor: t.border, textStyle: { color: t.text }, start: zoom?.start ?? 0, end: zoom?.end ?? 100 }, { type: "inside" }],
       series,
     },
     true,
   );
+  armZoom(chart);
   chart.off("click");
   chart.on("click", (event) => {
     const entry = view.series[event.seriesIndex ?? -1];
@@ -443,7 +478,7 @@ function renderSessions(rows: SessionSummary[]): void {
   sortSelect.value = sortKey;
 }
 
-function renderDetail(detail: SessionDetail, focus: boolean): void {
+function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean): void {
   const { session } = detail;
   $("#detail-title").textContent = session.title;
   $("#detail-meta").textContent = [
@@ -471,7 +506,8 @@ function renderDetail(detail: SessionDetail, focus: boolean): void {
     {
       backgroundColor: "transparent",
       // Legend at the bottom keeps the top clear for mark line labels.
-      grid: { left: 56, right: 16, top: 28, bottom: 56 },
+      grid: { left: 56, right: 16, top: 30, bottom: 56 },
+      ...zoomOptions(t, "none", keepZoom ? currentZoom(contextChart) : undefined, false),
       legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
       tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? `${tokens(value)} tokens` : "") },
       xAxis: axis,
@@ -508,8 +544,8 @@ function renderDetail(detail: SessionDetail, focus: boolean): void {
   costChart.setOption(
     {
       backgroundColor: "transparent",
-      // Legend at the bottom keeps the top clear for mark line labels.
-      grid: { left: 56, right: 16, top: 28, bottom: 56 },
+      grid: { left: 56, right: 16, top: 30, bottom: 56 },
+      ...zoomOptions(t, "none", keepZoom ? currentZoom(costChart) : undefined, false),
       legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
       tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? usdFine.format(value) : "") },
       xAxis: axis,
@@ -535,12 +571,14 @@ function renderDetail(detail: SessionDetail, focus: boolean): void {
     }),
   );
   detailEl.hidden = false;
+  armZoom(contextChart);
+  armZoom(costChart);
   contextChart.resize();
   costChart.resize();
   if (focus) $<HTMLButtonElement>("#detail-close").focus();
 }
 
-async function openSession(id: string, push: boolean): Promise<void> {
+async function openSession(id: string, push: boolean, keepZoom = false): Promise<void> {
   // Switching sessions replaces the detail entry so Escape closes instead of
   // stepping back to the previous session.
   const switching = state.session !== null && pushedDetail;
@@ -551,7 +589,7 @@ async function openSession(id: string, push: boolean): Promise<void> {
   }
   for (const row of tableBody.querySelectorAll("tr")) row.setAttribute("aria-selected", String(row.dataset.session === id));
   try {
-    renderDetail(await getJson<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}?${query()}`), push);
+    renderDetail(await getJson<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}?${query()}`), push, keepZoom);
   } catch (error) {
     closeDetail(false);
     noticeEl.hidden = false;
@@ -594,11 +632,11 @@ async function load(refreshing = false): Promise<void> {
         getJson<InsightsView>(`/api/insights?${query()}`),
       ]);
       if (seq !== loadSeq) return;
-      renderLimits(limits);
+      renderLimits(limits, refreshing);
       renderInsights(insights);
       renderTimeline(view, refreshing);
       renderSessions(rows);
-      if (state.session) await openSession(state.session, false);
+      if (state.session) await openSession(state.session, false, refreshing);
       else detailEl.hidden = true;
       updatedEl.textContent = `Updated ${clockFormat.format(Date.now())}`;
     } catch (error) {
