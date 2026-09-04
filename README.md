@@ -79,7 +79,7 @@ slopestyle-usage serve                 # page on a slopestyle-ports port, bound 
 slopestyle-usage report --since 13:00  # spend by session, limits, and insights in the terminal
 ```
 
-The page shows spend per session over a range, defaulting to today, with subagents rolled into their parent, drilldown into a session's context growth and compactions, the current limit percentages with their windows, and rule-based insights. It reloads every 10 seconds while the tab is visible, and Refresh re-indexes transcripts and polls the limits right away. `slopestyle-ports serve usage` exposes it over Tailscale. The `quota` skill points agents at the same `report --json` output and the `/api` routes.
+The page shows spend per session over a range, defaulting to today, with subagents rolled into their parent, drilldown into a session's context growth and compactions, the current limit percentages with their windows, and rule-based insights. It reloads every 10 seconds while the tab is visible, and Refresh re-indexes transcripts and polls the limits right away. Drag across any chart to zoom into that span; the arrow above the chart steps back out. `slopestyle-ports serve usage` exposes it over Tailscale. The `quota` skill points agents at the same `report --json` output and the `/api` routes.
 
 Keep the server running in the background:
 
