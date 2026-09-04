@@ -87,6 +87,8 @@ const limitsChartEl = $("#limits-chart");
 const insightsEl = $<HTMLUListElement>("#insights");
 const customEl = $<HTMLDetailsElement>("#custom");
 const sortSelect = $<HTMLSelectElement>("#sort");
+const refreshButton = $<HTMLButtonElement>("#refresh");
+const updatedEl = $("#updated");
 const narrow = matchMedia("(max-width: 640px)");
 
 function css(name: string): string {
@@ -165,6 +167,7 @@ const usdFine = new Intl.NumberFormat(undefined, { style: "currency", currency: 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 const dateTimeFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+const clockFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 function tokens(n: number): string {
   return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
@@ -204,6 +207,13 @@ let currentWindows: LimitsView["windows"] = [];
 let sortKey: keyof SessionSummary = "cost_usd";
 let sortDesc = true;
 let pushedDetail = false;
+// The preset whose range the page currently shows, so a refresh can roll a
+// relative range like "Last 24h" forward instead of freezing it at the click.
+let activePreset: string | null = null;
+let loading: Promise<void> | null = null;
+let loadSeq = 0;
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+const refreshEveryMs = 10_000;
 
 const chart = echarts.init($("#chart"));
 const limitsChart = echarts.init(limitsChartEl);
@@ -216,8 +226,8 @@ function query(extra: Record<string, string> = {}): string {
   return params.toString();
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path);
+async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, init);
   const body = (await response.json()) as T & { error?: string };
   if (!response.ok) throw new Error(body.error ?? `${response.status} from ${path}`);
   return body;
@@ -310,9 +320,11 @@ function renderInsights(view: InsightsView): void {
   );
 }
 
-function renderTimeline(view: Timeline): void {
+function renderTimeline(view: Timeline, keepZoom: boolean): void {
   const colors = palette();
   const t = theme();
+  // A refresh redraws in place, so the slider stays where the user left it.
+  const zoom = keepZoom ? (chart.getOption()?.dataZoom as { start?: number; end?: number }[] | undefined)?.[0] : undefined;
   colorBySession = new Map(view.series.map((series, index) => [series.session_id, colors[index]!]));
   const span = state.toMs - state.fromMs;
   const series = view.series.map((entry, index) => ({
@@ -365,7 +377,7 @@ function renderTimeline(view: Timeline): void {
         axisLabel: { color: t.text },
       },
       yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => usd.format(value) }, splitLine: { lineStyle: { color: t.border } } },
-      dataZoom: [{ type: "slider", bottom: 8, height: 20, borderColor: t.border, textStyle: { color: t.text } }, { type: "inside" }],
+      dataZoom: [{ type: "slider", bottom: 8, height: 20, borderColor: t.border, textStyle: { color: t.text }, start: zoom?.start ?? 0, end: zoom?.end ?? 100 }, { type: "inside" }],
       series,
     },
     true,
@@ -398,6 +410,8 @@ function sortSessions(rows: SessionSummary[]): SessionSummary[] {
 function renderSessions(rows: SessionSummary[]): void {
   currentSessions = rows;
   emptyEl.hidden = rows.length > 0;
+  // A refresh rebuilds the rows, so keyboard focus follows the focused session.
+  const focused = document.activeElement?.closest<HTMLTableRowElement>("#sessions tr")?.dataset.session;
   tableBody.replaceChildren(
     ...sortSessions(rows).map((row) => {
       const tr = document.createElement("tr");
@@ -421,6 +435,7 @@ function renderSessions(rows: SessionSummary[]): void {
       return tr;
     }),
   );
+  if (focused) tableBody.querySelector<HTMLButtonElement>(`tr[data-session="${CSS.escape(focused)}"] button`)?.focus();
   for (const button of document.querySelectorAll<HTMLButtonElement>("th button[data-sort]")) {
     if (button.dataset.sort === sortKey) button.setAttribute("aria-sort", sortDesc ? "descending" : "ascending");
     else button.removeAttribute("aria-sort");
@@ -428,7 +443,7 @@ function renderSessions(rows: SessionSummary[]): void {
   sortSelect.value = sortKey;
 }
 
-function renderDetail(detail: SessionDetail): void {
+function renderDetail(detail: SessionDetail, focus: boolean): void {
   const { session } = detail;
   $("#detail-title").textContent = session.title;
   $("#detail-meta").textContent = [
@@ -522,7 +537,7 @@ function renderDetail(detail: SessionDetail): void {
   detailEl.hidden = false;
   contextChart.resize();
   costChart.resize();
-  $<HTMLButtonElement>("#detail-close").focus();
+  if (focus) $<HTMLButtonElement>("#detail-close").focus();
 }
 
 async function openSession(id: string, push: boolean): Promise<void> {
@@ -536,7 +551,7 @@ async function openSession(id: string, push: boolean): Promise<void> {
   }
   for (const row of tableBody.querySelectorAll("tr")) row.setAttribute("aria-selected", String(row.dataset.session === id));
   try {
-    renderDetail(await getJson<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}?${query()}`));
+    renderDetail(await getJson<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}?${query()}`), push);
   } catch (error) {
     closeDetail(false);
     noticeEl.hidden = false;
@@ -556,30 +571,82 @@ function closeDetail(viaHistory: boolean): void {
   }
 }
 
-async function load(): Promise<void> {
+async function load(refreshing = false): Promise<void> {
+  // A newer load owns the page: an older one that finishes later must not
+  // paint over it.
+  const seq = ++loadSeq;
   fromInput.value = toLocalInput(state.fromMs);
   toInput.value = toLocalInput(state.toMs);
   bucketSelect.value = state.bucket;
+  activePreset = null;
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-preset]")) {
     const range = presetRange(button.dataset.preset!);
-    button.setAttribute("aria-pressed", String(range !== undefined && range.fromMs === state.fromMs && range.toMs === state.toMs));
+    const pressed = range !== undefined && range.fromMs === state.fromMs && range.toMs === state.toMs;
+    button.setAttribute("aria-pressed", String(pressed));
+    if (pressed) activePreset = button.dataset.preset!;
   }
+  loading = (async () => {
+    try {
+      const [view, rows, limits, insights] = await Promise.all([
+        getJson<Timeline>(`/api/timeline?${query()}`),
+        getJson<SessionSummary[]>(`/api/sessions?${query()}`),
+        getJson<LimitsView>(`/api/limits?${query()}`),
+        getJson<InsightsView>(`/api/insights?${query()}`),
+      ]);
+      if (seq !== loadSeq) return;
+      renderLimits(limits);
+      renderInsights(insights);
+      renderTimeline(view, refreshing);
+      renderSessions(rows);
+      if (state.session) await openSession(state.session, false);
+      else detailEl.hidden = true;
+      updatedEl.textContent = `Updated ${clockFormat.format(Date.now())}`;
+    } catch (error) {
+      if (seq !== loadSeq) return;
+      noticeEl.hidden = false;
+      noticeEl.textContent = (error as Error).message;
+    } finally {
+      if (seq === loadSeq) {
+        loading = null;
+        scheduleRefresh();
+      }
+    }
+  })();
+  return loading;
+}
+
+function scheduleRefresh(): void {
+  clearTimeout(refreshTimer);
+  if (document.hidden) return;
+  refreshTimer = setTimeout(() => void refresh(false), refreshEveryMs);
+}
+
+// Reloads the range in place. Forced refreshes also make the server ingest
+// and poll limits right now instead of on its own schedule.
+async function refresh(force: boolean): Promise<void> {
+  if (loading) {
+    if (!force) return;
+    await loading;
+  }
+  // A half-typed custom range must not be overwritten under the cursor.
+  if (!force && (document.activeElement === fromInput || document.activeElement === toInput)) {
+    scheduleRefresh();
+    return;
+  }
+  const range = activePreset ? presetRange(activePreset) : undefined;
+  if (range && (range.fromMs !== state.fromMs || range.toMs !== state.toMs)) {
+    state = { ...state, ...range };
+    writeState(state, false);
+  }
+  refreshButton.disabled = force;
   try {
-    const [view, rows, limits, insights] = await Promise.all([
-      getJson<Timeline>(`/api/timeline?${query()}`),
-      getJson<SessionSummary[]>(`/api/sessions?${query()}`),
-      getJson<LimitsView>(`/api/limits?${query()}`),
-      getJson<InsightsView>(`/api/insights?${query()}`),
-    ]);
-    renderLimits(limits);
-    renderInsights(insights);
-    renderTimeline(view);
-    renderSessions(rows);
-    if (state.session) await openSession(state.session, false);
-    else detailEl.hidden = true;
+    if (force) await getJson("/api/refresh", { method: "POST" });
+    await load(true);
   } catch (error) {
     noticeEl.hidden = false;
     noticeEl.textContent = (error as Error).message;
+  } finally {
+    refreshButton.disabled = false;
   }
 }
 
@@ -645,6 +712,11 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("th button[dat
   });
 }
 $("#detail-close").addEventListener("click", () => closeDetail(true));
+refreshButton.addEventListener("click", () => void refresh(true));
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearTimeout(refreshTimer);
+  else void refresh(false);
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !detailEl.hidden) closeDetail(true);
 });

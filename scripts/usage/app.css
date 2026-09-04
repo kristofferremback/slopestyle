@@ -82,6 +82,7 @@ select {
 }
 
 .presets button,
+.refresh button,
 .detail-header button {
   min-height: 36px;
   padding: 0 12px;
@@ -132,6 +133,21 @@ select {
 .total #total {
   font-size: 22px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.refresh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refresh button[disabled] {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.refresh .hint {
   font-variant-numeric: tabular-nums;
 }
 
