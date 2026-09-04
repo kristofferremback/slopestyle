@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { ingest, openUsageDb } from "../scripts/lib/usage/ingest.ts";
 import { insights } from "../scripts/lib/usage/insights.ts";
 import { credentialsToken, limitsView, parseLimits, pollLimits } from "../scripts/lib/usage/limits.ts";
+import { cachedShare, tokenCount } from "../scripts/lib/usage/format.ts";
 import { baseModel, costUsd } from "../scripts/lib/usage/pricing.ts";
 import { sessionDetail, sessions, timeline } from "../scripts/lib/usage/query.ts";
 import { createServer, parseRange } from "../scripts/lib/usage/server.ts";
@@ -164,6 +165,10 @@ test("should count a streamed request once when assistant records repeat the req
     git_branch: "main",
     requests: 7,
     requests_sub: 2,
+    // Every token read, main thread and subagents, with the streamed request counted once.
+    input_tokens: 1000 + 100_500 + 1 + 170_000 + 100 + 2000 + 30_000,
+    cache_read_tokens: 100_000 + 150_000 + 30_000,
+    output_tokens: 200 + 300 + 1 + 1000 + 100 + 500 + 500,
     peak_context: 170_000,
     agents: 1,
     compactions: 1,
@@ -187,6 +192,8 @@ test("should roll subagent cost into the parent session in the timeline", () => 
   expect(firstHour).toBeCloseTo(main1 + main2 + call + sub1 + sub2, 9);
   expect(secondHour).toBeCloseTo(costUsd("claude-fable-5-1", { input: 0, cache5m: 0, cache1h: 20_000, cacheRead: 150_000, output: 1000 })!, 9);
   expect(view.total_usd).toBeCloseTo(firstHour + secondHour + view.series[1]!.values[8]!, 9);
+  expect(view.total_input_tokens).toBe(303_611);
+  expect(view.total_output_tokens).toBe(2611);
   expect(view.unpriced_models).toEqual(["claude-mystery-9"]);
   const [summary] = sessions(db, day);
   expect(summary!.cost_sub_usd).toBeCloseTo(sub1 + sub2, 9);
@@ -195,7 +202,7 @@ test("should roll subagent cost into the parent session in the timeline", () => 
 test("should link a subagent to the Agent call that spawned it", () => {
   const detail = sessionDetail(db, sessionId, day)!;
   expect(detail.agents).toHaveLength(1);
-  expect(detail.agents[0]).toMatchObject({ id: agentId, subagent_type: "Explore", model_requested: "sonnet", description: "Explore prior art", requests: 2, peak_context: 30_000 });
+  expect(detail.agents[0]).toMatchObject({ id: agentId, subagent_type: "Explore", model_requested: "sonnet", description: "Explore prior art", requests: 2, input_tokens: 32_000, cache_read_tokens: 30_000, output_tokens: 1000, peak_context: 30_000 });
   expect(detail.events.map((event) => event.kind)).toEqual(["agent_call", "compact"]);
   expect(detail.events[1]!.data).toEqual({ trigger: "auto", preTokens: 170000, postTokens: 8000 });
   expect(detail.requests.map((request) => request.context)).toEqual([1000, 100_500, 1, 2000, 30_000, 170_000, 100]);
@@ -365,6 +372,12 @@ test("should explain the range with insights that name the numbers", () => {
   expect(insights(db, { fromMs: 0, toMs: 1 })).toEqual({ total_usd: 0, insights: [] });
 });
 
+test("should format token counts and cache shares for people", () => {
+  expect([850, 1499, 1500, 999_499, 999_500, 1_234_567, 9_950_000, 34_000_000].map(tokenCount)).toEqual(["850", "1k", "2k", "999k", "1.0M", "1.2M", "10M", "34M"]);
+  expect(cachedShare(303_611, 280_000)).toBe("92% cached");
+  expect(cachedShare(0, 0)).toBe("");
+});
+
 test("should print a report for a range from the CLI", async () => {
   const cli = resolve(import.meta.dir, "../scripts/usage.ts");
   const args = ["report", "--projects", projectsDir, "--db", resolve(root, "usage.sqlite"), "--host", host, "--from", String(day.fromMs), "--to", String(day.toMs)];
@@ -372,6 +385,9 @@ test("should print a report for a range from the CLI", async () => {
   expect(text.exitCode).toBe(0);
   const out = text.stdout.toString();
   expect(out).toContain("Labels feature build");
+  // Earlier tests shrank the subagent transcript, so this is the range as it stands now.
+  expect(out).toContain("272k in and 2k out");
+  expect(out).toContain("272k in     2k out  peak  170k");
   expect(out).toContain("5-hour: 36%");
   const json = Bun.spawnSync([process.execPath, cli, ...args, "--json"], { stdout: "pipe", stderr: "pipe" });
   expect(json.exitCode).toBe(0);

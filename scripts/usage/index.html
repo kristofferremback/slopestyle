@@ -36,6 +36,8 @@
               <option value="cost_usd">Cost</option>
               <option value="cost_sub_usd">Subagents</option>
               <option value="requests">Requests</option>
+              <option value="input_tokens">Input tokens</option>
+              <option value="output_tokens">Output tokens</option>
               <option value="peak_context">Peak context</option>
               <option value="started_ms">Started</option>
               <option value="title">Title</option>
@@ -46,6 +48,7 @@
       <div class="total" aria-live="polite">
         <span id="total">$0.00</span>
         <span class="hint">API list prices</span>
+        <span id="total-tokens" class="hint"></span>
       </div>
       <div class="refresh">
         <button type="button" id="refresh">Refresh</button>
@@ -74,6 +77,8 @@
               <th scope="col" class="num"><button type="button" data-sort="cost_usd">Cost</button></th>
               <th scope="col" class="num"><button type="button" data-sort="cost_sub_usd">Subagents</button></th>
               <th scope="col" class="num"><button type="button" data-sort="requests">Requests</button></th>
+              <th scope="col" class="num"><button type="button" data-sort="input_tokens">Input</button></th>
+              <th scope="col" class="num"><button type="button" data-sort="output_tokens">Output</button></th>
               <th scope="col" class="num"><button type="button" data-sort="peak_context">Peak context</button></th>
               <th scope="col"><button type="button" data-sort="models">Models</button></th>
               <th scope="col"><button type="button" data-sort="started_ms">Started</button></th>
@@ -101,6 +106,8 @@
           <tr>
             <th scope="col">Agent</th>
             <th scope="col" class="num">Cost</th>
+            <th scope="col" class="num">Input</th>
+            <th scope="col" class="num">Output</th>
             <th scope="col" class="num">Requests</th>
             <th scope="col" class="num">Peak context</th>
             <th scope="col">Model</th>

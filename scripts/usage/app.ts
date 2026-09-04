@@ -2,6 +2,7 @@ import { BarChart, LineChart } from "echarts/charts";
 import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, ToolboxComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
+import { cachedShare, tokenCount } from "../lib/usage/format.ts";
 
 echarts.use([BarChart, LineChart, DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, ToolboxComponent, TooltipComponent, CanvasRenderer]);
 
@@ -13,6 +14,8 @@ interface Timeline {
   series: { session_id: string; title: string; values: number[] }[];
   other: number[];
   total_usd: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
   unpriced_models: string[];
 }
 
@@ -26,6 +29,9 @@ interface SessionSummary {
   ended_ms: number | null;
   cost_usd: number;
   cost_sub_usd: number;
+  input_tokens: number;
+  cache_read_tokens: number;
+  output_tokens: number;
   requests: number;
   requests_sub: number;
   peak_context: number;
@@ -34,10 +40,23 @@ interface SessionSummary {
   compactions: number;
 }
 
+interface RequestPoint {
+  ts_ms: number;
+  agent_id: string;
+  model: string;
+  context: number;
+  input: number;
+  cache_5m: number;
+  cache_1h: number;
+  cache_read: number;
+  output: number;
+  cost_usd: number | null;
+}
+
 interface SessionDetail {
   session: SessionSummary;
-  requests: { ts_ms: number; agent_id: string; model: string; context: number; cost_usd: number | null; output: number }[];
-  agents: { id: string; subagent_type: string | null; model_requested: string | null; description: string | null; prompt_head: string | null; requests: number; cost_usd: number; peak_context: number; models: Record<string, number> }[];
+  requests: RequestPoint[];
+  agents: { id: string; subagent_type: string | null; model_requested: string | null; description: string | null; prompt_head: string | null; requests: number; cost_usd: number; input_tokens: number; cache_read_tokens: number; output_tokens: number; peak_context: number; models: Record<string, number> }[];
   events: { ts_ms: number; agent_id: string; kind: string; data: Record<string, unknown> }[];
 }
 
@@ -76,6 +95,7 @@ const fromInput = $<HTMLInputElement>("#from");
 const toInput = $<HTMLInputElement>("#to");
 const bucketSelect = $<HTMLSelectElement>("#bucket");
 const totalEl = $("#total");
+const totalTokensEl = $("#total-tokens");
 const noticeEl = $("#notice");
 const emptyEl = $("#empty");
 const tableBody = $<HTMLTableSectionElement>("#sessions tbody");
@@ -169,8 +189,34 @@ const dateTimeFormat = new Intl.DateTimeFormat(undefined, { month: "short", day:
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 const clockFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-function tokens(n: number): string {
-  return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+const tokens = tokenCount;
+
+function tokensCell(input: number, cacheRead: number): string {
+  const cached = cachedShare(input, cacheRead);
+  return `${tokens(input)}${cached ? `<span class="sub">${cached}</span>` : ""}`;
+}
+
+interface TooltipParam {
+  seriesIndex: number;
+  dataIndex: number;
+  marker: string;
+  seriesName: string;
+  value: [number, number];
+}
+
+// Per-request cost with the tokens behind it. Each series is one request
+// group, so the hovered params index straight into it.
+function costTooltip(params: TooltipParam[], groups: RequestPoint[][]): string {
+  const first = params[0];
+  if (!first) return "";
+  const lines = params.flatMap((param) => {
+    const request = groups[param.seriesIndex]?.[param.dataIndex];
+    if (!request) return [];
+    const input = request.input + request.cache_5m + request.cache_1h + request.cache_read;
+    const cached = cachedShare(input, request.cache_read);
+    return [`${param.marker} ${escape(param.seriesName)} ${usdFine.format(request.cost_usd ?? 0)} · ${tokens(input)} in${cached ? `, ${cached}` : ""} · ${tokens(request.output)} out`];
+  });
+  return [clockFormat.format(first.value[0]), ...lines].join("<br>");
 }
 
 function shortModel(model: string): string {
@@ -423,6 +469,7 @@ function renderTimeline(view: Timeline, keepZoom: boolean): void {
     if (entry) void openSession(entry.session_id, true);
   });
   totalEl.textContent = usd.format(view.total_usd);
+  totalTokensEl.textContent = `${tokens(view.total_input_tokens)} in · ${tokens(view.total_output_tokens)} out`;
   const unpriced = view.unpriced_models;
   noticeEl.hidden = unpriced.length === 0;
   noticeEl.textContent = unpriced.length ? `Not priced, so counted as $0: ${unpriced.join(", ")}` : "";
@@ -459,6 +506,8 @@ function renderSessions(rows: SessionSummary[]): void {
         <td class="num">${usd.format(row.cost_usd)}</td>
         <td class="num">${row.cost_sub_usd > 0 ? `${usd.format(row.cost_sub_usd)}<span class="sub">in ${row.agents} agent${row.agents === 1 ? "" : "s"}</span>` : ""}</td>
         <td class="num" data-label="requests">${row.requests}${row.requests_sub ? `<span class="sub">${row.requests_sub} in agents</span>` : ""}</td>
+        <td class="num" data-label="in">${tokensCell(row.input_tokens, row.cache_read_tokens)}</td>
+        <td class="num" data-label="out">${tokens(row.output_tokens)}</td>
         <td class="num" data-label="peak">${tokens(row.peak_context)}${row.compactions ? `<span class="sub">${row.compactions} compaction${row.compactions === 1 ? "" : "s"}</span>` : ""}</td>
         <td>${escape(modelsLabel(row.models))}</td>
         <td>${row.started_ms ? dateTimeFormat.format(row.started_ms) : ""}</td>`;
@@ -486,6 +535,8 @@ function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean):
     session.git_branch,
     session.started_ms ? `${dateTimeFormat.format(session.started_ms)}${session.ended_ms ? ` to ${timeFormat.format(session.ended_ms)}` : ""}` : null,
     `${usd.format(session.cost_usd)} in range`,
+    `${tokens(session.input_tokens)} in${session.cache_read_tokens ? `, ${cachedShare(session.input_tokens, session.cache_read_tokens)}` : ""}`,
+    `${tokens(session.output_tokens)} out`,
     `${session.requests} requests`,
     `peak ${tokens(session.peak_context)} context`,
   ]
@@ -547,7 +598,7 @@ function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean):
       grid: { left: 56, right: 16, top: 30, bottom: 56 },
       ...zoomOptions(t, "none", keepZoom ? currentZoom(costChart) : undefined, false),
       legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
-      tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? usdFine.format(value) : "") },
+      tooltip: { trigger: "axis", ...t.tooltip, formatter: (params: unknown) => costTooltip(params as TooltipParam[], [main, agentRequests]) },
       xAxis: axis,
       yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => usd.format(value) }, splitLine: { lineStyle: { color: t.border } } },
       series: [
@@ -564,6 +615,8 @@ function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean):
       tr.innerHTML = `
         <td>${escape(agent.description ?? agent.prompt_head ?? agent.id)}<span class="sub">${escape(agent.subagent_type ?? "subagent")}${agent.model_requested ? ` · asked for ${escape(agent.model_requested)}` : ""}</span></td>
         <td class="num">${usd.format(agent.cost_usd)}</td>
+        <td class="num">${tokensCell(agent.input_tokens, agent.cache_read_tokens)}</td>
+        <td class="num">${tokens(agent.output_tokens)}</td>
         <td class="num">${agent.requests}</td>
         <td class="num">${tokens(agent.peak_context)}</td>
         <td>${escape(modelsLabel(agent.models))}</td>`;
