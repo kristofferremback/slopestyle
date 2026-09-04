@@ -2,6 +2,7 @@
 
 import { resolve } from "node:path";
 import { stateRoot } from "./lib/core.ts";
+import { tokenCount } from "./lib/usage/format.ts";
 import { ingest, openUsageDb } from "./lib/usage/ingest.ts";
 import { insights } from "./lib/usage/insights.ts";
 import { credentialsToken, limitsView } from "./lib/usage/limits.ts";
@@ -133,20 +134,22 @@ function report(): void {
   const rows = sessions(db, range);
   const limits = limitsView(db, range.fromMs, range.toMs);
   const view = insights(db, range);
+  const totalInput = rows.reduce((sum, row) => sum + row.input_tokens, 0);
+  const totalOutput = rows.reduce((sum, row) => sum + row.output_tokens, 0);
   if (options.json) {
-    console.log(JSON.stringify({ range, pricing: "API list prices", total_usd: view.total_usd, sessions: rows.slice(0, options.limit), limits, insights: view.insights }, null, 2));
+    console.log(JSON.stringify({ range, pricing: "API list prices", total_usd: view.total_usd, total_input_tokens: totalInput, total_output_tokens: totalOutput, sessions: rows.slice(0, options.limit), limits, insights: view.insights }, null, 2));
     return;
   }
   const money = (value: number) => `$${value.toFixed(2)}`;
   const time = (ms: number) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  console.log(`${time(range.fromMs)} to ${time(range.toMs)}: ${money(view.total_usd)} at API list prices across ${rows.length} sessions`);
+  console.log(`${time(range.fromMs)} to ${time(range.toMs)}: ${money(view.total_usd)} at API list prices, ${tokenCount(totalInput)} in and ${tokenCount(totalOutput)} out, across ${rows.length} sessions`);
   console.log("");
   for (const row of rows.slice(0, options.limit)) {
     const models = Object.entries(row.models)
       .sort((a, b) => b[1] - a[1])
       .map(([model, n]) => `${model.replace(/^claude-/, "")}×${n}`)
       .join(" ");
-    console.log(`${money(row.cost_usd).padStart(8)}  ${row.cost_sub_usd > 0 ? `${money(row.cost_sub_usd)} in ${row.agents} agents`.padEnd(22) : "".padEnd(22)}  ${String(row.requests).padStart(4)} req  peak ${String(Math.round(row.peak_context / 1000)).padStart(4)}k  ${row.title}`);
+    console.log(`${money(row.cost_usd).padStart(8)}  ${row.cost_sub_usd > 0 ? `${money(row.cost_sub_usd)} in ${row.agents} agents`.padEnd(22) : "".padEnd(22)}  ${String(row.requests).padStart(4)} req  ${tokenCount(row.input_tokens).padStart(5)} in  ${tokenCount(row.output_tokens).padStart(5)} out  peak ${String(Math.round(row.peak_context / 1000)).padStart(4)}k  ${row.title}`);
     console.log(`${"".padStart(8)}  ${row.id}  ${row.project}  ${models}`);
   }
   console.log("");
