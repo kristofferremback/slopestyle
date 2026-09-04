@@ -3,6 +3,7 @@ import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, T
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { cachedShare, tokenCount } from "../lib/usage/format.ts";
+import { groupResets, placeResetLabels, type ResetLabel } from "../lib/usage/resets.ts";
 
 echarts.use([BarChart, LineChart, DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, ToolboxComponent, TooltipComponent, CanvasRenderer]);
 
@@ -356,27 +357,37 @@ function bucketLabel(ms: number, bucket: Bucket, span: number): string {
   return span > day ? dateTimeFormat.format(ms) : axisTime(ms);
 }
 
-// Reset labels in the right half hang to the left of their line so they stay
-// inside the chart.
-function resetLabelAlign(position: number, span: number): "left" | "right" {
-  return position > span / 2 ? "right" : "left";
+// Reset labels use the chart's default 12px sans-serif text.
+const labelMeasure = document.createElement("canvas").getContext("2d")!;
+function labelWidth(text: string): number {
+  labelMeasure.font = "12px sans-serif";
+  return labelMeasure.measureText(text).width + 8;
 }
 
-// One dashed line per reset moment. Windows that reset together share a
-// label, and 5-hour labels go quiet past a day so a week view is not a wall
-// of "5-hour reset".
-function resetLines(windows: LimitsView["windows"]): { xAxis: number; name: string; label: { show: boolean; align: "left" | "right" } }[] {
+// Weekly resets closer than this share of the range read as one moment and
+// share a label on the first line, clearer than two labels fighting for room.
+const mergeShare = 0.04;
+const hiddenLabel: ResetLabel = { show: false, align: "left" };
+
+// One dashed line per reset. Weekly resets minutes apart share one label
+// naming them both, 5-hour resets keep their own so a run of them never
+// swallows a weekly label, their labels go quiet past a day so a week view is
+// not a wall of "5-hour reset", and labels that would still overprint hide.
+function resetLines(windows: LimitsView["windows"], chartPx: number, gridLeft: number, gridRight: number): { xAxis: number; name: string; label: ResetLabel }[] {
   const span = state.toMs - state.fromMs;
-  const byEnd = new Map<number, LimitsView["windows"]>();
-  for (const window of windows) {
-    if (window.end_ms <= state.fromMs || window.end_ms >= state.toMs) continue;
-    byEnd.set(window.end_ms, [...(byEnd.get(window.end_ms) ?? []), window]);
-  }
-  return [...byEnd].map(([end_ms, group]) => ({
-    xAxis: end_ms,
-    name: `${group.map((window) => window.label).join(" and ")} reset`,
-    label: { show: span <= day || group.some((window) => window.kind !== "five_hour"), align: resetLabelAlign(end_ms - state.fromMs, span) },
-  }));
+  const plotPx = chartPx - gridLeft - gridRight;
+  const visible = windows.filter((window) => window.end_ms > state.fromMs && window.end_ms < state.toMs);
+  const weekly = visible.filter((window) => window.kind !== "five_hour");
+  const fiveHour = visible.filter((window) => window.kind === "five_hour").map((window) => [window]);
+  const groups = [...groupResets(weekly, span * mergeShare), ...fiveHour].map((group) => {
+    const name = `${group.map((window) => window.label).join(" and ")} reset`;
+    const important = group.some((window) => window.kind !== "five_hour");
+    return { group, name, mark: { x: gridLeft + ((group[0]!.end_ms - state.fromMs) / span) * plotPx, width: labelWidth(name), important, wanted: important || span <= day } };
+  });
+  const labels = placeResetLabels(groups.map((entry) => entry.mark), chartPx);
+  return groups.flatMap(({ group, name }, groupIndex) =>
+    group.map((window, index) => ({ xAxis: window.end_ms, name: index === 0 ? name : "", label: index === 0 ? labels[groupIndex]! : hiddenLabel })),
+  );
 }
 
 function renderLimits(view: LimitsView, keepZoom: boolean): void {
@@ -432,7 +443,7 @@ function renderLimits(view: LimitsView, keepZoom: boolean): void {
                 symbol: "none",
                 label: { color: t.text, position: "end", formatter: (params: { data: { name: string } }) => params.data.name },
                 lineStyle: { color: css("--critical"), type: "dashed" },
-                data: resetLines(view.windows),
+                data: resetLines(view.windows, limitsChart.getWidth(), 48, 16),
               }
             : undefined,
       })),
@@ -484,20 +495,24 @@ function renderTimeline(view: Timeline, keepZoom: boolean): void {
   }
   const size = bucketMs[view.bucket];
   const first = view.buckets[0] ?? state.fromMs;
-  // A day bucket cannot place a 5-hour line, so day views carry none.
+  // A day bucket cannot place a 5-hour line, so day views carry none. Past a
+  // day the labels go quiet, and labels that would overprint hide.
+  const gridLeft = narrow.matches ? 48 : 56;
+  const plotPx = chart.getWidth() - gridLeft - 16;
   const resets = currentWindows
     .filter((window) => view.bucket !== "day" && window.kind === "five_hour" && window.end_ms > first && window.end_ms < state.toMs)
-    .map((window) => ({
-      xAxis: Math.min(view.buckets.length - 1, Math.round((window.end_ms - first) / size)),
-      name: `5h reset ${timeFormat.format(window.end_ms)}`,
-      label: { show: span <= day, align: resetLabelAlign(window.end_ms - first, state.toMs - first) },
-    }));
-  if (series[0] && resets.length > 0) {
+    .map((window) => ({ index: Math.min(view.buckets.length - 1, Math.round((window.end_ms - first) / size)), name: `5h reset ${timeFormat.format(window.end_ms)}` }));
+  const resetLabels = placeResetLabels(
+    resets.map(({ index, name }) => ({ x: gridLeft + ((index + 0.5) / view.buckets.length) * plotPx, width: labelWidth(name), important: false, wanted: span <= day })),
+    chart.getWidth(),
+  );
+  const resetMarks = resets.map(({ index, name }, position) => ({ xAxis: index, name, label: resetLabels[position]! }));
+  if (series[0] && resetMarks.length > 0) {
     series[0].markLine = {
       symbol: "none",
       label: { color: t.text, position: "end", formatter: (params: { data: { name: string } }) => params.data.name },
       lineStyle: { color: css("--critical"), type: "dashed" },
-      data: resets,
+      data: resetMarks,
     };
   }
   chart.setOption(
