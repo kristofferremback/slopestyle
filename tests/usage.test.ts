@@ -373,7 +373,7 @@ test("should explain the range with insights that name the numbers", () => {
 });
 
 test("should format token counts and cache shares for people", () => {
-  expect([850, 1499, 1500, 999_499, 999_500, 1_234_567, 9_950_000, 34_000_000].map(tokenCount)).toEqual(["850", "1k", "2k", "999k", "1.0M", "1.2M", "10M", "34M"]);
+  expect([850, 1499, 1500, 999_499, 999_500, 1_234_567, 9_950_000, 34_000_000, 999_500_000, 1_556_000_000, 12_000_000_000].map(tokenCount)).toEqual(["850", "1k", "2k", "999k", "1.0M", "1.2M", "10M", "34M", "1.0B", "1.6B", "12B"]);
   expect(cachedShare(303_611, 280_000)).toBe("92% cached");
   expect(cachedShare(0, 0)).toBe("");
 });

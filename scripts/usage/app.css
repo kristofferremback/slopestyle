@@ -402,6 +402,15 @@ td.title button:focus-visible {
 
   .total {
     margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  #total-tokens {
+    flex-basis: 100%;
+  }
+
+  #total-tokens:not(:empty)::before {
+    content: none;
   }
 
   main {
