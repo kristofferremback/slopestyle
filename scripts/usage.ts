@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 
 import { resolve } from "node:path";
-import { repoRoot, runOrThrow, stateRoot } from "./lib/core.ts";
+import { stateRoot } from "./lib/core.ts";
 import { ingest, openUsageDb } from "./lib/usage/ingest.ts";
 import { insights } from "./lib/usage/insights.ts";
 import { credentialsToken, limitsView } from "./lib/usage/limits.ts";
+import { usagePort } from "./lib/usage/port.ts";
 import { sessions } from "./lib/usage/query.ts";
 import { createServer, parseRange } from "./lib/usage/server.ts";
 import { manageService, type ServiceAction, serviceActions } from "./lib/usage/service.ts";
@@ -110,14 +111,6 @@ for (let index = 0; index < args.length; index += 1) {
   }
 }
 
-function claimedPort(): number {
-  const result = runOrThrow([process.execPath, resolve(repoRoot, "scripts/ports.ts"), "claim", "--app", "slopestyle-usage", "--format", "json", "usage"], { cwd: repoRoot });
-  const parsed = JSON.parse(result.stdout) as { services?: { name: string; port: number }[] };
-  const port = parsed.services?.find((service) => service.name === "usage")?.port;
-  if (!Number.isInteger(port)) throw new Error(`slopestyle-ports did not return a port for usage: ${result.stdout}`);
-  return port!;
-}
-
 // "13:00" means that local time today.
 function whenToMs(when: string | undefined): string | undefined {
   if (when === undefined) return undefined;
@@ -183,7 +176,7 @@ switch (command) {
   }
   case "serve": {
     const db = openUsageDb(options.db);
-    const port = options.port ?? claimedPort();
+    const port = options.port ?? usagePort();
     const server = createServer({
       db,
       ingest: { projectsDir: options.projects, host: options.host },
