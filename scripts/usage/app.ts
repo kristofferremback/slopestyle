@@ -78,6 +78,9 @@ interface State {
   toMs: number;
   bucket: Bucket | "";
   session: string | null;
+  // The toolbar preset the range came from, so a refresh rolls a relative
+  // range like "Last 24h" forward and the button stays highlighted.
+  preset: string | null;
 }
 
 const hour = 3_600_000;
@@ -147,6 +150,22 @@ function presetRange(preset: string): { fromMs: number; toMs: number } | undefin
   }
 }
 
+// The current range for a preset. The 5h window comes from the server, the
+// rest are clock arithmetic.
+async function currentPresetRange(preset: string): Promise<{ fromMs: number; toMs: number } | undefined> {
+  return preset === "window" ? currentWindowRange() : presetRange(preset);
+}
+
+// Links from before presets were in the URL still highlight the fixed preset
+// they match.
+function matchingPreset(fromMs: number, toMs: number): string | null {
+  for (const preset of ["today", "yesterday", "week"]) {
+    const range = presetRange(preset)!;
+    if (range.fromMs === fromMs && range.toMs === toMs) return preset;
+  }
+  return null;
+}
+
 function readState(): State {
   const params = new URLSearchParams(location.search);
   const parse = (name: string): number | undefined => {
@@ -155,13 +174,19 @@ function readState(): State {
     const ms = /^\d+$/.test(value) ? Number(value) : Date.parse(value);
     return Number.isFinite(ms) ? ms : undefined;
   };
-  const today = presetRange("today")!;
   const bucket = params.get("bucket");
+  const preset = params.get("preset") ?? (params.has("from") || params.has("to") ? null : "today");
+  // A relative preset is recomputed on load; the window preset keeps the
+  // stored range until the next refresh asks the server.
+  const range = preset ? presetRange(preset) : undefined;
+  const fromMs = range?.fromMs ?? parse("from") ?? presetRange("today")!.fromMs;
+  const toMs = range?.toMs ?? parse("to") ?? presetRange("today")!.toMs;
   return {
-    fromMs: parse("from") ?? today.fromMs,
-    toMs: parse("to") ?? today.toMs,
+    fromMs,
+    toMs,
     bucket: bucket === "15m" || bucket === "hour" || bucket === "day" ? bucket : "",
     session: params.get("session"),
+    preset: range || preset === "window" ? preset : matchingPreset(fromMs, toMs),
   };
 }
 
@@ -170,6 +195,7 @@ function writeState(state: State, push: boolean): void {
   params.set("from", String(state.fromMs));
   params.set("to", String(state.toMs));
   if (state.bucket) params.set("bucket", state.bucket);
+  if (state.preset) params.set("preset", state.preset);
   if (state.session) params.set("session", state.session);
   const url = `${location.pathname}?${params}`;
   if (push) history.pushState(state, "", url);
@@ -253,9 +279,6 @@ let currentWindows: LimitsView["windows"] = [];
 let sortKey: keyof SessionSummary = "cost_usd";
 let sortDesc = true;
 let pushedDetail = false;
-// The preset whose range the page currently shows, so a refresh can roll a
-// relative range like "Last 24h" forward instead of freezing it at the click.
-let activePreset: string | null = null;
 let loading: Promise<void> | null = null;
 let loadSeq = 0;
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -302,6 +325,7 @@ function zoomOptions(t: ReturnType<typeof theme>, filterMode: "filter" | "none",
     toolbox: {
       right: 16,
       top: 0,
+      padding: 0,
       itemSize: 18,
       itemGap: 12,
       iconStyle: { borderColor: t.text },
@@ -321,9 +345,38 @@ function armZoom(instance: echarts.ECharts): void {
   instance.dispatchAction({ type: "takeGlobalCursor", key: "dataZoomSelect", dataZoomSelectActive: true });
 }
 
+// A tick at local midnight shows the date, so a range that crosses days reads
+// "22:00, 23:00, Sep 4, 01:00" instead of a row of 12:00 AMs.
+function axisTime(ms: number): string {
+  return ms === localMidnight(ms) ? dateFormat.format(ms) : timeFormat.format(ms);
+}
+
 function bucketLabel(ms: number, bucket: Bucket, span: number): string {
   if (bucket === "day") return dateFormat.format(ms);
-  return span > day ? dateTimeFormat.format(ms) : timeFormat.format(ms);
+  return span > day ? dateTimeFormat.format(ms) : axisTime(ms);
+}
+
+// Reset labels in the right half hang to the left of their line so they stay
+// inside the chart.
+function resetLabelAlign(position: number, span: number): "left" | "right" {
+  return position > span / 2 ? "right" : "left";
+}
+
+// One dashed line per reset moment. Windows that reset together share a
+// label, and 5-hour labels go quiet past a day so a week view is not a wall
+// of "5-hour reset".
+function resetLines(windows: LimitsView["windows"]): { xAxis: number; name: string; label: { show: boolean; align: "left" | "right" } }[] {
+  const span = state.toMs - state.fromMs;
+  const byEnd = new Map<number, LimitsView["windows"]>();
+  for (const window of windows) {
+    if (window.end_ms <= state.fromMs || window.end_ms >= state.toMs) continue;
+    byEnd.set(window.end_ms, [...(byEnd.get(window.end_ms) ?? []), window]);
+  }
+  return [...byEnd].map(([end_ms, group]) => ({
+    xAxis: end_ms,
+    name: `${group.map((window) => window.label).join(" and ")} reset`,
+    label: { show: span <= day || group.some((window) => window.kind !== "five_hour"), align: resetLabelAlign(end_ms - state.fromMs, span) },
+  }));
 }
 
 function renderLimits(view: LimitsView, keepZoom: boolean): void {
@@ -359,11 +412,11 @@ function renderLimits(view: LimitsView, keepZoom: boolean): void {
   limitsChart.setOption(
     {
       backgroundColor: "transparent",
-      grid: { left: 48, right: 16, top: 30, bottom: 52 },
+      grid: { left: 48, right: 16, top: 48, bottom: 52 },
       ...zoomOptions(t, "none", keepZoom ? currentZoom(limitsChart) : undefined, false),
       legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
       tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? `${Math.round(value)}%` : "") },
-      xAxis: { type: "time", min: state.fromMs, max: state.toMs, axisLabel: { color: t.text, formatter: (value: number) => timeFormat.format(value) }, axisLine: { lineStyle: { color: t.border } } },
+      xAxis: { type: "time", min: state.fromMs, max: state.toMs, axisLabel: { color: t.text, formatter: axisTime, hideOverlap: true }, axisLine: { lineStyle: { color: t.border } } },
       yAxis: { type: "value", min: 0, max: 100, axisLabel: { color: t.text, formatter: (value: number) => `${value}%` }, splitLine: { lineStyle: { color: t.border } } },
       series: kinds.map((kind, index) => ({
         name: labels.get(kind) ?? kind,
@@ -379,7 +432,7 @@ function renderLimits(view: LimitsView, keepZoom: boolean): void {
                 symbol: "none",
                 label: { color: t.text, position: "end", formatter: (params: { data: { name: string } }) => params.data.name },
                 lineStyle: { color: css("--critical"), type: "dashed" },
-                data: view.windows.filter((window) => window.end_ms > state.fromMs && window.end_ms < state.toMs).map((window) => ({ xAxis: window.end_ms, name: `${window.label} reset` })),
+                data: resetLines(view.windows),
               }
             : undefined,
       })),
@@ -431,9 +484,14 @@ function renderTimeline(view: Timeline, keepZoom: boolean): void {
   }
   const size = bucketMs[view.bucket];
   const first = view.buckets[0] ?? state.fromMs;
+  // A day bucket cannot place a 5-hour line, so day views carry none.
   const resets = currentWindows
-    .filter((window) => window.kind === "five_hour" && window.end_ms > first && window.end_ms < state.toMs)
-    .map((window) => ({ xAxis: Math.min(view.buckets.length - 1, Math.round((window.end_ms - first) / size)), name: `5h reset ${timeFormat.format(window.end_ms)}` }));
+    .filter((window) => view.bucket !== "day" && window.kind === "five_hour" && window.end_ms > first && window.end_ms < state.toMs)
+    .map((window) => ({
+      xAxis: Math.min(view.buckets.length - 1, Math.round((window.end_ms - first) / size)),
+      name: `5h reset ${timeFormat.format(window.end_ms)}`,
+      label: { show: span <= day, align: resetLabelAlign(window.end_ms - first, state.toMs - first) },
+    }));
   if (series[0] && resets.length > 0) {
     series[0].markLine = {
       symbol: "none",
@@ -446,7 +504,7 @@ function renderTimeline(view: Timeline, keepZoom: boolean): void {
     {
       backgroundColor: "transparent",
       textStyle: { color: t.text },
-      grid: { left: narrow.matches ? 48 : 56, right: 16, top: 30, bottom: series.length > 0 ? 96 : 56, containLabel: false },
+      grid: { left: narrow.matches ? 48 : 56, right: 16, top: 48, bottom: series.length > 0 ? 96 : 56, containLabel: false },
       ...zoomOptions(t, "filter", zoom, true),
       legend: { bottom: 40, type: "scroll", formatter: legendName, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
       tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (value: unknown) => (typeof value === "number" ? usd.format(value) : ""), ...t.tooltip },
@@ -548,7 +606,7 @@ function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean):
   const compactions = detail.events.filter((event) => event.kind === "compact" && event.agent_id === "");
   const axis = {
     type: "time" as const,
-    axisLabel: { color: t.text, formatter: (value: number) => timeFormat.format(value) },
+    axisLabel: { color: t.text, formatter: axisTime, hideOverlap: true },
     axisLine: { lineStyle: { color: t.border } },
     min: state.fromMs,
     max: state.toMs,
@@ -557,7 +615,7 @@ function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean):
     {
       backgroundColor: "transparent",
       // Legend at the bottom keeps the top clear for mark line labels.
-      grid: { left: 56, right: 16, top: 30, bottom: 56 },
+      grid: { left: 56, right: 16, top: 48, bottom: 56 },
       ...zoomOptions(t, "none", keepZoom ? currentZoom(contextChart) : undefined, false),
       legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
       tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? `${tokens(value)} tokens` : "") },
@@ -595,7 +653,7 @@ function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean):
   costChart.setOption(
     {
       backgroundColor: "transparent",
-      grid: { left: 56, right: 16, top: 30, bottom: 56 },
+      grid: { left: 56, right: 16, top: 48, bottom: 56 },
       ...zoomOptions(t, "none", keepZoom ? currentZoom(costChart) : undefined, false),
       legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
       tooltip: { trigger: "axis", ...t.tooltip, formatter: (params: unknown) => costTooltip(params as TooltipParam[], [main, agentRequests]) },
@@ -666,18 +724,21 @@ async function load(refreshing = false): Promise<void> {
   // A newer load owns the page: an older one that finishes later must not
   // paint over it.
   const seq = ++loadSeq;
-  fromInput.value = toLocalInput(state.fromMs);
-  toInput.value = toLocalInput(state.toMs);
-  bucketSelect.value = state.bucket;
-  activePreset = null;
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-preset]")) {
-    const range = presetRange(button.dataset.preset!);
-    const pressed = range !== undefined && range.fromMs === state.fromMs && range.toMs === state.toMs;
-    button.setAttribute("aria-pressed", String(pressed));
-    if (pressed) activePreset = button.dataset.preset!;
+    button.setAttribute("aria-pressed", String(button.dataset.preset === state.preset));
   }
   loading = (async () => {
     try {
+      // A preset range moves with the clock, and the 5h window with the server.
+      const range = state.preset ? await currentPresetRange(state.preset) : undefined;
+      if (seq !== loadSeq) return;
+      if (range && (range.fromMs !== state.fromMs || range.toMs !== state.toMs)) {
+        state = { ...state, ...range };
+        writeState(state, false);
+      }
+      fromInput.value = toLocalInput(state.fromMs);
+      toInput.value = toLocalInput(state.toMs);
+      bucketSelect.value = state.bucket;
       const [view, rows, limits, insights] = await Promise.all([
         getJson<Timeline>(`/api/timeline?${query()}`),
         getJson<SessionSummary[]>(`/api/sessions?${query()}`),
@@ -724,11 +785,6 @@ async function refresh(force: boolean): Promise<void> {
     scheduleRefresh();
     return;
   }
-  const range = activePreset ? presetRange(activePreset) : undefined;
-  if (range && (range.fromMs !== state.fromMs || range.toMs !== state.toMs)) {
-    state = { ...state, ...range };
-    writeState(state, false);
-  }
   refreshButton.disabled = force;
   try {
     if (force) await getJson("/api/refresh", { method: "POST" });
@@ -741,9 +797,9 @@ async function refresh(force: boolean): Promise<void> {
   }
 }
 
-function setRange(fromMs: number, toMs: number, bucket = state.bucket): void {
+function setRange(fromMs: number, toMs: number, bucket = state.bucket, preset: string | null = null): void {
   if (toMs <= fromMs) return;
-  state = { fromMs, toMs, bucket, session: null };
+  state = { fromMs, toMs, bucket, session: null, preset };
   writeState(state, false);
   void load();
 }
@@ -758,9 +814,10 @@ async function currentWindowRange(): Promise<{ fromMs: number; toMs: number } | 
 
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-preset]")) {
   button.addEventListener("click", async () => {
+    const preset = button.dataset.preset!;
     let range: { fromMs: number; toMs: number } | undefined;
     try {
-      range = button.dataset.preset === "window" ? await currentWindowRange() : presetRange(button.dataset.preset!);
+      range = await currentPresetRange(preset);
     } catch (error) {
       limitsNoticeEl.hidden = false;
       limitsNoticeEl.textContent = (error as Error).message;
@@ -772,7 +829,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-preset]
       return;
     }
     // The window preset leaves the bucket to the server, which picks 15m for spans this short.
-    setRange(range.fromMs, range.toMs, button.dataset.preset === "window" ? "" : state.bucket);
+    setRange(range.fromMs, range.toMs, preset === "window" ? "" : state.bucket, preset);
   });
 }
 function syncCustomRange(): void {
@@ -790,7 +847,7 @@ sortSelect.addEventListener("change", () => {
 });
 fromInput.addEventListener("change", () => setRange(new Date(fromInput.value).getTime(), state.toMs));
 toInput.addEventListener("change", () => setRange(state.fromMs, new Date(toInput.value).getTime()));
-bucketSelect.addEventListener("change", () => setRange(state.fromMs, state.toMs, bucketSelect.value as Bucket | ""));
+bucketSelect.addEventListener("change", () => setRange(state.fromMs, state.toMs, bucketSelect.value as Bucket | "", state.preset));
 for (const button of document.querySelectorAll<HTMLButtonElement>("th button[data-sort]")) {
   button.addEventListener("click", () => {
     const key = button.dataset.sort as keyof SessionSummary;
@@ -813,7 +870,7 @@ document.addEventListener("keydown", (event) => {
 });
 window.addEventListener("popstate", () => {
   const next = readState();
-  const rangeChanged = next.fromMs !== state.fromMs || next.toMs !== state.toMs || next.bucket !== state.bucket;
+  const rangeChanged = next.fromMs !== state.fromMs || next.toMs !== state.toMs || next.bucket !== state.bucket || next.preset !== state.preset;
   state = next;
   pushedDetail = false;
   if (rangeChanged) void load();
