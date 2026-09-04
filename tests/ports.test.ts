@@ -3,6 +3,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from "node:os";
 import { relative, resolve } from "node:path";
 import { isLoopback, parseLsof, parseServeStatus, parseSs } from "../scripts/lib/ports.ts";
+import { usagePort } from "../scripts/lib/usage/port.ts";
 
 const sourceRoot = resolve(import.meta.dir, "..");
 const portsCli = resolve(sourceRoot, "scripts/ports.ts");
@@ -283,6 +284,17 @@ test("keeps a missing checkout's lease while its block is still active", () => {
   box.setListeners([]);
   const reclaimed = box.worktree(repository, "repo-wt4");
   expect(box.claimJson(reclaimed, "frontend").block.start).toBe(block);
+});
+
+test("keeps the usage server's port across restarts while its own route is live", () => {
+  const box = sandbox();
+  const checkout = box.directory("usage-runtime");
+  const options = { cwd: checkout, env: box.environment() };
+  expect(usagePort(options)).toBe(20_000);
+
+  box.setServe(route(20_000, "http://127.0.0.1:20000"));
+  expect(box.ports(checkout, "claim", "--app", "slopestyle-usage", "usage").stderr).toContain("20000 has a Tailscale route");
+  expect(usagePort(options)).toBe(20_000);
 });
 
 test("treats local listeners and Tailscale routes as active blocks", () => {
