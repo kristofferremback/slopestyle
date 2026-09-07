@@ -99,6 +99,7 @@ test("synchronizes a stable runtime safely", () => {
   expect(execute([resolve(runtime, "scripts/sync.sh")]).exitCode).toBe(0);
 
   const upstream = readFileSync(resolve(runtime, "skills/unslop/SKILL.md"), "utf8").split("\n").slice(0, -2).join("\n") + "\n";
+  rmSync(resolve(home, ".agents/skills/unslop"));
   mkdirSync(resolve(home, ".agents/skills/unslop"), { recursive: true });
   writeFileSync(resolve(home, ".agents/skills/unslop/SKILL.md"), upstream);
   rmSync(resolve(home, ".pi/agent/skills/unslop"));

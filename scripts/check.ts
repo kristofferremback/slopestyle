@@ -60,7 +60,7 @@ const manifest = loadManifest();
 assert(manifest.schemaVersion === 1, "skills/manifest.json must use schemaVersion 1");
 
 const allowedProvenance = new Set<Provenance>(["original", "adapted", "forked", "pointer", "synchronized"]);
-const allowedTargets = new Set<Target>(["pi", "claude-code"]);
+const allowedTargets = new Set<Target>(["pi", "claude-code", "codex"]);
 const names = new Set<string>();
 const expectedDirectories = new Set<string>();
 
@@ -140,6 +140,7 @@ if (installed) {
   checkLink(resolve(home, ".pi/agent/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/CLAUDE.md"), resolve(repoRoot, "agents/CLAUDE.md"));
+  checkLink(resolve(home, ".codex/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(binRoot(home), "slopestyle-ports"), resolve(repoRoot, "scripts/ports.ts"));
   checkLink(resolve(binRoot(home), "slopestyle-usage"), resolve(repoRoot, "scripts/usage.ts"));
   assert(existsSync(resolve(repoRoot, "node_modules/echarts/package.json")), "Missing installed dependencies; run bun install --frozen-lockfile in the runtime checkout.");
@@ -147,6 +148,7 @@ if (installed) {
   const expected = new Map<Target, Set<string>>([
     ["pi", new Set()],
     ["claude-code", new Set()],
+    ["codex", new Set()],
   ]);
   for (const skill of manifest.skills) {
     for (const target of skill.targets) {

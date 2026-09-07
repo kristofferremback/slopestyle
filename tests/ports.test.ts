@@ -471,6 +471,8 @@ test("installs the CLI as a linked executable", () => {
   const link = resolve(installHome, ".local/bin/slopestyle-ports");
   expect(readlinkSync(link)).toBe(resolve(runtime, "scripts/ports.ts"));
   expect(existsSync(link)).toBe(true);
+  expect(readlinkSync(resolve(installHome, ".codex/AGENTS.md"))).toBe(resolve(runtime, "agents/AGENTS.md"));
+  expect(readlinkSync(resolve(installHome, ".agents/skills/build"))).toBe(resolve(runtime, "skills/build"));
   const help = Bun.spawnSync([link, "--help"], { env: environmentForInstall, stdout: "pipe", stderr: "pipe" });
   expect(help.exitCode).toBe(0);
   expect(help.stdout.toString()).toContain("Usage: slopestyle-ports");

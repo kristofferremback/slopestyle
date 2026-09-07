@@ -6,7 +6,7 @@ Kris's cross-machine collaboration contract and reusable skills for coding agent
 
 Each machine uses two separate checkouts:
 
-- `~/.local/share/slopestyle` is the stable runtime. It stays on `main` and backs the installed Pi and Claude Code symlinks.
+- `~/.local/share/slopestyle` is the stable runtime. It stays on `main` and backs the installed Pi, Claude Code, and Codex symlinks.
 - A checkout under `~/dev/` is for branches, commits, and pull requests. Development branches never change active agent guidance.
 
 The installer and synchronizer refuse to run from a development checkout. Automation requires the Bun version in `.bun-version` or a newer compatible release on every machine. Thin `.sh` wrappers remain only so machines running the previous scheduler can hand off to the TypeScript entry points.
@@ -68,7 +68,7 @@ Remove the scheduler without removing guidance or the checkout:
 ./scripts/schedule-sync.ts uninstall
 ```
 
-Start fresh Pi and Claude Code sessions after an update. Existing sessions retain the guidance loaded at startup.
+Start fresh Pi, Claude Code, and Codex sessions after an update. Existing sessions retain the guidance loaded at startup.
 
 ## Usage dashboard
 
@@ -138,7 +138,7 @@ cd "$HOME/dev/slopestyle"
 
 Repository layout:
 
-- `agents/`: shared global guidance loaded by Pi and Claude Code
+- `agents/`: shared global guidance loaded by Pi, Claude Code, and Codex
 - `skills/`: canonical Slop(e)style skills and their target manifest
 - `scripts/install.ts`: safe runtime installation
 - `scripts/sync.ts`: validated fast-forward synchronization

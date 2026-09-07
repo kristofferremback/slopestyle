@@ -60,7 +60,11 @@ if (mode === "install") {
 }
 
 const manifest = loadManifest();
-const legacyThrea = [resolve(home, ".pi/agent/skills/threa-cli"), resolve(home, ".claude/skills/threa-cli")];
+const legacyThrea = [
+  resolve(home, ".pi/agent/skills/threa-cli"),
+  resolve(home, ".claude/skills/threa-cli"),
+  resolve(home, ".agents/skills/threa-cli"),
+];
 for (const path of legacyThrea) {
   if (pathExists(path) && (mode === "preflight" || !replace)) {
     throw new Error(`Legacy skill ${path} conflicts with canonical threa. Review it before using --replace.`);
@@ -91,6 +95,7 @@ if (mode === "preflight") {
   canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".pi/agent/AGENTS.md"));
   canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
   canLink(resolve(preflightRoot!, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
+  canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".codex/AGENTS.md"));
   canLink(resolve(preflightRoot!, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
   canLink(resolve(preflightRoot!, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
   for (const skill of manifest.skills) {
@@ -133,7 +138,11 @@ function linkOwned(source: string, target: string): void {
 
 for (const path of legacyThrea) if (pathExists(path)) backupTarget(path);
 
-for (const target of [resolve(home, ".pi/agent/skills/unslop"), resolve(home, ".claude/skills/unslop")]) {
+for (const target of [
+  resolve(home, ".pi/agent/skills/unslop"),
+  resolve(home, ".claude/skills/unslop"),
+  resolve(home, ".agents/skills/unslop"),
+]) {
   const source = resolve(repoRoot, "skills/unslop");
   if (isSymlink(target) && readlinkSync(target) === source) continue;
   if (isExactLegacyUnslop(target)) {
@@ -150,6 +159,7 @@ for (const target of [resolve(home, ".pi/agent/skills/unslop"), resolve(home, ".
 linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".pi/agent/AGENTS.md"));
 linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
 linkOwned(resolve(repoRoot, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
+linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".codex/AGENTS.md"));
 linkOwned(resolve(repoRoot, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
 linkOwned(resolve(repoRoot, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
 
@@ -161,6 +171,7 @@ console.log("Installed pinned dependencies.");
 const expected = new Map<Target, Set<string>>([
   ["pi", new Set()],
   ["claude-code", new Set()],
+  ["codex", new Set()],
 ]);
 for (const skill of manifest.skills) {
   for (const target of skill.targets) {
@@ -193,4 +204,4 @@ if (serviceInstalled(home)) {
   runOrThrow([process.execPath, resolve(repoRoot, "scripts/usage.ts"), "service", "refresh"]);
 }
 
-console.log("Slop(e)style installation complete. Start fresh Pi and Claude Code sessions to load it.");
+console.log("Slop(e)style installation complete. Start fresh Pi, Claude Code, and Codex sessions to load it.");

@@ -24,6 +24,6 @@ _🤖 by <actual model>_
 _[<actual model>](<official model URL>) in [<harness>](<official harness URL>)_
 ```
 
-Use [Claude Code](https://claude.com/claude-code) or [Pi](https://github.com/badlogic/pi-mono). Link the model to its specific official model page when one exists. Otherwise use the provider's official model catalog. Read the actual model at runtime and use its official name. Never invent a model identity or URL. Do not include session links.
+Use [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex/), or [Pi](https://github.com/badlogic/pi-mono). Link the model to its specific official model page when one exists. Otherwise use the provider's official model catalog. Read the actual model at runtime and use its official name. Never invent a model identity or URL. Do not include session links.
 
 Threa already identifies agent messages. Do not add either attribution marker to Threa messages.

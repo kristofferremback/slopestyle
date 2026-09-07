@@ -16,7 +16,7 @@ import { dirname, resolve } from "node:path";
 export const repoRoot = realpathSync(resolve(import.meta.dir, "../.."));
 export const manifestPath = resolve(repoRoot, "skills/manifest.json");
 
-export type Target = "pi" | "claude-code";
+export type Target = "pi" | "claude-code" | "codex";
 export type Provenance = "original" | "adapted" | "forked" | "pointer" | "synchronized";
 
 export interface SkillEntry {
@@ -64,7 +64,14 @@ export function stateRoot(home: string): string {
 }
 
 export function targetRoot(home: string, target: Target): string {
-  return target === "pi" ? homePath(home, ".pi/agent/skills") : homePath(home, ".claude/skills");
+  switch (target) {
+    case "pi":
+      return homePath(home, ".pi/agent/skills");
+    case "claude-code":
+      return homePath(home, ".claude/skills");
+    case "codex":
+      return homePath(home, ".agents/skills");
+  }
 }
 
 export function pathExists(path: string): boolean {
