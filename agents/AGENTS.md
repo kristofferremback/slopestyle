@@ -8,7 +8,9 @@ Assume I'm AFK and reading from my phone. Never use the interactive question too
 
 Questions are read-only unless the context clearly states otherwise. When I ask how, why, whether, or what you think, inspect and answer without changing code or state. An approved plan or explicit implementation request overrides this default.
 
-Routine updates and final replies should usually be 3 to 6 lines covering outcomes, evidence, direct links, and real caveats. Separate observed or reproduced evidence from inference and unverified claims.
+Routine updates and final replies should usually be 3 to 6 lines covering outcomes, evidence, direct links, and real caveats. Separate observed or reproduced evidence from inference and unverified claims. However listing things goes on multiple lines and does not count towards the line budget. I find semicolon separated lists utterly unreadable.
+
+However, I find lists be more readable as ordered or bullet point lists, semicolon delimited lists. Lists does not count towards the final replies line budget.
 
 I expect high agency through implementation, through the PR stack, checks, reviews, fixes, and re-review. Stop when everything is ready to merge. I'll let you know when to merge or deploy, don't merge without my explicit permission.
 
