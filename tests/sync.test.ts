@@ -113,6 +113,13 @@ test("synchronizes a stable runtime safely", () => {
   succeeds([resolve(runtime, "scripts/install.ts")]);
   expect(existsSync(resolve(home, ".pi/agent/skills/retired"))).toBe(false);
 
+  expect(readlinkSync(resolve(home, ".claude/agents/opus-low.md"))).toBe(resolve(runtime, "subagents/claude-code/opus-low.md"));
+  expect(readFileSync(resolve(home, ".claude/agents/fable-high.md"), "utf8")).toContain("effort: high");
+  symlinkSync(resolve(runtime, "subagents/claude-code/sonnet-low.md"), resolve(home, ".claude/agents/sonnet-low.md"));
+  expect(execute([resolve(runtime, "scripts/check.ts"), "--installed"]).exitCode).not.toBe(0);
+  succeeds([resolve(runtime, "scripts/install.ts")]);
+  expect(existsSync(resolve(home, ".claude/agents/sonnet-low.md"))).toBe(false);
+
   rmSync(resolve(home, ".pi/agent/skills/why"));
   symlinkSync(resolve(runtime, "skills/old-why"), resolve(home, ".pi/agent/skills/why"));
   succeeds([resolve(runtime, "scripts/install.ts")]);
