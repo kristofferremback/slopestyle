@@ -18,6 +18,7 @@ import {
   type Target,
 } from "./lib/core.ts";
 import { serviceInstalled } from "./lib/usage/service.ts";
+import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
 
 const args = process.argv.slice(2);
 let replace = false;
@@ -82,9 +83,13 @@ function isExactLegacyUnslop(target: string): boolean {
   return readdirSync(directory).sort().join("\n") === "SKILL.md" && sha256File(skillFile) === legacyUnslopHash;
 }
 
+function ownedPrefixes(root: string): string[] {
+  return [`${resolve(root, "skills")}/`, `${resolve(root, "subagents")}/`];
+}
+
 function canLink(source: string, target: string): void {
   if (isSymlink(target) && readlinkSync(target) === source) return;
-  if (isSymlink(target) && resolvedPath(target).startsWith(`${resolve(preflightRoot!, "skills")}/`)) return;
+  if (isSymlink(target) && ownedPrefixes(preflightRoot!).some((prefix) => resolvedPath(target).startsWith(prefix))) return;
   if (source === resolve(preflightRoot!, "skills/unslop") && isExactLegacyUnslop(target)) return;
   if (!pathExists(target)) return;
   if (existsSync(source) && existsSync(target) && statSync(source).isFile() && statSync(target).isFile() && readFileSync(source).equals(readFileSync(target))) return;
@@ -101,6 +106,7 @@ if (mode === "preflight") {
   for (const skill of manifest.skills) {
     for (const target of skill.targets) canLink(resolve(preflightRoot!, skill.path), resolve(targetRoot(home, target), skill.name));
   }
+  for (const subagent of subagentMatrix()) canLink(resolve(preflightRoot!, "subagents/claude-code", subagent.file), resolve(subagentsTargetRoot(home), subagent.file));
   console.log("Slop(e)style installation preflight passed.");
   process.exit(0);
 }
@@ -126,8 +132,8 @@ function linkOwned(source: string, target: string): void {
   }
   if (pathExists(target)) {
     const identicalFiles = existsSync(source) && existsSync(target) && statSync(source).isFile() && statSync(target).isFile() && readFileSync(source).equals(readFileSync(target));
-    const ownedSkill = isSymlink(target) && resolvedPath(target).startsWith(`${resolve(repoRoot, "skills")}/`);
-    if (!identicalFiles && !ownedSkill) {
+    const owned = isSymlink(target) && ownedPrefixes(repoRoot).some((prefix) => resolvedPath(target).startsWith(prefix));
+    if (!identicalFiles && !owned) {
       if (!replace) throw new Error(`Refusing to replace ${target}. Re-run with --replace after reviewing it.`);
       backupTarget(target);
     }
@@ -191,6 +197,18 @@ for (const [target, names] of expected) {
       rmSync(candidate);
       console.log(`Removed retired Slop(e)style skill link: ${candidate}`);
     }
+  }
+}
+
+const subagents = subagentMatrix();
+const subagentFiles = new Set(subagents.map((subagent) => subagent.file));
+const agentsRoot = subagentsTargetRoot(home);
+for (const subagent of subagents) linkOwned(resolve(subagentsRoot, subagent.file), resolve(agentsRoot, subagent.file));
+for (const name of readdirSync(agentsRoot)) {
+  const candidate = resolve(agentsRoot, name);
+  if (isSymlink(candidate) && resolvedPath(candidate).startsWith(`${subagentsRoot}/`) && !subagentFiles.has(name)) {
+    rmSync(candidate);
+    console.log(`Removed retired Slop(e)style subagent link: ${candidate}`);
   }
 }
 

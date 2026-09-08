@@ -15,6 +15,7 @@ import {
   type Provenance,
   type Target,
 } from "./lib/core.ts";
+import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
 
 const args = process.argv.slice(2);
 const installed = args.length === 1 && args[0] === "--installed";
@@ -40,6 +41,7 @@ const entryPoints = [
   "scripts/install.ts",
   "scripts/ports.ts",
   "scripts/schedule-sync.ts",
+  "scripts/subagents.ts",
   "scripts/sync.ts",
   "scripts/usage.ts",
 ];
@@ -128,6 +130,17 @@ for (const external of manifest.external) {
 const writingDirectory = resolve(repoRoot, "skills/writing-for-agents");
 const expectedWritingHash = readFileSync(resolve(writingDirectory, "UPSTREAM.sha256"), "utf8").trim();
 assert(sha256File(resolve(writingDirectory, "SKILL.md")) === expectedWritingHash, "writing-for-agents/SKILL.md checksum mismatch");
+const subagents = subagentMatrix();
+for (const subagent of subagents) {
+  const path = resolve(subagentsRoot, subagent.file);
+  assert(existsSync(path) && readFileSync(path, "utf8") === subagent.content, `Generated subagent is stale; run scripts/subagents.ts: ${path}`);
+}
+const subagentFiles = new Set(subagents.map((subagent) => subagent.file));
+for (const file of readdirSync(subagentsRoot)) {
+  assert(!file.endsWith(".md") || subagentFiles.has(file), `Unlisted subagent file; run scripts/subagents.ts: ${resolve(subagentsRoot, file)}`);
+}
+console.log(`Validated ${subagents.length} generated Claude Code subagents.`);
+
 console.log(`Validated ${expectedDirectories.size} local skills and ${manifest.external.length} external skills.`);
 console.log("SKILL.md: OK");
 
@@ -166,6 +179,17 @@ if (installed) {
       const source = resolvedPath(candidate);
       if (source.startsWith(`${resolve(repoRoot, "skills")}/`) && !expected.get(target)!.has(name)) {
         throw new Error(`Retired Slop(e)style skill link remains installed: ${candidate}`);
+      }
+    }
+  }
+
+  const agentsRoot = subagentsTargetRoot(home);
+  for (const subagent of subagents) checkLink(resolve(agentsRoot, subagent.file), resolve(subagentsRoot, subagent.file));
+  if (existsSync(agentsRoot)) {
+    for (const name of readdirSync(agentsRoot)) {
+      const candidate = resolve(agentsRoot, name);
+      if (isSymlink(candidate) && resolvedPath(candidate).startsWith(`${subagentsRoot}/`) && !subagentFiles.has(name)) {
+        throw new Error(`Retired Slop(e)style subagent link remains installed: ${candidate}`);
       }
     }
   }

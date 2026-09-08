@@ -140,11 +140,13 @@ Repository layout:
 
 - `agents/`: shared global guidance loaded by Pi, Claude Code, and Codex
 - `skills/`: canonical Slop(e)style skills and their target manifest
+- `subagents/`: generated Claude Code subagent definitions, one per model and effort
 - `scripts/install.ts`: safe runtime installation
 - `scripts/sync.ts`: validated fast-forward synchronization
 - `scripts/schedule-sync.ts`: Linux and macOS scheduler management
 - `scripts/check.ts`: source and installed-state validation
 - `scripts/ports.ts`: persistent local and Tailscale port allocation
+- `scripts/subagents.ts`: regenerate `subagents/` from the matrix in `scripts/lib/subagents.ts`
 - `scripts/lib/`: shared TypeScript primitives
 - `scripts/*.sh`: compatibility handoff only; no workflow logic
 - `tests/`: synchronization and port allocation integration tests
