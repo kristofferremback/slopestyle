@@ -1,11 +1,17 @@
 ---
 name: shepherd
-description: Use after a pull request opens, or when the user asks to watch CI, monitor checks, babysit a PR, read review comments, or drive a PR or stack to ready.
+description: Use after a pull request opens, or when the user asks to watch CI, fix failed checks, read review comments, or drive a PR or stack to ready.
 ---
 
 # Shepherd
 
 Run in the background after each PR opens. Keep the PR or stack moving until it is genuinely ready. Never merge.
+
+## Own the fix loop
+
+For a PR the user has authorized you to work on, own diagnosis, in-scope fixes, focused verification, follow-up commits, pushes, and checking the new head. Use report-only mode when the user requests it or write access is unavailable; state that limitation explicitly.
+
+When delegating, pass the PR, checkout, accepted scope and authority to complete this loop. A watcher that only reports failures must have a named owner who acts on them. Keep one writer per checkout; coordinate edits before committing. Delegation does not make an unresolved failure someone else's responsibility.
 
 ## Start from current state
 
@@ -17,6 +23,7 @@ Use the harness's background or event mechanism when available. A watcher owns i
 
 For each update:
 
+- Reproduce failures with the repository's locked dependencies and CI command. For formatting failures, align the local formatter with CI before editing; temporary dependency installs can change the version used by commit hooks.
 - Distinguish repository failures from infrastructure flakes. Retry only known retryable failures and make retries visible.
 - Verify bot and human findings against source and accepted intent before changing code.
 - Fix correctness, product-contract, security, data, accessibility, and maintainability issues within scope.
