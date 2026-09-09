@@ -24,4 +24,4 @@ Apply each and keep only what survives:
 
 ## Proof
 
-Re-run the same focused tests and type checks that the change ran before this pass. Report the delta in lines and what was removed. A behaviour change, a test edited to pass, or a failing check means the cut goes back.
+Load `test` to select focused checks and reuse valid evidence. After a cut, rerun the checks it invalidates; when no cut is justified, report that outcome without rerunning unchanged green checks. Report what was removed and the delta in lines, with no minimum reduction target. A behaviour change, a test edited to pass, or a failing check caused by the cut means the cut goes back.
