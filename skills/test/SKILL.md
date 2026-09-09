@@ -9,10 +9,16 @@ Prove observable behavior at the highest practical layer. Prefer integrations ov
 
 ## Choose the radius
 
-- During development, run the smallest test that can fail for the current change.
-- Before committing, run broad lint and type checks plus warranted focused tests.
-- Leave the full suite to CI unless risk or repository guidance warrants it locally.
+- During development, run the smallest test that can fail for the current change. Name the behavior or suspected failure each additional check will prove.
+- Before committing, satisfy repository-required checks and run affected lint, type checks, and focused tests. Widen the radius when shared dependencies, configuration, or a specific risk makes narrow checks insufficient.
+- Leave the full suite to CI unless risk or repository guidance warrants it locally. A new agent, pass, or handoff alone does not warrant another run.
 - Never hide failure with skips, TODOs, changed expectations, or a pre-existing label. Green means observed green.
+
+## Reuse evidence
+
+Carry a compact evidence handoff: exact command, result, tested commit plus any uncommitted changes, relevant environment, and log or artifact location. Missing or unfinished results are not green.
+
+Read the referenced result and inspect the delta since its tested tree. Reuse a passing result when no relevant source, test, dependency, configuration, or environment changed; an unverifiable handoff requires rerunning the focused proof. Independently review claims and run focused probes for gaps or suspected defects; independence does not require repeating every check. After edits, rerun checks whose evidence the edits invalidate. Run checks against a stable tree, not files another pass is editing.
 
 ## Run commands
 
