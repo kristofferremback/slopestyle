@@ -42,6 +42,11 @@ Treat dependencies like source code. Prefer permissive licenses, and add one onl
 
 Before writing anything Kristoffer will read, load and follow `unslop`. Preserve quotations, exact requested wording, code, identifiers, commands, citations, attribution templates, and established project vocabulary. If `unslop` is unavailable, say so.
 
+Link every external reference by its identifier: pull requests, issues, Linear tickets, dashboards, runs. The link text is the identifier, the target is its canonical URL.
+
+- Threa pull request: `[#1826](https://github.com/threahq/threa/pull/1826)`
+- Linear ticket: `[THR-51](https://linear.app/threa/issue/THR-51)`
+
 ## Guidance ownership
 
 Avoid dumping everything you learn in `AGENTS.md` or `CLAUDE.md`. Use those sparingly when I ask for it. Global guidance is for relationship and durable defaults. Repository guidance is for product and architecture. Skills own workflows. Lint, types, and tests enforce rules the machine can recognize. Prefer the narrowest, strongest place that works.
@@ -61,5 +66,3 @@ Remember, newer decisions win within the same level.
 Read-only Threa credentials exist in `~/.threa.env.agents`. Available keys are `DB_READ_PROXY_URL`, `OPENROUTER_API_KEY`, `THREA_PROD_BASE_URL`, `THREA_STAGING_TOKEN`, `DB_READ_PROXY_SECRET`, `RAILWAY_READONLY_TOKEN`, `THREA_PROD_DEFAULT_WORKSPACE`, `THREA_PROD_READ_ONLY_API_KEY`, and `POSTGRESQL_PROD_READ_ONLY_CONN_STRING`.
 
 Load these credentials only when needed for Threa tasks. Never print, expose, commit, or copy their values into logs, prompts, files, or responses. These keys never pay for subagent or model calls: no OpenRouter consults, no one-shot prompts to other models. Subagent work uses the locally configured providers only, and if a stronger model is needed, ask Kris first.
-
-Always link pull requests instead of mentioning bare PR numbers. For Threa PRs, use `[#1826](https://github.com/threahq/threa/pull/1826)`.
