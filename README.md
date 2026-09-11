@@ -26,7 +26,9 @@ Review existing global guidance and skills, then install:
 ./scripts/install.ts
 ```
 
-The installer automatically backs up and migrates the known unmodified external `unslop` installation. It refuses modified copies and every other existing file or skill directory. After reviewing a conflict, allow a one-time backup and replacement with:
+The machine must match a host in `hosts.json`. See [host selection](#host-selection) when registering or renaming a machine.
+
+The installer automatically backs up and migrates the known unmodified external `unslop` installation and the [original Datadog directory](#host-selection). It refuses modified copies and other existing files or skill directories. After reviewing an ordinary installation conflict, allow a one-time backup and replacement with:
 
 ```bash
 ./scripts/install.ts --replace
@@ -69,6 +71,38 @@ Remove the scheduler without removing guidance or the checkout:
 ```
 
 Start fresh Pi, Claude Code, and Codex sessions after an update. Existing sessions retain the guidance loaded at startup.
+
+## Host selection
+
+`hosts.json` registers `kristoffers-macbook-pro` and `homelab`, using their Tailscale node names as IDs. The installer matches the local OS hostname against those IDs and their aliases, ignoring case and a trailing dot. It does not contact Tailscale. The laptop's `Kristoffers-MacBook-Pro.local` alias covers its macOS hostname.
+
+To assign a machine explicitly, write a registered ID to `~/.config/slopestyle/host`:
+
+```bash
+mkdir -p "$HOME/.config/slopestyle"
+echo homelab > "$HOME/.config/slopestyle/host"
+```
+
+The pin takes precedence over hostname matching and applies to scheduled sync too. An unknown hostname or invalid pin stops installation, installed-state checks, and sync preflight before links change. Add the machine to the registry or correct its pin, then rerun sync. Source-only checks validate the registry without requiring CI machines to be registered.
+
+The registry's `skills` and `subagents` maps restrict managed entries by name. An omitted entry is shared across registered hosts. An empty list disables it everywhere. For example:
+
+```json
+{
+  "skills": {
+    "datadog": ["kristoffers-macbook-pro"]
+  },
+  "subagents": {
+    "opus-high": ["homelab"]
+  }
+}
+```
+
+This example shows the two restriction maps. The checked-in registry restricts only Datadog. Its `hosts` map defines machine IDs and their `aliases`. Unknown skill, subagent, or host names and ambiguous aliases fail validation.
+
+Installation, preflight, and `check.ts --installed` use the same host selection. Sync removes excluded Slopestyle symlinks and installs newly enabled entries. Unrelated local files, vendor skills, shared global guidance, and command-line tools remain outside these restrictions. Host selection controls discovery through managed installations, not filesystem access to skill sources.
+
+Datadog includes a one-time migration for the original `~/.codex/skills/datadog` directory. After installing the selected skills and subagents, installation backs up that exact known copy under `~/.slopestyle/backups`. This also removes the old copy from discovery on a host where Datadog is excluded. Extra entries, symlinks, or changed content stop migration, including with `--replace`. Review and move a changed copy outside the skills directories before retrying. The migrated skill resolves its helper relative to its own directory.
 
 ## Usage dashboard
 
@@ -139,6 +173,7 @@ cd "$HOME/dev/slopestyle"
 Repository layout:
 
 - `agents/`: shared global guidance loaded by Pi, Claude Code, and Codex
+- `hosts.json`: registered machines and restrictions for managed skills and subagents
 - `skills/`: canonical Slop(e)style skills and their target manifest
 - `subagents/`: generated Claude Code subagent definitions, one per model and effort
 - `scripts/install.ts`: safe runtime installation

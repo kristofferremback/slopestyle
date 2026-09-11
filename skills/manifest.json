@@ -38,6 +38,22 @@
       "provenance": "original"
     },
     {
+      "name": "datadog",
+      "path": "skills/datadog",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex"
+      ],
+      "requires": [
+        "Python 3",
+        "curl",
+        "local Galdera Datadog credentials"
+      ],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "debug",
       "path": "skills/debug",
       "targets": [
