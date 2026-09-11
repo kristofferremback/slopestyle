@@ -275,6 +275,21 @@
       "provenance": "original"
     },
     {
+      "name": "t3code-context",
+      "path": "skills/t3code-context",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex"
+      ],
+      "requires": [
+        "Python 3 with sqlite3",
+        "read access to the selected T3 Code state database"
+      ],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "test",
       "path": "skills/test",
       "targets": [
