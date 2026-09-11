@@ -1,0 +1,3 @@
+interface:
+  display_name: "Datadog"
+  short_description: "Query traces and diagnose API authentication"

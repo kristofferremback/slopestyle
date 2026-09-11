@@ -452,6 +452,8 @@ test("shows the machine registry outside Git and answers --help without HOME", (
 test("installs the CLI as a linked executable", () => {
   const box = sandbox();
   const installHome = box.directory("install-home");
+  mkdirSync(resolve(installHome, ".config/slopestyle"), { recursive: true });
+  writeFileSync(resolve(installHome, ".config/slopestyle/host"), "kristoffers-macbook-pro\n");
   const runtime = resolve(installHome, ".local/share/slopestyle");
   mkdirSync(runtime, { recursive: true });
   cpSync(sourceRoot, runtime, {

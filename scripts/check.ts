@@ -16,6 +16,7 @@ import {
   type Target,
 } from "./lib/core.ts";
 import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
+import { loadHosts, resolveHost, selected, validateManagedNames } from "./lib/hosts.ts";
 
 const args = process.argv.slice(2);
 const installed = args.length === 1 && args[0] === "--installed";
@@ -59,6 +60,10 @@ for (const relative of ["scripts/check.sh", "scripts/install.sh", "scripts/sched
 }
 
 const manifest = loadManifest();
+const hosts = loadHosts();
+const selectedHost = installed ? resolveHost(home, hosts) : undefined;
+if (selectedHost) console.log(`Selected host: ${selectedHost}`);
+validateManagedNames(hosts, manifest.skills.map((entry) => entry.name), subagentMatrix().map((entry) => entry.name));
 assert(manifest.schemaVersion === 1, "skills/manifest.json must use schemaVersion 1");
 
 const allowedProvenance = new Set<Provenance>(["original", "adapted", "forked", "pointer", "synchronized"]);
@@ -149,6 +154,9 @@ if (installed) {
     assert(isSymlink(target), `Expected installed symlink: ${target}`);
     assert(resolvedPath(target) === resolvedPath(source), `Wrong installed target: ${target}`);
   };
+  if (pathExists(resolve(home, ".codex/skills/datadog"))) {
+    throw new Error(`Legacy Datadog skill remains at ${resolve(home, ".codex/skills/datadog")}. Re-run installation to migrate it.`);
+  }
 
   checkLink(resolve(home, ".pi/agent/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
@@ -164,6 +172,7 @@ if (installed) {
     ["codex", new Set()],
   ]);
   for (const skill of manifest.skills) {
+    if (!selected(skill.name, selectedHost!, hosts.skills)) continue;
     for (const target of skill.targets) {
       expected.get(target)!.add(skill.name);
       checkLink(resolve(targetRoot(home, target), skill.name), resolve(repoRoot, skill.path));
@@ -184,11 +193,13 @@ if (installed) {
   }
 
   const agentsRoot = subagentsTargetRoot(home);
-  for (const subagent of subagents) checkLink(resolve(agentsRoot, subagent.file), resolve(subagentsRoot, subagent.file));
+  const selectedSubagents = subagents.filter((entry) => selected(entry.name, selectedHost!, hosts.subagents));
+  const selectedSubagentFiles = new Set(selectedSubagents.map((entry) => entry.file));
+  for (const subagent of selectedSubagents) checkLink(resolve(agentsRoot, subagent.file), resolve(subagentsRoot, subagent.file));
   if (existsSync(agentsRoot)) {
     for (const name of readdirSync(agentsRoot)) {
       const candidate = resolve(agentsRoot, name);
-      if (isSymlink(candidate) && resolvedPath(candidate).startsWith(`${subagentsRoot}/`) && !subagentFiles.has(name)) {
+      if (isSymlink(candidate) && resolvedPath(candidate).startsWith(`${subagentsRoot}/`) && !selectedSubagentFiles.has(name)) {
         throw new Error(`Retired Slop(e)style subagent link remains installed: ${candidate}`);
       }
     }
