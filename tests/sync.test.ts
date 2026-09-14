@@ -82,6 +82,8 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 test("synchronizes a stable runtime safely", () => {
   mkdirSync(home, { recursive: true });
+  mkdirSync(resolve(home, ".config/slopestyle"), { recursive: true });
+  writeFileSync(resolve(home, ".config/slopestyle/host"), "kristoffers-macbook-pro\n");
 
   succeeds(["git", "init", "-q", "--bare", remote]);
   succeeds(["git", "-C", remote, "symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -235,6 +237,31 @@ test("synchronizes a stable runtime safely", () => {
   expect(readFileSync(resolve(runtime, "sync-test-marker"), "utf8")).toBe("first update\n");
   succeeds([resolve(runtime, "scripts/check.ts"), "--installed"]);
 
+  const validHosts = readFileSync(resolve(publisher, "hosts.json"));
+  const restrictedHosts = JSON.parse(validHosts.toString());
+  restrictedHosts.subagents["opus-low"] = [];
+  writeFileSync(resolve(publisher, "hosts.json"), `${JSON.stringify(restrictedHosts, null, 2)}\n`);
+  commitAll(publisher, "Restrict a fetched subagent");
+  git(publisher, "push", "-q");
+  expect(sync().exitCode).toBe(0);
+  expect(existsSync(resolve(home, ".claude/agents/opus-low.md"))).toBe(false);
+  succeeds([resolve(runtime, "scripts/check.ts"), "--installed"]);
+
+  const invalidHosts = JSON.parse(validHosts.toString());
+  invalidHosts.skills.datadog = ["unknown-host"];
+  writeFileSync(resolve(publisher, "hosts.json"), `${JSON.stringify(invalidHosts, null, 2)}\n`);
+  commitAll(publisher, "Break fetched host restrictions");
+  git(publisher, "push", "-q");
+  const beforeInvalidHosts = git(runtime, "rev-parse", "HEAD").stdout.trim();
+  expect(sync().exitCode).not.toBe(0);
+  expect(git(runtime, "rev-parse", "HEAD").stdout.trim()).toBe(beforeInvalidHosts);
+  expect(readdirSync(state).filter((name) => name.startsWith("validate."))).toHaveLength(0);
+  writeFileSync(resolve(publisher, "hosts.json"), validHosts);
+  commitAll(publisher, "Restore fetched host restrictions");
+  git(publisher, "push", "-q");
+  expect(sync().exitCode).toBe(0);
+  expect(existsSync(resolve(home, ".claude/agents/opus-low.md"))).toBe(true);
+
   const manifest = readFileSync(resolve(publisher, "skills/manifest.json"));
   writeFileSync(resolve(publisher, "skills/manifest.json"), "{}\n");
   commitAll(publisher, "Break fetched validation");
@@ -276,6 +303,8 @@ test("migrates the merged shell synchronizer and scheduler", () => {
   const migrationRemote = resolve(scratch, "migration-remote.git");
   const migrationRuntime = resolve(migrationHome, ".local/share/slopestyle");
   mkdirSync(resolve(migrationHome, ".bun/bin"), { recursive: true });
+  mkdirSync(resolve(migrationHome, ".config/slopestyle"), { recursive: true });
+  writeFileSync(resolve(migrationHome, ".config/slopestyle/host"), "kristoffers-macbook-pro\n");
   symlinkSync(process.execPath, resolve(migrationHome, ".bun/bin/bun"));
   const migrationEnv = { HOME: migrationHome, PATH: `${fakeBin}:/usr/bin:/bin` };
 

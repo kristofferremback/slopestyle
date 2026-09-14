@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, relative, resolve } from "node:path";
 import {
   assert,
@@ -19,6 +19,7 @@ import {
 } from "./lib/core.ts";
 import { serviceInstalled } from "./lib/usage/service.ts";
 import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
+import { loadHosts, resolveHost, selected, validateManagedNames } from "./lib/hosts.ts";
 
 const args = process.argv.slice(2);
 let replace = false;
@@ -61,6 +62,30 @@ if (mode === "install") {
 }
 
 const manifest = loadManifest();
+const hosts = loadHosts();
+validateManagedNames(hosts, manifest.skills.map((entry) => entry.name), subagentMatrix().map((entry) => entry.name));
+const selectedHost = resolveHost(home, hosts);
+console.log(`Selected host: ${selectedHost}`);
+const datadogLegacy = resolve(home, ".codex/skills/datadog");
+const legacyInventory = JSON.parse(readFileSync(resolve(repoRoot, "skills/datadog/legacy-codex.json"), "utf8")) as Record<string, string>;
+function exactLegacyDatadog(path: string): boolean {
+  if (!existsSync(path) || isSymlink(path) || !statSync(path).isDirectory()) return false;
+  const entries = readdirSync(path, { recursive: true }).filter((entry): entry is string => typeof entry === "string");
+  const expectedEntries = new Set(Object.keys(legacyInventory));
+  for (const file of Object.keys(legacyInventory)) {
+    for (let directory = dirname(file); directory !== "."; directory = dirname(directory)) expectedEntries.add(directory);
+  }
+  if (entries.sort().join("\n") !== [...expectedEntries].sort().join("\n")) return false;
+  if (entries.some((entry) => {
+    const stat = lstatSync(resolve(path, entry));
+    return Object.hasOwn(legacyInventory, entry) ? !stat.isFile() : !stat.isDirectory();
+  })) return false;
+  return Object.entries(legacyInventory).every(([file, hash]) => sha256File(resolve(path, file)) === hash);
+}
+const migrateDatadog = pathExists(datadogLegacy);
+if (migrateDatadog && !exactLegacyDatadog(datadogLegacy)) {
+  throw new Error(`Legacy Datadog at ${datadogLegacy} is changed or contains unexpected entries. Review and move it outside the skills directories before installing.`);
+}
 const legacyThrea = [
   resolve(home, ".pi/agent/skills/threa-cli"),
   resolve(home, ".claude/skills/threa-cli"),
@@ -104,9 +129,10 @@ if (mode === "preflight") {
   canLink(resolve(preflightRoot!, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
   canLink(resolve(preflightRoot!, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
   for (const skill of manifest.skills) {
+    if (!selected(skill.name, selectedHost, hosts.skills)) continue;
     for (const target of skill.targets) canLink(resolve(preflightRoot!, skill.path), resolve(targetRoot(home, target), skill.name));
   }
-  for (const subagent of subagentMatrix()) canLink(resolve(preflightRoot!, "subagents/claude-code", subagent.file), resolve(subagentsTargetRoot(home), subagent.file));
+  for (const subagent of subagentMatrix().filter((entry) => selected(entry.name, selectedHost, hosts.subagents))) canLink(resolve(preflightRoot!, "subagents/claude-code", subagent.file), resolve(subagentsTargetRoot(home), subagent.file));
   console.log("Slop(e)style installation preflight passed.");
   process.exit(0);
 }
@@ -180,6 +206,7 @@ const expected = new Map<Target, Set<string>>([
   ["codex", new Set()],
 ]);
 for (const skill of manifest.skills) {
+  if (!selected(skill.name, selectedHost, hosts.skills)) continue;
   for (const target of skill.targets) {
     expected.get(target)!.add(skill.name);
     linkOwned(resolve(repoRoot, skill.path), resolve(targetRoot(home, target), skill.name));
@@ -200,9 +227,10 @@ for (const [target, names] of expected) {
   }
 }
 
-const subagents = subagentMatrix();
+const subagents = subagentMatrix().filter((subagent) => selected(subagent.name, selectedHost, hosts.subagents));
 const subagentFiles = new Set(subagents.map((subagent) => subagent.file));
 const agentsRoot = subagentsTargetRoot(home);
+mkdirSync(agentsRoot, { recursive: true });
 for (const subagent of subagents) linkOwned(resolve(subagentsRoot, subagent.file), resolve(agentsRoot, subagent.file));
 for (const name of readdirSync(agentsRoot)) {
   const candidate = resolve(agentsRoot, name);
@@ -210,6 +238,12 @@ for (const name of readdirSync(agentsRoot)) {
     rmSync(candidate);
     console.log(`Removed retired Slop(e)style subagent link: ${candidate}`);
   }
+}
+
+if (migrateDatadog) {
+  assert(exactLegacyDatadog(datadogLegacy), `Legacy Datadog changed during install: ${datadogLegacy}`);
+  backupTarget(datadogLegacy);
+  console.log("Backed up the exact legacy Datadog skill outside the skills directories.");
 }
 
 const schedulerInstalled = process.platform === "linux"
