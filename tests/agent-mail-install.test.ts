@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { AGENT_MAIL_COMMIT, loadMachinePolicy, planAgentMail, type CommandRunner, type RunOptions } from "../scripts/lib/agent-mail-install.ts";
@@ -18,7 +18,10 @@ function fixture() {
   mkdirSync(resolve(upstreamRoot, "dist"), { recursive: true });
   writeFileSync(resolve(upstreamRoot, "dist/cli.js"), "");
   writeFileSync(resolve(upstreamRoot, "dist/unread.js"), "");
-  const bunPath = "/test/bin/bun";
+  const bunPath = resolve(home, ".bun/bin/bun");
+  mkdirSync(dirname(bunPath), { recursive: true });
+  writeFileSync(bunPath, "#!/bin/sh\n");
+  chmodSync(bunPath, 0o755);
   const wrapper = resolve(runtimeRoot, "scripts/agent-mail.ts");
   const upstream = resolve(upstreamRoot, "dist/cli.js");
   const args = [wrapper, "--upstream", upstream];
@@ -80,8 +83,16 @@ describe("machine policy", () => {
 });
 
 describe("agent-mail install plan", () => {
+  test("should adopt the stable home Bun registration regardless of the ambient Bun executable", async () => {
+    const f = fixture(); installState(f);
+    const calls: { command: string; args: string[]; options: RunOptions }[] = [];
+    const plan = planAgentMail({ home: f.home, runtimeRoot: f.runtimeRoot, policy: { agentMail: ["darwin:test"] }, machineId: "darwin:test", run: runner(f, calls) });
+    await plan.check();
+  });
+
   test("should do nothing when policy is off and no owned state exists", async () => {
     const f = fixture(); const calls: { command: string; args: string[]; options: RunOptions }[] = [];
+    rmSync(f.bunPath);
     const plan = planAgentMail({ ...f, policy: { agentMail: [] }, machineId: "linux:other", run: runner(f, calls) });
     await plan.preflight(); await plan.check(); await plan.apply();
     expect(plan.enabled).toBe(false); expect(calls).toEqual([]);
@@ -126,6 +137,20 @@ describe("agent-mail install plan", () => {
     write(resolve(f.upstreamRoot, "dist/unread.js"), "");
     plan = planAgentMail({ ...f, policy: { agentMail: ["darwin:test"] }, machineId: "darwin:test", run: () => ({ exitCode: 0, stdout: "wrong\n" }) });
     await expect(plan.preflight()).rejects.toThrow("not pinned");
+  });
+
+  test("should require executable home Bun on enabled machines before mutations", async () => {
+    const f = fixture(); const calls: { command: string; args: string[]; options: RunOptions }[] = [];
+    rmSync(f.bunPath);
+    let plan = planAgentMail({ ...f, policy: { agentMail: ["darwin:test"] }, machineId: "darwin:test", run: runner(f, calls) });
+    await expect(plan.apply()).rejects.toThrow(`Agent-mail requires executable Bun at ${f.bunPath}. Install Bun there.`);
+    expect(calls).toEqual([]);
+
+    write(f.bunPath, "#!/bin/sh\n");
+    chmodSync(f.bunPath, 0o644);
+    plan = planAgentMail({ ...f, policy: { agentMail: ["darwin:test"] }, machineId: "darwin:test", run: runner(f, calls) });
+    await expect(plan.apply()).rejects.toThrow(`Agent-mail requires executable Bun at ${f.bunPath}. Install Bun there.`);
+    expect(calls).toEqual([]);
   });
 
   test("should reject invalid registrations and hook conflicts before writes", async () => {
