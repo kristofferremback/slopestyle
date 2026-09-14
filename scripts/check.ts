@@ -16,6 +16,7 @@ import {
   type Target,
 } from "./lib/core.ts";
 import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
+import { currentMachineId, loadMachinePolicy, planAgentMail } from "./lib/agent-mail-install.ts";
 
 const args = process.argv.slice(2);
 const installed = args.length === 1 && args[0] === "--installed";
@@ -37,6 +38,7 @@ for (const pattern of ["scripts/**/*.ts", "tests/**/*.ts"]) {
 }
 
 const entryPoints = [
+  "scripts/agent-mail.ts",
   "scripts/check.ts",
   "scripts/install.ts",
   "scripts/ports.ts",
@@ -58,6 +60,7 @@ for (const relative of ["scripts/check.sh", "scripts/install.sh", "scripts/sched
   assert(Bun.spawnSync(["sh", "-n", path], { stdout: "ignore", stderr: "ignore" }).success, `Compatibility wrapper has invalid shell syntax: ${path}`);
 }
 
+const machinePolicy = loadMachinePolicy(repoRoot);
 const manifest = loadManifest();
 assert(manifest.schemaVersion === 1, "skills/manifest.json must use schemaVersion 1");
 
@@ -145,6 +148,7 @@ console.log(`Validated ${expectedDirectories.size} local skills and ${manifest.e
 console.log("SKILL.md: OK");
 
 if (installed) {
+  await planAgentMail({ home, runtimeRoot: repoRoot, policy: machinePolicy, machineId: currentMachineId() }).check();
   const checkLink = (target: string, source: string): void => {
     assert(isSymlink(target), `Expected installed symlink: ${target}`);
     assert(resolvedPath(target) === resolvedPath(source), `Wrong installed target: ${target}`);

@@ -18,6 +18,7 @@ import {
   type Target,
 } from "./lib/core.ts";
 import { serviceInstalled } from "./lib/usage/service.ts";
+import { currentMachineId, loadMachinePolicy, planAgentMail } from "./lib/agent-mail-install.ts";
 import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
 
 const args = process.argv.slice(2);
@@ -61,6 +62,9 @@ if (mode === "install") {
 }
 
 const manifest = loadManifest();
+const machineId = currentMachineId();
+const mailPlan = planAgentMail({ home, runtimeRoot, policy: loadMachinePolicy(repoRoot), machineId });
+await mailPlan.preflight();
 const legacyThrea = [
   resolve(home, ".pi/agent/skills/threa-cli"),
   resolve(home, ".claude/skills/threa-cli"),
@@ -211,6 +215,10 @@ for (const name of readdirSync(agentsRoot)) {
     console.log(`Removed retired Slop(e)style subagent link: ${candidate}`);
   }
 }
+
+await mailPlan.apply();
+console.log(`Agent-mail ${mailPlan.enabled ? "enabled" : "disabled"} by machines.json for ${machineId}.`);
+if (mailPlan.enabled) console.log("Review new or changed Codex hooks with /hooks, then restart provider sessions to load agent-mail.");
 
 const schedulerInstalled = process.platform === "linux"
   ? existsSync(resolve(home, ".config/systemd/user/slopestyle-sync.service")) || existsSync(resolve(home, ".config/systemd/user/slopestyle-sync.timer"))

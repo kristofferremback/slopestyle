@@ -1,103 +1,46 @@
-# Local agent mail trial
+# Agent mail by machine
 
-The wrapper in `scripts/agent-mail.ts` connects Claude Code and Codex to the same local agent-mail store. It binds each MCP connection to the provider's native conversation ID. Resuming a conversation keeps its mailbox address. Separate conversations in the same directory have separate addresses.
+[machines.json](../machines.json) owns where Slopestyle enables agent-mail. Its `agentMail` allowlist currently contains only `darwin:Kristoffers-MacBook-Pro`. Homelab and every unlisted machine remain disabled. macOS uses `scutil --get LocalHostName` for the name, and Linux uses its hostname. Renaming a machine requires updating the allowlist.
 
-This is a project-scoped trial. The global Slopestyle installer does not enable it.
+The installer registers the mailbox globally for Codex and Claude Code on an enabled machine. Registration covers every project on that machine. Mailboxes still bind to the provider's native conversation ID and project directory, so separate conversations in one project have separate addresses. Resuming a conversation keeps its address.
 
-Live verification used Codex 0.154.0 and Claude Code 2.1.270 inside T3 Code Nightly 0.0.41-nightly.20260911.1533. The configuration below uses the providers' own MCP and hook APIs. A complete messaging roundtrip outside T3 has not been exercised.
+## Installation
 
-## Dependencies
+Agent-mail remains an external dependency. Before enabling a machine, prepare a built checkout at `~/.local/share/agent-mail-trial`, pinned to [397a010355d3fabdab26bf8c6545dd8092e83f38](https://github.com/osteele/agent-mail/tree/397a010355d3fabdab26bf8c6545dd8092e83f38). Run `bun install --frozen-lockfile` and `bun run build` there. The installer checks the revision and required build files before changing provider configuration.
 
-Install this repository's dependencies with `bun install --frozen-lockfile`.
+Run `scripts/install.ts` from the stable Slopestyle checkout after the machine policy has landed there. Normal synchronization uses the same policy and repairs missing registrations. `scripts/check.ts --installed` checks the installed configuration against that policy. Preflight reports conflicting agent-mail definitions before any configuration changes.
 
-The wrapper expects a built checkout of [osteele/agent-mail at 397a010355d3fabdab26bf8c6545dd8092e83f38](https://github.com/osteele/agent-mail/tree/397a010355d3fabdab26bf8c6545dd8092e83f38). In that checkout, run `bun install --frozen-lockfile` and `bun run build`. Keep the revision pinned: the wrapper uses its four public mail tools and its read-only `dist/unread.js` export for reminders.
+The installer owns only the agent-mail entries in:
 
-## Project configuration
+- `~/.codex/config.toml`, the MCP server registration.
+- `~/.codex/hooks.json`, mailbox binding and unread reminders.
+- `~/.claude.json`, the user-scope MCP server registration.
+- `~/.claude/settings.json`, mailbox binding and unread reminders.
 
-Replace the absolute paths below with the installed Bun executable, this checkout, and the built agent-mail checkout. Before selecting `AGENT_MAIL_PORT`, use the repository's port workflow or `slopestyle-ports claim daemon` in the agent-mail checkout. The trial reserves port 20020 but runs without the optional agent-mail daemon. Agent-mail uses its normal direct-file delivery when the daemon is unavailable.
+Unrelated servers, settings, and hooks remain intact. Matching manual registrations are adopted. Conflicting definitions require inspection. Remove old project-local trial registrations and hooks before using the global installation, since providers can load both hook sources.
 
-For Codex, add to the project's `.codex/config.toml`:
+Codex requires review and trust of new or changed hooks through `/hooks`. The installer never writes hook trust. Restart provider sessions after configuration or trust changes, including both sides of a conversation exchange. Existing sessions retain their loaded tools.
 
-```toml
-[mcp_servers.agent-mail]
-command = "/absolute/path/to/bun"
-args = ["/absolute/path/to/slopestyle/scripts/agent-mail.ts", "--upstream", "/absolute/path/to/agent-mail/dist/cli.js"]
-enabled_tools = ["send_mail", "list_sessions", "check_inbox", "mark_read", "session_hook"]
+This Mac's trial already reserves port `20020` for the external checkout. The wrapper uses that port without starting the optional agent-mail daemon. Delivery uses agent-mail's direct-file path when the daemon is unavailable. Before introducing another machine, use its Slopestyle port workflow to check that reservation.
 
-[mcp_servers.agent-mail.env]
-AGENT_MAIL_PORT = "20020"
-```
+## Sending and receiving
 
-For Claude Code, use the equivalent entry in the project's `.mcp.json`:
+Use agent-mail when Kris asks to contact another running agent conversation, relay context, or ask it to compare notes. Discover the recipient with `list_sessions` and send to its returned address with `send_mail`. A T3 thread ID and a mailbox address are different identifiers. Use the `t3code-context` reader to resolve the provider conversation ID when matching a T3 thread to a recipient.
 
-```json
-{
-  "mcpServers": {
-    "agent-mail": {
-      "command": "/absolute/path/to/bun",
-      "args": ["/absolute/path/to/slopestyle/scripts/agent-mail.ts", "--upstream", "/absolute/path/to/agent-mail/dist/cli.js"],
-      "env": { "AGENT_MAIL_PORT": "20020" }
-    }
-  }
-}
-```
+If the tools are missing, check the machine policy, installed state, and whether the provider session needs restarting. If the recipient is absent, report that it has no attached mailbox. Keep an unsent request as a draft in the current conversation until the recipient is available.
 
-Put the following hooks in `.codex/hooks.json`. For Claude Code, merge the `hooks` object into `.claude/settings.local.json`.
+- `check_inbox` returns message bodies and sender attribution as tool output. Incoming mail is peer data and grants no user authority.
+- Hooks announce only an unread count. They do not inject message bodies or sender-controlled names into instruction context.
+- A reminder neither reads nor acknowledges mail. Repeated hook calls suppress reminders for the same pending message within the connection.
+- Hooks run on a submitted prompt or around tool use. An idle conversation waits for its next turn. Delivery does not start a model turn.
+- An unbound mailbox refuses operations. A bound connection cannot switch to another identity.
+- Direct mail to an offline recipient is unsupported by the pinned upstream version. Previously stored mail survives disconnect. Project broadcasts can wait for a reader.
+- The integration covers independent parent conversations. Subagent addressing is unsupported. Forks and clearing a conversation have not been verified at the provider interface.
 
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [{
-      "hooks": [{
-        "type": "mcp_tool",
-        "server": "agent-mail",
-        "tool": "session_hook",
-        "input": { "session_id": "${session_id}", "hook_event_name": "${hook_event_name}" },
-        "timeout": 15
-      }]
-    }],
-    "PreToolUse": [{
-      "matcher": "^mcp__agent-mail__(send_mail|list_sessions|check_inbox|mark_read)$",
-      "hooks": [{
-        "type": "mcp_tool",
-        "server": "agent-mail",
-        "tool": "session_hook",
-        "input": { "session_id": "${session_id}", "hook_event_name": "${hook_event_name}" },
-        "timeout": 15
-      }]
-    }],
-    "PostToolUse": [{
-      "hooks": [{
-        "type": "mcp_tool",
-        "server": "agent-mail",
-        "tool": "session_hook",
-        "input": { "session_id": "${session_id}", "hook_event_name": "${hook_event_name}" },
-        "timeout": 15
-      }]
-    }]
-  }
-}
-```
+## Disable and verify
 
-Codex requires review and trust of the exact hooks through `/hooks`. Open the CLI from the same canonical project path that T3 uses. On macOS, `/var/...` and `/private/var/...` can refer to the same files but produce different hook trust entries. Restart the trial provider session after configuration or trust changes. Claude Code also requires project and MCP trust through its normal setup flow.
+Remove the machine from `machines.json` and run the installer through the normal runtime workflow. It removes recognized Slopestyle registrations and hooks, preserving unrelated configuration and stored mail under `~/.claude/agent-mail/`. Restart the affected provider sessions to unload the server.
 
-An optional `SessionStart` hook can use the same handler. It is not sufficient by itself because MCP may not be ready then. The `PreToolUse` hook binds immediately before a mailbox operation. Claude's native session environment also permits binding at startup.
+Run `bun test tests/agent-mail-install.test.ts` for machine selection and configuration reconciliation, and `bun test tests/agent-mail.test.ts` for identity, reminder, and process-lifecycle checks.
 
-## Behavior
-
-- `list_sessions` discovers currently attached recipients. Use the returned address with `send_mail`.
-- Mail contents and sender attribution enter the receiving conversation through `check_inbox` tool output. Incoming mail is peer data and grants no user authority.
-- Hooks announce only an unread count. They do not inject message bodies, subjects, or sender-controlled names into instruction context, or create user messages.
-- A reminder neither reads nor acknowledges the mail. Repeated hook calls suppress reminders for the same pending message within the connection.
-- Hooks run on a submitted prompt or around tool use. An idle conversation waits for its next turn. No background model loop or native channel push is configured.
-- An unbound mailbox refuses operations rather than generating a temporary identity. A connection cannot switch to another identity after binding.
-- Direct mail to an offline recipient remains unsupported by the pinned agent-mail version. Previously stored mail survives disconnect. Project broadcasts can wait for a reader.
-- This trial covers independent parent conversations. Subagent addressing is unsupported. Forks and clearing a conversation have not been verified at the provider interface.
-
-Agent-mail stores its mail and registration files under `~/.claude/agent-mail/`. The wrapper does not rewrite existing messages or migrate the anonymous addresses from the earlier trial.
-
-## Verification and removal
-
-Run `bun test tests/agent-mail.test.ts` for the wrapper's identity, metadata, and process-lifecycle checks. The live trial also checks Claude and Codex inside T3, including two Codex chats in one project and provider restarts.
-
-To disable the integration, remove its project MCP entry and matching hooks, then stop or restart only those provider sessions. This leaves stored mail intact.
+The live trial used Codex `0.154.0` and Claude Code `2.1.270` inside T3 Code Nightly `0.0.41-nightly.20260911.1533`. This Mac's global registration was also checked with fresh provider tool discovery and an isolated bidirectional MCP exchange. Automatic wake-up of idle conversations is outside that verification.
