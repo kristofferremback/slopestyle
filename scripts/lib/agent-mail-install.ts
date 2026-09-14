@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { hostname as osHostname } from "node:os";
 import { dirname, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -149,14 +149,15 @@ function registrationState(actual: unknown, expected: JsonObject, provider: stri
   throw new Error(`Conflicting ${provider} agent-mail definition`);
 }
 
-export function planAgentMail({ home, runtimeRoot, policy, machineId, bunPath = Bun.which("bun") ?? process.execPath, run }: {
-  home: string; runtimeRoot: string; policy: MachinePolicy; machineId: string; bunPath?: string; run?: CommandRunner;
+export function planAgentMail({ home, runtimeRoot, policy, machineId, run }: {
+  home: string; runtimeRoot: string; policy: MachinePolicy; machineId: string; run?: CommandRunner;
 }): AgentMailPlan {
   assertPolicy(policy);
   const enabled = policy.agentMail.includes(machineId);
   const agentMailRoot = resolve(home, ".local/share/agent-mail-trial");
   const upstream = resolve(agentMailRoot, "dist/cli.js");
   const wrapper = resolve(runtimeRoot, "scripts/agent-mail.ts");
+  const bunPath = resolve(home, ".bun/bin/bun");
   const commandArgs = [wrapper, "--upstream", upstream];
   const environment = { AGENT_MAIL_PORT };
   const codexConfig = resolve(home, ".codex/config.toml");
@@ -178,6 +179,8 @@ export function planAgentMail({ home, runtimeRoot, policy, machineId, bunPath = 
   });
   const validateDependency = async (): Promise<void> => {
     if (!enabled) return;
+    try { accessSync(bunPath, constants.X_OK); }
+    catch { throw new Error(`Agent-mail requires executable Bun at ${bunPath}. Install Bun there.`); }
     if (!existsSync(wrapper)) throw new Error(`Missing agent-mail wrapper: ${wrapper}`);
     if (!existsSync(upstream) || !existsSync(resolve(agentMailRoot, "dist/unread.js"))) throw new Error(`Missing built agent-mail checkout: ${agentMailRoot}`);
     const revision = await runner("git", ["rev-parse", "HEAD"], runOptions(agentMailRoot));

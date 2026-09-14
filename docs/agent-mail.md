@@ -6,7 +6,9 @@ The installer registers the mailbox globally for Codex and Claude Code on an ena
 
 ## Installation
 
-Agent-mail remains an external dependency. Before enabling a machine, prepare a built checkout at `~/.local/share/agent-mail-trial`, pinned to [397a010355d3fabdab26bf8c6545dd8092e83f38](https://github.com/osteele/agent-mail/tree/397a010355d3fabdab26bf8c6545dd8092e83f38). Run `bun install --frozen-lockfile` and `bun run build` there. The installer checks the revision and required build files before changing provider configuration.
+Agent-mail remains an external dependency. Before enabling a machine, install Bun as an executable at `~/.bun/bin/bun`. The global MCP registration always uses that path so synchronization and provider background processes agree on the mailbox command. The current interpreter and `PATH` do not choose it.
+
+Prepare a built checkout at `~/.local/share/agent-mail-trial`, pinned to [397a010355d3fabdab26bf8c6545dd8092e83f38](https://github.com/osteele/agent-mail/tree/397a010355d3fabdab26bf8c6545dd8092e83f38). Run `bun install --frozen-lockfile` and `bun run build` there. The installer checks the Bun executable, revision, and required build files before changing provider configuration.
 
 Run `scripts/install.ts` from the stable Slopestyle checkout after the machine policy has landed there. Normal synchronization uses the same policy and repairs missing registrations. `scripts/check.ts --installed` checks the installed configuration against that policy. Preflight reports conflicting agent-mail definitions before any configuration changes.
 
