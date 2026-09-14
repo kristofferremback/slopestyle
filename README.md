@@ -141,6 +141,7 @@ Repository layout:
 - `agents/`: shared global guidance loaded by Pi, Claude Code, and Codex
 - `skills/`: canonical Slop(e)style skills and their target manifest
 - `subagents/`: generated Claude Code subagent definitions, one per model and effort
+- `machines.json`: machine allowlist for global agent-mail registration
 - `scripts/install.ts`: safe runtime installation
 - `scripts/sync.ts`: validated fast-forward synchronization
 - `scripts/schedule-sync.ts`: Linux and macOS scheduler management
@@ -166,4 +167,4 @@ Unmodified vendor skills remain external dependencies. Patched skills live here 
 
 ## Local agent mail
 
-The project-scoped [agent mail trial](docs/agent-mail.md) connects Claude Code and Codex conversations through a local MCP mailbox, with persistent session addresses and inbox reminders. It is configured separately from the global installer.
+[Agent mail](docs/agent-mail.md) connects Claude Code and Codex conversations through a local MCP mailbox, with persistent session addresses and inbox reminders. The installer registers it globally only on machines enabled in [machines.json](machines.json). The current allowlist enables Kris's MacBook Pro and leaves homelab disabled. The repository owns that decision. No machine-local opt-in flag is needed.
