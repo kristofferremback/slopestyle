@@ -163,3 +163,7 @@ bun test
 GitHub Actions runs the same commands on Linux and macOS. Run `./scripts/check.ts --installed` from the stable runtime when checking active installation.
 
 Unmodified vendor skills remain external dependencies. Patched skills live here as managed local forks with pinned provenance and a `PATCH.md` explaining every intentional delta. Seer stays a small pointer to its hosted skill.
+
+## Local agent mail
+
+The project-scoped [agent mail trial](docs/agent-mail.md) connects Claude Code and Codex conversations through a local MCP mailbox, with persistent session addresses and inbox reminders. It is configured separately from the global installer.
