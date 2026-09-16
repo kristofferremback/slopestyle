@@ -7,7 +7,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "slopestyle",
@@ -19,7 +20,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/blast-radius",
@@ -31,7 +33,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "slopestyle",
@@ -43,7 +46,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "Python 3",
@@ -59,7 +63,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "https://github.com/mattpocock/skills/tree/main/skills/engineering/diagnosing-bugs",
@@ -71,7 +76,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "explicit developer approval",
@@ -86,7 +92,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "slopestyle",
@@ -98,7 +105,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling",
@@ -110,7 +118,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "slopestyle",
@@ -122,7 +131,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/how",
@@ -134,7 +144,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "repository migration tooling"
@@ -148,7 +159,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "repository production signals and runbook"
@@ -162,7 +174,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "https://github.com/mattpocock/skills/tree/main/skills/engineering/prototype",
@@ -174,7 +187,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "slopestyle",
@@ -186,7 +200,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "access to relevant local transcripts and shared records"
@@ -200,7 +215,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "access to the active transcript"
@@ -214,7 +230,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "slopestyle",
@@ -226,7 +243,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "network access to https://seer.build/skill.md"
@@ -240,7 +258,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "GitHub access",
@@ -255,7 +274,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "git"
@@ -269,7 +289,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "slopestyle",
@@ -281,7 +302,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "slopshare CLI",
@@ -296,7 +318,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "git",
@@ -311,7 +334,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "Python 3 with sqlite3",
@@ -326,7 +350,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "slopestyle",
@@ -354,7 +379,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/unslop",
@@ -367,7 +393,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [
         "access to relevant primary records"
@@ -381,7 +408,8 @@
       "targets": [
         "pi",
         "claude-code",
-        "codex"
+        "codex",
+        "hermes"
       ],
       "requires": [],
       "source": "https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-for-agents",

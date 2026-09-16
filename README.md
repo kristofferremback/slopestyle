@@ -6,7 +6,7 @@ Kris's cross-machine collaboration contract and reusable skills for coding agent
 
 Each machine uses two separate checkouts:
 
-- `~/.local/share/slopestyle` is the stable runtime. It stays on `main` and backs the installed Pi, Claude Code, and Codex symlinks.
+- `~/.local/share/slopestyle` is the stable runtime. It stays on `main` and backs the installed Pi, Claude Code, Codex, and Hermes Agent symlinks.
 - A checkout under `~/dev/` is for branches, commits, and pull requests. Development branches never change active agent guidance.
 
 The installer and synchronizer refuse to run from a development checkout. Automation requires the Bun version in `.bun-version` or a newer compatible release on every machine. Thin `.sh` wrappers remain only so machines running the previous scheduler can hand off to the TypeScript entry points.
@@ -70,7 +70,7 @@ Remove the scheduler without removing guidance or the checkout:
 ./scripts/schedule-sync.ts uninstall
 ```
 
-Start fresh Pi, Claude Code, and Codex sessions after an update. Existing sessions retain the guidance loaded at startup.
+Start fresh Pi, Claude Code, Codex, and Hermes Agent sessions after an update. Existing sessions retain the guidance loaded at startup.
 
 ## Host selection
 
@@ -183,9 +183,9 @@ cd "$HOME/dev/slopestyle"
 
 Repository layout:
 
-- `agents/`: shared global guidance loaded by Pi, Claude Code, and Codex
+- `agents/`: shared global guidance loaded by Pi, Claude Code, and Codex. Hermes Agent gets skills only, so its `SOUL.md` stays its own.
 - `hosts.json`: registered machines and restrictions for managed skills and subagents
-- `skills/`: canonical Slop(e)style skills and their target manifest
+- `skills/`: canonical Slop(e)style skills and their target manifest. Hermes Agent skills install under `$HERMES_HOME/skills`, or `~/.hermes/skills` when `HERMES_HOME` is unset.
 - `subagents/`: generated Claude Code subagent definitions, one per model and effort
 - `machines.json`: machine allowlist for global agent-mail registration
 - `scripts/install.ts`: safe runtime installation

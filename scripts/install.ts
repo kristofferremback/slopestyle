@@ -15,6 +15,7 @@ import {
   sha256File,
   stableRoot,
   targetRoot,
+  targets,
   type Target,
 } from "./lib/core.ts";
 import { serviceInstalled } from "./lib/usage/service.ts";
@@ -207,11 +208,7 @@ linkOwned(resolve(repoRoot, "scripts/usage.ts"), resolve(binRoot(home), "slopest
 runOrThrow([process.execPath, "install", "--frozen-lockfile"], { cwd: repoRoot });
 console.log("Installed pinned dependencies.");
 
-const expected = new Map<Target, Set<string>>([
-  ["pi", new Set()],
-  ["claude-code", new Set()],
-  ["codex", new Set()],
-]);
+const expected = new Map<Target, Set<string>>(targets.map((target) => [target, new Set()]));
 for (const skill of manifest.skills) {
   if (!selected(skill.name, selectedHost, hosts.skills)) continue;
   for (const target of skill.targets) {
@@ -266,4 +263,4 @@ if (serviceInstalled(home)) {
   runOrThrow([process.execPath, resolve(repoRoot, "scripts/usage.ts"), "service", "refresh"]);
 }
 
-console.log("Slop(e)style installation complete. Start fresh Pi, Claude Code, and Codex sessions to load it.");
+console.log("Slop(e)style installation complete. Start fresh Pi, Claude Code, Codex, and Hermes Agent sessions to load it.");

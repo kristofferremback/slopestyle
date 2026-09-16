@@ -16,7 +16,8 @@ import { dirname, resolve } from "node:path";
 export const repoRoot = realpathSync(resolve(import.meta.dir, "../.."));
 export const manifestPath = resolve(repoRoot, "skills/manifest.json");
 
-export type Target = "pi" | "claude-code" | "codex";
+export const targets = ["pi", "claude-code", "codex", "hermes"] as const;
+export type Target = (typeof targets)[number];
 export type Provenance = "original" | "adapted" | "forked" | "pointer" | "synchronized";
 
 export interface SkillEntry {
@@ -63,7 +64,7 @@ export function stateRoot(home: string): string {
   return homePath(home, ".local/state/slopestyle");
 }
 
-export function targetRoot(home: string, target: Target): string {
+export function targetRoot(home: string, target: Target, hermesHome = process.env.HERMES_HOME): string {
   switch (target) {
     case "pi":
       return homePath(home, ".pi/agent/skills");
@@ -71,6 +72,8 @@ export function targetRoot(home: string, target: Target): string {
       return homePath(home, ".claude/skills");
     case "codex":
       return homePath(home, ".agents/skills");
+    case "hermes":
+      return hermesHome ? resolve(hermesHome, "skills") : homePath(home, ".hermes/skills");
   }
 }
 

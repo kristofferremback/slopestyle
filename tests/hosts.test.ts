@@ -9,7 +9,9 @@ const scratch = realpathSync(mkdtempSync(resolve(tmpdir(), "slopestyle-hosts-tes
 interface Result { exitCode: number; stdout: string; stderr: string }
 
 function execute(command: string[], home: string): Result {
-  const result = Bun.spawnSync(command, { env: { ...process.env, HOME: home }, stdout: "pipe", stderr: "pipe" });
+  const env: Record<string, string | undefined> = { ...process.env, HOME: home };
+  delete env.HERMES_HOME;
+  const result = Bun.spawnSync(command, { env, stdout: "pipe", stderr: "pipe" });
   return { exitCode: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
 }
 
@@ -77,7 +79,7 @@ test("should install each host and reconcile managed links after a pin change", 
   writeFileSync(resolve(home, ".claude/agents/unrelated.md"), "keep\n");
   pin(home, "homelab");
   expect(succeeds([resolve(runtime, "scripts/install.ts")], home).stdout).toContain("Selected host: homelab");
-  for (const root of [".pi/agent/skills", ".claude/skills", ".agents/skills"]) expect(existsSync(resolve(home, root, "datadog"))).toBe(false);
+  for (const root of [".pi/agent/skills", ".claude/skills", ".agents/skills", ".hermes/skills"]) expect(existsSync(resolve(home, root, "datadog"))).toBe(false);
   expect(readFileSync(resolve(home, ".agents/skills/unrelated"), "utf8")).toBe("keep\n");
   expect(readFileSync(resolve(home, ".claude/agents/unrelated.md"), "utf8")).toBe("keep\n");
   succeeds([resolve(runtime, "scripts/check.ts"), "--installed"], home);

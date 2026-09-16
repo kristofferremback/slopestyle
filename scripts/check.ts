@@ -12,6 +12,7 @@ import {
   resolvedPath,
   sha256File,
   targetRoot,
+  targets,
   type Provenance,
   type Target,
 } from "./lib/core.ts";
@@ -71,7 +72,7 @@ validateManagedNames(hosts, manifest.skills.map((entry) => entry.name), subagent
 assert(manifest.schemaVersion === 1, "skills/manifest.json must use schemaVersion 1");
 
 const allowedProvenance = new Set<Provenance>(["original", "adapted", "forked", "pointer", "synchronized"]);
-const allowedTargets = new Set<Target>(["pi", "claude-code", "codex"]);
+const allowedTargets = new Set<Target>(targets);
 const names = new Set<string>();
 const expectedDirectories = new Set<string>();
 
@@ -172,11 +173,7 @@ if (installed) {
   checkLink(resolve(binRoot(home), "slopestyle-usage"), resolve(repoRoot, "scripts/usage.ts"));
   assert(existsSync(resolve(repoRoot, "node_modules/echarts/package.json")), "Missing installed dependencies; run bun install --frozen-lockfile in the runtime checkout.");
 
-  const expected = new Map<Target, Set<string>>([
-    ["pi", new Set()],
-    ["claude-code", new Set()],
-    ["codex", new Set()],
-  ]);
+  const expected = new Map<Target, Set<string>>(targets.map((target) => [target, new Set()]));
   for (const skill of manifest.skills) {
     if (!selected(skill.name, selectedHost!, hosts.skills)) continue;
     for (const target of skill.targets) {

@@ -22,16 +22,18 @@ interface Result {
 }
 
 function execute(command: string[], options: { cwd?: string; env?: Record<string, string> } = {}): Result {
+  const env: Record<string, string | undefined> = { ...process.env };
+  delete env.HERMES_HOME;
+  Object.assign(env, {
+    HOME: home,
+    PATH: `${fakeBin}:${process.env.PATH}`,
+    SLOPESTYLE_TEST_COMMAND_LOG: commandLog,
+    SLOPESTYLE_TEST_NOTIFY_LOG: notificationLog,
+    ...options.env,
+  });
   const result = Bun.spawnSync(command, {
     cwd: options.cwd,
-    env: {
-      ...process.env,
-      HOME: home,
-      PATH: `${fakeBin}:${process.env.PATH}`,
-      SLOPESTYLE_TEST_COMMAND_LOG: commandLog,
-      SLOPESTYLE_TEST_NOTIFY_LOG: notificationLog,
-      ...options.env,
-    },
+    env,
     stdout: "pipe",
     stderr: "pipe",
   });
