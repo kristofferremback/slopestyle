@@ -41,6 +41,7 @@ for (const pattern of ["scripts/**/*.ts", "tests/**/*.ts"]) {
 const entryPoints = [
   "scripts/agent-mail.ts",
   "scripts/check.ts",
+  "scripts/heavy-check.ts",
   "scripts/install.ts",
   "scripts/ports.ts",
   "scripts/schedule-sync.ts",
@@ -165,6 +166,7 @@ if (installed) {
   checkLink(resolve(home, ".pi/agent/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/CLAUDE.md"), resolve(repoRoot, "agents/CLAUDE.md"));
+  checkLink(resolve(binRoot(home), "slopestyle-heavy"), resolve(repoRoot, "scripts/heavy-check.ts"));
   checkLink(resolve(home, ".codex/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(binRoot(home), "slopestyle-ports"), resolve(repoRoot, "scripts/ports.ts"));
   checkLink(resolve(binRoot(home), "slopestyle-usage"), resolve(repoRoot, "scripts/usage.ts"));

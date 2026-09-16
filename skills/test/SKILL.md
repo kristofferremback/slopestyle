@@ -20,6 +20,17 @@ Carry a compact evidence handoff: exact command, result, tested commit plus any 
 
 Read the referenced result and inspect the delta since its tested tree. Reuse a passing result when no relevant source, test, dependency, configuration, or environment changed; an unverifiable handoff requires rerunning the focused proof. Independently review claims and run focused probes for gaps or suspected defects; independence does not require repeating every check. After edits, rerun checks whose evidence the edits invalidate. Run checks against a stable tree, not files another pass is editing.
 
+## Coordinate the run
+
+The coordinating agent owns one verification plan across implementers, reviewers, worktrees, and commit hooks.
+
+- Give implementers only slice-local red and green checks. They return the exact commands and results.
+- Run each warranted integrated or broad local check once, after the relevant work has converged.
+- Treat repository-wide lint, typecheck, build, browser, end-to-end, and worker-pool commands as heavy. Run each through `$HOME/.local/bin/slopestyle-heavy -- COMMAND`. If the guard is unavailable, report it, inspect active processes, and wait until other heavy work finishes.
+- Use one worker for local browser and worker-pool checks. CI owns parallel execution.
+- When a hook starts heavy checks, run the initiating command through `$HOME/.local/bin/slopestyle-heavy` and let the hook own checks it already runs instead of pre-running them. Exit 75 means the guard timed out waiting for the reported owner, not that the check failed.
+- Stop background services and browsers started for verification when the check ends. Never disturb processes another worker owns.
+
 ## Run commands
 
 - Set test and typecheck timeouts with enough margin for a slow run to finish.

@@ -161,6 +161,17 @@ slopestyle-ports unserve frontend
 
 `serve` requires a listener bound to `127.0.0.1:PORT` exactly, since that is the address Tailscale proxies to, so a wildcard, IPv6-only, or `127.0.0.2` bind is refused. It leaves any route that is not the exact route for that service alone. `unserve` removes the port only when it carries the exclusive shape this CLI creates: one HTTPS entry with a single `/` handler proxying to `http://127.0.0.1:PORT`. Because `tailscale serve --https=PORT off` deletes the whole port, any extra path or host entry sharing it is reported and left untouched. Claim and show print the future Tailscale URL as reserved; it becomes live only after `serve`. Without the Tailscale CLI local allocation still works and these two commands fail with installation guidance. State lives in `~/.local/state/slopestyle/ports.sqlite`, and concurrent allocations serialize through a SQLite transaction. Run `slopestyle-ports --help` for the full contract.
 
+## Heavy local checks
+
+The installer links `slopestyle-heavy` into `~/.local/bin`. It holds a user-wide SQLite lock while the wrapped command runs, so agents and worktrees under the same account queue resource-heavy local checks instead of exhausting memory. If a wrapper crashes, its recorded workload keeps successors waiting until that workload exits. Catchable termination signals propagate to guarded commands and, for non-interactive runs, their process groups. Waiting exits with status 75 after 30 minutes by default.
+
+```bash
+"$HOME/.local/bin/slopestyle-heavy" -- bun test path/to/focused.test.ts
+"$HOME/.local/bin/slopestyle-heavy" --label "commit hooks" -- git commit -m "..."
+```
+
+Use the wrapper for repository-wide lint, typecheck, build, browser, end-to-end, and worker-pool commands. Nested wrapper calls reuse the active owner's token; inherited tokens stop bypassing the lock after their owner exits. CI remains responsible for full suites unless repository guidance or a named risk requires local proof.
+
 ## Development
 
 Use a separate checkout:
@@ -178,6 +189,7 @@ Repository layout:
 - `subagents/`: generated Claude Code subagent definitions, one per model and effort
 - `machines.json`: machine allowlist for global agent-mail registration
 - `scripts/install.ts`: safe runtime installation
+- `scripts/heavy-check.ts`: user-wide serialization for resource-heavy local commands
 - `scripts/sync.ts`: validated fast-forward synchronization
 - `scripts/schedule-sync.ts`: Linux and macOS scheduler management
 - `scripts/check.ts`: source and installed-state validation

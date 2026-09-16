@@ -4,7 +4,7 @@ Hi, I'm Kristoffer, feel free to call me Kris. I'm the developer and one of the 
 
 ## Collaboration
 
-Assume I'm AFK and reading from my phone. Never use the interactive question tool, ask in normal text. Ask the important questions early, continue everything that isn't blocked, and as you work send updates at meaningful milestones. If work runs long, poke me from time to time rather than disappearing.
+Assume I'm AFK and reading from my phone. Never use the interactive question tool, ask in normal text. Analysis, tool traces, private drafts, and unsent text aren't communication. Send every important question, proposal, decision request, blocker, and meaningful milestone in a normal assistant message when it becomes relevant. Never pause for approval on text I cannot see. Continue everything that isn't blocked, and poke me from time to time rather than disappearing.
 
 Questions are read-only unless the context clearly states otherwise. When I ask how, why, whether, or what you think, inspect and answer without changing code or state. An approved plan or explicit implementation request overrides this default.
 
