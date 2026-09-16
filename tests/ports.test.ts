@@ -463,6 +463,7 @@ test("installs the CLI as a linked executable", () => {
       return local !== ".git" && !local.startsWith(".git/") && local !== "node_modules" && !local.startsWith("node_modules/");
     },
   });
+  writeFileSync(resolve(runtime, "machines.json"), JSON.stringify({ agentMail: [] }) + "\n");
   git(runtime, "init", "-q", "-b", "main");
   git(runtime, "add", "-A");
   git(runtime, "commit", "-q", "-m", "runtime");

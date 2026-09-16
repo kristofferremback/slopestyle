@@ -176,6 +176,7 @@ Repository layout:
 - `hosts.json`: registered machines and restrictions for managed skills and subagents
 - `skills/`: canonical Slop(e)style skills and their target manifest
 - `subagents/`: generated Claude Code subagent definitions, one per model and effort
+- `machines.json`: machine allowlist for global agent-mail registration
 - `scripts/install.ts`: safe runtime installation
 - `scripts/sync.ts`: validated fast-forward synchronization
 - `scripts/schedule-sync.ts`: Linux and macOS scheduler management
@@ -198,3 +199,7 @@ bun test
 GitHub Actions runs the same commands on Linux and macOS. Run `./scripts/check.ts --installed` from the stable runtime when checking active installation.
 
 Unmodified vendor skills remain external dependencies. Patched skills live here as managed local forks with pinned provenance and a `PATCH.md` explaining every intentional delta. Seer stays a small pointer to its hosted skill.
+
+## Local agent mail
+
+[Agent mail](docs/agent-mail.md) connects Claude Code and Codex conversations through a local MCP mailbox, with persistent session addresses and inbox reminders. The installer registers it globally only on machines enabled in [machines.json](machines.json). The current allowlist enables Kris's MacBook Pro and leaves homelab disabled. The repository owns that decision. No machine-local opt-in flag is needed.

@@ -71,6 +71,8 @@ function copySource(destination: string): void {
       return local !== ".git" && !local.startsWith(".git/") && local !== "node_modules" && !local.startsWith("node_modules/");
     },
   });
+  // These sync fixtures exercise a machine without optional integrations.
+  writeFileSync(resolve(destination, "machines.json"), JSON.stringify({ agentMail: [] }) + "\n");
 }
 
 mkdirSync(fakeBin, { recursive: true });
@@ -97,6 +99,9 @@ test("synchronizes a stable runtime safely", () => {
   succeeds(["git", "clone", "-q", remote, runtime]);
 
   succeeds([resolve(runtime, "scripts/install.sh")]);
+  for (const path of [".codex/config.toml", ".codex/hooks.json", ".claude.json", ".claude/settings.json"]) {
+    expect(existsSync(resolve(home, path))).toBe(false);
+  }
   succeeds([resolve(runtime, "scripts/check.sh"), "--installed"]);
   expect(execute([resolve(runtime, "scripts/sync.sh")]).exitCode).toBe(0);
 
