@@ -276,6 +276,21 @@
       "provenance": "original"
     },
     {
+      "name": "slopshare",
+      "path": "skills/slopshare",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex"
+      ],
+      "requires": [
+        "slopshare CLI",
+        "Tailscale node allowed by the slopshare server"
+      ],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "sync-fork",
       "path": "skills/sync-fork",
       "targets": [
