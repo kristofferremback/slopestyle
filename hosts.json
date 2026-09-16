@@ -4,6 +4,6 @@
     "kristoffer-mbp-galdera": { "aliases": ["kristoffer-mbp-galdera.local", "Kristoffers-MacBook-Pro", "Kristoffers-MacBook-Pro.local", "Kristoffers-MBP"] },
     "homelab": { "aliases": [] }
   },
-  "skills": { "datadog": ["kristoffer-mbp-galdera"] },
+  "skills": { "datadog": ["kristoffer-mbp-galdera"], "slopshare": ["homelab"] },
   "subagents": {}
 }

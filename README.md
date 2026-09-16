@@ -98,7 +98,7 @@ The registry's `skills` and `subagents` maps restrict managed entries by name. A
 }
 ```
 
-This example shows the two restriction maps. The checked-in registry restricts only Datadog. Its `hosts` map defines machine IDs and their `aliases`. Unknown skill, subagent, or host names and ambiguous aliases fail validation.
+This example shows the two restriction maps. The checked-in registry restricts Datadog to the laptop and slopshare to homelab. Its `hosts` map defines machine IDs and their `aliases`. Unknown skill, subagent, or host names and ambiguous aliases fail validation.
 
 Installation, preflight, and `check.ts --installed` use the same host selection. Sync removes excluded Slopestyle symlinks and installs newly enabled entries. Unrelated local files, vendor skills, shared global guidance, and command-line tools remain outside these restrictions. Host selection controls discovery through managed installations, not filesystem access to skill sources.
 
