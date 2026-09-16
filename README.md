@@ -74,7 +74,7 @@ Start fresh Pi, Claude Code, and Codex sessions after an update. Existing sessio
 
 ## Host selection
 
-`hosts.json` registers `kristoffers-macbook-pro` and `homelab`, using their Tailscale node names as IDs. The installer matches the local OS hostname against those IDs and their aliases, ignoring case and a trailing dot. It does not contact Tailscale. The laptop's `Kristoffers-MacBook-Pro.local` alias covers its macOS hostname.
+`hosts.json` registers `kristoffer-mbp-galdera` and `homelab`, using stable machine IDs. The installer matches the local OS hostname against those IDs and their aliases, ignoring case and a trailing dot. It does not contact Tailscale. The laptop uses the static macOS hostname `kristoffer-mbp-galdera`. Its previous macOS names remain aliases so sync can install this configuration before the machine is renamed.
 
 To assign a machine explicitly, write a registered ID to `~/.config/slopestyle/host`:
 
@@ -90,7 +90,7 @@ The registry's `skills` and `subagents` maps restrict managed entries by name. A
 ```json
 {
   "skills": {
-    "datadog": ["kristoffers-macbook-pro"]
+    "datadog": ["kristoffer-mbp-galdera"]
   },
   "subagents": {
     "opus-high": ["homelab"]

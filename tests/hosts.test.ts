@@ -24,7 +24,7 @@ function pin(home: string, host: string): void {
   writeFileSync(resolve(home, ".config/slopestyle/host"), `${host}\n`);
 }
 
-function fixture(name: string, host = "kristoffers-macbook-pro"): { home: string; runtime: string } {
+function fixture(name: string, host = "kristoffer-mbp-galdera"): { home: string; runtime: string } {
   const home = resolve(scratch, name);
   const runtime = resolve(home, ".local/share/slopestyle");
   mkdirSync(runtime, { recursive: true });
@@ -57,19 +57,21 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 test("should resolve canonical pins and normalized hostnames", () => {
   const home = resolve(scratch, "resolver");
   const config = loadHosts(resolve(sourceRoot, "hosts.json"));
-  pin(home, "kristoffers-macbook-pro");
-  expect(resolveHost(home, config)).toBe("kristoffers-macbook-pro");
+  pin(home, "kristoffer-mbp-galdera");
+  expect(resolveHost(home, config)).toBe("kristoffer-mbp-galdera");
   rmSync(resolve(home, ".config/slopestyle/host"));
-  expect(resolveHost(home, config, "Kristoffers-MacBook-Pro.local.")).toBe("kristoffers-macbook-pro");
+  for (const hostname of ["kristoffer-mbp-galdera", "KRISTOFFER-MBP-GALDERA.local.", "Kristoffers-MacBook-Pro", "Kristoffers-MacBook-Pro.local.", "Kristoffers-MBP"]) {
+    expect(resolveHost(home, config, hostname)).toBe("kristoffer-mbp-galdera");
+  }
   expect(resolveHost(home, config, "HOMELAB.")).toBe("homelab");
   expect(selected("datadog", "homelab", config.skills)).toBe(false);
 });
 
 test("should install each host and reconcile managed links after a pin change", () => {
   const { home, runtime } = fixture("pin-switch");
-  expect(succeeds([resolve(runtime, "scripts/install.ts")], home).stdout).toContain("Selected host: kristoffers-macbook-pro");
+  expect(succeeds([resolve(runtime, "scripts/install.ts")], home).stdout).toContain("Selected host: kristoffer-mbp-galdera");
   expect(readlinkSync(resolve(home, ".agents/skills/datadog"))).toBe(resolve(runtime, "skills/datadog"));
-  expect(succeeds([resolve(runtime, "scripts/check.ts"), "--installed"], home).stdout).toContain("Selected host: kristoffers-macbook-pro");
+  expect(succeeds([resolve(runtime, "scripts/check.ts"), "--installed"], home).stdout).toContain("Selected host: kristoffer-mbp-galdera");
 
   writeFileSync(resolve(home, ".agents/skills/unrelated"), "keep\n");
   writeFileSync(resolve(home, ".claude/agents/unrelated.md"), "keep\n");
@@ -146,7 +148,7 @@ test("should scope preflight conflicts to entries enabled for the host", () => {
   mkdirSync(resolve(home, ".agents/skills/datadog"), { recursive: true });
   writeFileSync(resolve(home, ".agents/skills/datadog/local"), "foreign\n");
   succeeds([resolve(runtime, "scripts/install.ts"), "--preflight-for", runtime], home);
-  pin(home, "kristoffers-macbook-pro");
+  pin(home, "kristoffer-mbp-galdera");
   expect(execute([resolve(runtime, "scripts/install.ts"), "--preflight-for", runtime], home).exitCode).not.toBe(0);
   rmSync(resolve(home, ".agents/skills/datadog"), { recursive: true });
   mkdirSync(resolve(home, ".agents/skills/why"), { recursive: true });
@@ -181,7 +183,7 @@ test("should migrate only the exact legacy Datadog inventory", () => {
   succeeds([resolve(excluded.runtime, "scripts/check.ts"), "--installed"], excluded.home);
 
   for (const variant of ["changed", "extra", "empty-directory", "symlink"] as const) {
-    const current = fixture(`legacy-${variant}`, variant === "extra" ? "homelab" : "kristoffers-macbook-pro");
+    const current = fixture(`legacy-${variant}`, variant === "extra" ? "homelab" : "kristoffer-mbp-galdera");
     const legacy = resolve(current.home, ".codex/skills/datadog");
     originalDatadog(current.runtime, legacy);
     if (variant === "changed") writeFileSync(resolve(legacy, "SKILL.md"), "changed\n");

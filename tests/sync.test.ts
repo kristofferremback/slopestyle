@@ -85,7 +85,7 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 test("synchronizes a stable runtime safely", () => {
   mkdirSync(home, { recursive: true });
   mkdirSync(resolve(home, ".config/slopestyle"), { recursive: true });
-  writeFileSync(resolve(home, ".config/slopestyle/host"), "kristoffers-macbook-pro\n");
+  writeFileSync(resolve(home, ".config/slopestyle/host"), "kristoffer-mbp-galdera\n");
 
   succeeds(["git", "init", "-q", "--bare", remote]);
   succeeds(["git", "-C", remote, "symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -309,7 +309,7 @@ test("migrates the merged shell synchronizer and scheduler", () => {
   const migrationRuntime = resolve(migrationHome, ".local/share/slopestyle");
   mkdirSync(resolve(migrationHome, ".bun/bin"), { recursive: true });
   mkdirSync(resolve(migrationHome, ".config/slopestyle"), { recursive: true });
-  writeFileSync(resolve(migrationHome, ".config/slopestyle/host"), "kristoffers-macbook-pro\n");
+  writeFileSync(resolve(migrationHome, ".config/slopestyle/host"), "kristoffer-mbp-galdera\n");
   symlinkSync(process.execPath, resolve(migrationHome, ".bun/bin/bun"));
   const migrationEnv = { HOME: migrationHome, PATH: `${fakeBin}:/usr/bin:/bin` };
 
