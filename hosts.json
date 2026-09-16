@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "hosts": {
-    "kristoffers-macbook-pro": { "aliases": ["Kristoffers-MacBook-Pro.local"] },
+    "kristoffer-mbp-galdera": { "aliases": ["kristoffer-mbp-galdera.local", "Kristoffers-MacBook-Pro", "Kristoffers-MacBook-Pro.local", "Kristoffers-MBP"] },
     "homelab": { "aliases": [] }
   },
-  "skills": { "datadog": ["kristoffers-macbook-pro"] },
+  "skills": { "datadog": ["kristoffer-mbp-galdera"] },
   "subagents": {}
 }

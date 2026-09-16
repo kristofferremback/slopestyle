@@ -1,6 +1,6 @@
 # Agent mail by machine
 
-[machines.json](../machines.json) owns where Slopestyle enables agent-mail. Its `agentMail` allowlist currently contains only `darwin:Kristoffers-MacBook-Pro`. Homelab and every unlisted machine remain disabled. macOS uses `scutil --get LocalHostName` for the name, and Linux uses its hostname. Renaming a machine requires updating the allowlist.
+[machines.json](../machines.json) owns where Slopestyle enables agent-mail. Its `agentMail` allowlist contains `darwin:kristoffer-mbp-galdera` and its previous identity, `darwin:Kristoffers-MacBook-Pro`, so agent-mail stays enabled while the laptop is renamed. Homelab and every unlisted machine remain disabled. macOS uses `scutil --get LocalHostName` for the name, and Linux uses its hostname. Renaming a machine requires updating the allowlist.
 
 The installer registers the mailbox globally for Codex and Claude Code on an enabled machine. Registration covers every project on that machine. Mailboxes still bind to the provider's native conversation ID and project directory, so separate conversations in one project have separate addresses. Resuming a conversation keeps its address.
 
