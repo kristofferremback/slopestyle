@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameS
 import { basename, dirname, relative, resolve } from "node:path";
 import {
   assert,
+  binRoot,
   isSymlink,
   linkAtomic,
   loadManifest,
@@ -16,6 +17,9 @@ import {
   targetRoot,
   type Target,
 } from "./lib/core.ts";
+import { serviceInstalled } from "./lib/usage/service.ts";
+import { currentMachineId, loadMachinePolicy, planAgentMail } from "./lib/agent-mail-install.ts";
+import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
 
 const args = process.argv.slice(2);
 let replace = false;
@@ -58,8 +62,15 @@ if (mode === "install") {
 }
 
 const manifest = loadManifest();
-const heavyCheckTarget = resolve(home, ".local/bin/slopestyle-heavy");
-const legacyThrea = [resolve(home, ".pi/agent/skills/threa-cli"), resolve(home, ".claude/skills/threa-cli")];
+const heavyCheckTarget = resolve(binRoot(home), "slopestyle-heavy");
+const machineId = currentMachineId();
+const mailPlan = planAgentMail({ home, runtimeRoot, policy: loadMachinePolicy(repoRoot), machineId });
+await mailPlan.preflight();
+const legacyThrea = [
+  resolve(home, ".pi/agent/skills/threa-cli"),
+  resolve(home, ".claude/skills/threa-cli"),
+  resolve(home, ".agents/skills/threa-cli"),
+];
 for (const path of legacyThrea) {
   if (pathExists(path) && (mode === "preflight" || !replace)) {
     throw new Error(`Legacy skill ${path} conflicts with canonical threa. Review it before using --replace.`);
@@ -77,9 +88,13 @@ function isExactLegacyUnslop(target: string): boolean {
   return readdirSync(directory).sort().join("\n") === "SKILL.md" && sha256File(skillFile) === legacyUnslopHash;
 }
 
+function ownedPrefixes(root: string): string[] {
+  return [`${resolve(root, "skills")}/`, `${resolve(root, "subagents")}/`];
+}
+
 function canLink(source: string, target: string): void {
   if (isSymlink(target) && readlinkSync(target) === source) return;
-  if (isSymlink(target) && resolvedPath(target).startsWith(`${resolve(preflightRoot!, "skills")}/`)) return;
+  if (isSymlink(target) && ownedPrefixes(preflightRoot!).some((prefix) => resolvedPath(target).startsWith(prefix))) return;
   if (source === resolve(preflightRoot!, "skills/unslop") && isExactLegacyUnslop(target)) return;
   if (!pathExists(target)) return;
   if (existsSync(source) && existsSync(target) && statSync(source).isFile() && statSync(target).isFile() && readFileSync(source).equals(readFileSync(target))) return;
@@ -91,9 +106,13 @@ if (mode === "preflight") {
   canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
   canLink(resolve(preflightRoot!, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
   canLink(resolve(preflightRoot!, "scripts/heavy-check.ts"), heavyCheckTarget);
+  canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".codex/AGENTS.md"));
+  canLink(resolve(preflightRoot!, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
+  canLink(resolve(preflightRoot!, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
   for (const skill of manifest.skills) {
     for (const target of skill.targets) canLink(resolve(preflightRoot!, skill.path), resolve(targetRoot(home, target), skill.name));
   }
+  for (const subagent of subagentMatrix()) canLink(resolve(preflightRoot!, "subagents/claude-code", subagent.file), resolve(subagentsTargetRoot(home), subagent.file));
   console.log("Slop(e)style installation preflight passed.");
   process.exit(0);
 }
@@ -119,8 +138,8 @@ function linkOwned(source: string, target: string): void {
   }
   if (pathExists(target)) {
     const identicalFiles = existsSync(source) && existsSync(target) && statSync(source).isFile() && statSync(target).isFile() && readFileSync(source).equals(readFileSync(target));
-    const ownedSkill = isSymlink(target) && resolvedPath(target).startsWith(`${resolve(repoRoot, "skills")}/`);
-    if (!identicalFiles && !ownedSkill) {
+    const owned = isSymlink(target) && ownedPrefixes(repoRoot).some((prefix) => resolvedPath(target).startsWith(prefix));
+    if (!identicalFiles && !owned) {
       if (!replace) throw new Error(`Refusing to replace ${target}. Re-run with --replace after reviewing it.`);
       backupTarget(target);
     }
@@ -131,7 +150,11 @@ function linkOwned(source: string, target: string): void {
 
 for (const path of legacyThrea) if (pathExists(path)) backupTarget(path);
 
-for (const target of [resolve(home, ".pi/agent/skills/unslop"), resolve(home, ".claude/skills/unslop")]) {
+for (const target of [
+  resolve(home, ".pi/agent/skills/unslop"),
+  resolve(home, ".claude/skills/unslop"),
+  resolve(home, ".agents/skills/unslop"),
+]) {
   const source = resolve(repoRoot, "skills/unslop");
   if (isSymlink(target) && readlinkSync(target) === source) continue;
   if (isExactLegacyUnslop(target)) {
@@ -149,10 +172,19 @@ linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".pi/agent/AGENTS
 linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
 linkOwned(resolve(repoRoot, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
 linkOwned(resolve(repoRoot, "scripts/heavy-check.ts"), heavyCheckTarget);
+linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".codex/AGENTS.md"));
+linkOwned(resolve(repoRoot, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
+linkOwned(resolve(repoRoot, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
+
+// slopestyle-usage bundles its page from node_modules, so the runtime checkout
+// needs the pinned dependencies installed.
+runOrThrow([process.execPath, "install", "--frozen-lockfile"], { cwd: repoRoot });
+console.log("Installed pinned dependencies.");
 
 const expected = new Map<Target, Set<string>>([
   ["pi", new Set()],
   ["claude-code", new Set()],
+  ["codex", new Set()],
 ]);
 for (const skill of manifest.skills) {
   for (const target of skill.targets) {
@@ -175,11 +207,30 @@ for (const [target, names] of expected) {
   }
 }
 
+const subagents = subagentMatrix();
+const subagentFiles = new Set(subagents.map((subagent) => subagent.file));
+const agentsRoot = subagentsTargetRoot(home);
+for (const subagent of subagents) linkOwned(resolve(subagentsRoot, subagent.file), resolve(agentsRoot, subagent.file));
+for (const name of readdirSync(agentsRoot)) {
+  const candidate = resolve(agentsRoot, name);
+  if (isSymlink(candidate) && resolvedPath(candidate).startsWith(`${subagentsRoot}/`) && !subagentFiles.has(name)) {
+    rmSync(candidate);
+    console.log(`Removed retired Slop(e)style subagent link: ${candidate}`);
+  }
+}
+
+await mailPlan.apply();
+console.log(`Agent-mail ${mailPlan.enabled ? "enabled" : "disabled"} by machines.json for ${machineId}.`);
+if (mailPlan.enabled) console.log("Review new or changed Codex hooks with /hooks, then restart provider sessions to load agent-mail.");
+
 const schedulerInstalled = process.platform === "linux"
   ? existsSync(resolve(home, ".config/systemd/user/slopestyle-sync.service")) || existsSync(resolve(home, ".config/systemd/user/slopestyle-sync.timer"))
   : process.platform === "darwin" && existsSync(resolve(home, "Library/LaunchAgents/dev.slopestyle.sync.plist"));
 if (schedulerInstalled) {
   runOrThrow([process.execPath, resolve(repoRoot, "scripts/schedule-sync.ts"), "refresh"]);
 }
+if (serviceInstalled(home)) {
+  runOrThrow([process.execPath, resolve(repoRoot, "scripts/usage.ts"), "service", "refresh"]);
+}
 
-console.log("Slop(e)style installation complete. Start fresh Pi and Claude Code sessions to load it.");
+console.log("Slop(e)style installation complete. Start fresh Pi, Claude Code, and Codex sessions to load it.");

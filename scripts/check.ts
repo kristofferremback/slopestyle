@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "n
 import { dirname, resolve } from "node:path";
 import {
   assert,
+  binRoot,
   isSymlink,
   loadManifest,
   pathExists,
@@ -14,6 +15,8 @@ import {
   type Provenance,
   type Target,
 } from "./lib/core.ts";
+import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
+import { currentMachineId, loadMachinePolicy, planAgentMail } from "./lib/agent-mail-install.ts";
 
 const args = process.argv.slice(2);
 const installed = args.length === 1 && args[0] === "--installed";
@@ -35,11 +38,15 @@ for (const pattern of ["scripts/**/*.ts", "tests/**/*.ts"]) {
 }
 
 const entryPoints = [
+  "scripts/agent-mail.ts",
   "scripts/check.ts",
   "scripts/heavy-check.ts",
   "scripts/install.ts",
+  "scripts/ports.ts",
   "scripts/schedule-sync.ts",
+  "scripts/subagents.ts",
   "scripts/sync.ts",
+  "scripts/usage.ts",
 ];
 for (const relative of entryPoints) {
   const path = resolve(repoRoot, relative);
@@ -54,11 +61,12 @@ for (const relative of ["scripts/check.sh", "scripts/install.sh", "scripts/sched
   assert(Bun.spawnSync(["sh", "-n", path], { stdout: "ignore", stderr: "ignore" }).success, `Compatibility wrapper has invalid shell syntax: ${path}`);
 }
 
+const machinePolicy = loadMachinePolicy(repoRoot);
 const manifest = loadManifest();
 assert(manifest.schemaVersion === 1, "skills/manifest.json must use schemaVersion 1");
 
 const allowedProvenance = new Set<Provenance>(["original", "adapted", "forked", "pointer", "synchronized"]);
-const allowedTargets = new Set<Target>(["pi", "claude-code"]);
+const allowedTargets = new Set<Target>(["pi", "claude-code", "codex"]);
 const names = new Set<string>();
 const expectedDirectories = new Set<string>();
 
@@ -126,10 +134,22 @@ for (const external of manifest.external) {
 const writingDirectory = resolve(repoRoot, "skills/writing-for-agents");
 const expectedWritingHash = readFileSync(resolve(writingDirectory, "UPSTREAM.sha256"), "utf8").trim();
 assert(sha256File(resolve(writingDirectory, "SKILL.md")) === expectedWritingHash, "writing-for-agents/SKILL.md checksum mismatch");
+const subagents = subagentMatrix();
+for (const subagent of subagents) {
+  const path = resolve(subagentsRoot, subagent.file);
+  assert(existsSync(path) && readFileSync(path, "utf8") === subagent.content, `Generated subagent is stale; run scripts/subagents.ts: ${path}`);
+}
+const subagentFiles = new Set(subagents.map((subagent) => subagent.file));
+for (const file of readdirSync(subagentsRoot)) {
+  assert(!file.endsWith(".md") || subagentFiles.has(file), `Unlisted subagent file; run scripts/subagents.ts: ${resolve(subagentsRoot, file)}`);
+}
+console.log(`Validated ${subagents.length} generated Claude Code subagents.`);
+
 console.log(`Validated ${expectedDirectories.size} local skills and ${manifest.external.length} external skills.`);
 console.log("SKILL.md: OK");
 
 if (installed) {
+  await planAgentMail({ home, runtimeRoot: repoRoot, policy: machinePolicy, machineId: currentMachineId() }).check();
   const checkLink = (target: string, source: string): void => {
     assert(isSymlink(target), `Expected installed symlink: ${target}`);
     assert(resolvedPath(target) === resolvedPath(source), `Wrong installed target: ${target}`);
@@ -138,11 +158,16 @@ if (installed) {
   checkLink(resolve(home, ".pi/agent/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/CLAUDE.md"), resolve(repoRoot, "agents/CLAUDE.md"));
-  checkLink(resolve(home, ".local/bin/slopestyle-heavy"), resolve(repoRoot, "scripts/heavy-check.ts"));
+  checkLink(resolve(binRoot(home), "slopestyle-heavy"), resolve(repoRoot, "scripts/heavy-check.ts"));
+  checkLink(resolve(home, ".codex/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
+  checkLink(resolve(binRoot(home), "slopestyle-ports"), resolve(repoRoot, "scripts/ports.ts"));
+  checkLink(resolve(binRoot(home), "slopestyle-usage"), resolve(repoRoot, "scripts/usage.ts"));
+  assert(existsSync(resolve(repoRoot, "node_modules/echarts/package.json")), "Missing installed dependencies; run bun install --frozen-lockfile in the runtime checkout.");
 
   const expected = new Map<Target, Set<string>>([
     ["pi", new Set()],
     ["claude-code", new Set()],
+    ["codex", new Set()],
   ]);
   for (const skill of manifest.skills) {
     for (const target of skill.targets) {
@@ -160,6 +185,17 @@ if (installed) {
       const source = resolvedPath(candidate);
       if (source.startsWith(`${resolve(repoRoot, "skills")}/`) && !expected.get(target)!.has(name)) {
         throw new Error(`Retired Slop(e)style skill link remains installed: ${candidate}`);
+      }
+    }
+  }
+
+  const agentsRoot = subagentsTargetRoot(home);
+  for (const subagent of subagents) checkLink(resolve(agentsRoot, subagent.file), resolve(subagentsRoot, subagent.file));
+  if (existsSync(agentsRoot)) {
+    for (const name of readdirSync(agentsRoot)) {
+      const candidate = resolve(agentsRoot, name);
+      if (isSymlink(candidate) && resolvedPath(candidate).startsWith(`${subagentsRoot}/`) && !subagentFiles.has(name)) {
+        throw new Error(`Retired Slop(e)style subagent link remains installed: ${candidate}`);
       }
     }
   }

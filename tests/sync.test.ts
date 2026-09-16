@@ -71,6 +71,8 @@ function copySource(destination: string): void {
       return local !== ".git" && !local.startsWith(".git/") && local !== "node_modules" && !local.startsWith("node_modules/");
     },
   });
+  // These sync fixtures exercise a machine without optional integrations.
+  writeFileSync(resolve(destination, "machines.json"), JSON.stringify({ agentMail: [] }) + "\n");
 }
 
 mkdirSync(fakeBin, { recursive: true });
@@ -95,10 +97,14 @@ test("synchronizes a stable runtime safely", () => {
   succeeds(["git", "clone", "-q", remote, runtime]);
 
   succeeds([resolve(runtime, "scripts/install.sh")]);
+  for (const path of [".codex/config.toml", ".codex/hooks.json", ".claude.json", ".claude/settings.json"]) {
+    expect(existsSync(resolve(home, path))).toBe(false);
+  }
   succeeds([resolve(runtime, "scripts/check.sh"), "--installed"]);
   expect(execute([resolve(runtime, "scripts/sync.sh")]).exitCode).toBe(0);
 
   const upstream = readFileSync(resolve(runtime, "skills/unslop/SKILL.md"), "utf8").split("\n").slice(0, -2).join("\n") + "\n";
+  rmSync(resolve(home, ".agents/skills/unslop"));
   mkdirSync(resolve(home, ".agents/skills/unslop"), { recursive: true });
   writeFileSync(resolve(home, ".agents/skills/unslop/SKILL.md"), upstream);
   rmSync(resolve(home, ".pi/agent/skills/unslop"));
@@ -111,6 +117,13 @@ test("synchronizes a stable runtime safely", () => {
   expect(execute([resolve(runtime, "scripts/check.ts"), "--installed"]).exitCode).not.toBe(0);
   succeeds([resolve(runtime, "scripts/install.ts")]);
   expect(existsSync(resolve(home, ".pi/agent/skills/retired"))).toBe(false);
+
+  expect(readlinkSync(resolve(home, ".claude/agents/opus-low.md"))).toBe(resolve(runtime, "subagents/claude-code/opus-low.md"));
+  expect(readFileSync(resolve(home, ".claude/agents/fable-high.md"), "utf8")).toContain("effort: high");
+  symlinkSync(resolve(runtime, "subagents/claude-code/sonnet-low.md"), resolve(home, ".claude/agents/sonnet-low.md"));
+  expect(execute([resolve(runtime, "scripts/check.ts"), "--installed"]).exitCode).not.toBe(0);
+  succeeds([resolve(runtime, "scripts/install.ts")]);
+  expect(existsSync(resolve(home, ".claude/agents/sonnet-low.md"))).toBe(false);
 
   rmSync(resolve(home, ".pi/agent/skills/why"));
   symlinkSync(resolve(runtime, "skills/old-why"), resolve(home, ".pi/agent/skills/why"));
@@ -155,6 +168,34 @@ test("synchronizes a stable runtime safely", () => {
     expect(readFileSync(commandLog, "utf8")).toBe(commandsBeforeRefresh);
   }
   succeeds([resolve(runtime, "scripts/schedule-sync.ts"), "uninstall"]);
+
+  expect(execute([resolve(sourceRoot, "scripts/usage.ts"), "service", "install"]).exitCode).not.toBe(0);
+  succeeds([resolve(runtime, "scripts/usage.ts"), "service", "install"]);
+  const commandsBeforeServiceRefresh = readFileSync(commandLog, "utf8");
+  succeeds([resolve(runtime, "scripts/install.ts")]);
+  const serviceRefreshCommands = readFileSync(commandLog, "utf8").slice(commandsBeforeServiceRefresh.length);
+  if (process.platform === "linux") {
+    const unitPath = resolve(home, ".config/systemd/user/slopestyle-usage.service");
+    const unit = readFileSync(unitPath, "utf8");
+    expect(unit).toContain(`ExecStart=\"${Bun.which("bun") ?? process.execPath}\" \"${runtime}/scripts/usage.ts\" serve`);
+    expect(unit).toContain("Restart=on-failure");
+    if (Bun.which("systemd-analyze")) succeeds(["systemd-analyze", "verify", unitPath]);
+    expect(commandsBeforeServiceRefresh).toContain("systemctl --user enable --now slopestyle-usage.service");
+    expect(serviceRefreshCommands).toContain("systemctl --user try-restart slopestyle-usage.service");
+    succeeds([resolve(runtime, "scripts/usage.ts"), "service", "uninstall"]);
+    expect(existsSync(unitPath)).toBe(false);
+  } else {
+    const plistPath = resolve(home, "Library/LaunchAgents/dev.slopestyle.usage.plist");
+    succeeds(["plutil", "-lint", plistPath]);
+    const plist = readFileSync(plistPath, "utf8");
+    expect(plist).toContain(`${runtime}/scripts/usage.ts`);
+    expect(plist).toContain("<key>KeepAlive</key><true/>");
+    expect(plist).toContain("usage.log");
+    expect(commandsBeforeServiceRefresh).toContain(`launchctl bootstrap gui/${process.getuid!()} ${plistPath}`);
+    expect(serviceRefreshCommands).toContain("launchctl bootstrap");
+    succeeds([resolve(runtime, "scripts/usage.ts"), "service", "uninstall"]);
+    expect(existsSync(plistPath)).toBe(false);
+  }
 
   expect(sync().exitCode).toBe(0);
   const notificationsBeforePersistentFailure = readFileSync(notificationLog, "utf8").trim().split("\n").filter(Boolean).length;

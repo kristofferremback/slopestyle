@@ -9,22 +9,32 @@ Prove observable behavior at the highest practical layer. Prefer integrations ov
 
 ## Choose the radius
 
-- During development, run the smallest test that can fail for the current change.
-- Before committing, run warranted focused tests and lint or type checks scoped to the changed package.
-- Let CI own repository-wide checks and full suites unless repository guidance or a named risk warrants them locally.
+- During development, run the smallest test that can fail for the current change. Name the behavior or suspected failure each additional check will prove.
+- Before committing, satisfy repository-required checks and run affected lint, type checks, and focused tests. Widen the radius when shared dependencies, configuration, or a specific risk makes narrow checks insufficient.
+- Leave the full suite to CI unless risk or repository guidance warrants it locally. A new agent, pass, or handoff alone does not warrant another run.
 - Never hide failure with skips, TODOs, changed expectations, or a pre-existing label. Green means observed green.
+
+## Reuse evidence
+
+Carry a compact evidence handoff: exact command, result, tested commit plus any uncommitted changes, relevant environment, and log or artifact location. Missing or unfinished results are not green.
+
+Read the referenced result and inspect the delta since its tested tree. Reuse a passing result when no relevant source, test, dependency, configuration, or environment changed; an unverifiable handoff requires rerunning the focused proof. Independently review claims and run focused probes for gaps or suspected defects; independence does not require repeating every check. After edits, rerun checks whose evidence the edits invalidate. Run checks against a stable tree, not files another pass is editing.
 
 ## Coordinate the run
 
 The coordinating agent owns one verification plan across implementers, reviewers, worktrees, and commit hooks.
 
 - Give implementers only slice-local red and green checks. They return the exact commands and results.
-- Reuse passing evidence while the covered code, dependencies, and test configuration remain unchanged. Reviewers run new checks only for a concrete unresolved risk.
 - Run each warranted integrated or broad local check once, after the relevant work has converged.
 - Treat repository-wide lint, typecheck, build, browser, end-to-end, and worker-pool commands as heavy. Run each through `$HOME/.local/bin/slopestyle-heavy -- COMMAND`. If the guard is unavailable, report it, inspect active processes, and wait until other heavy work finishes.
 - Use one worker for local browser and worker-pool checks. CI owns parallel execution.
 - When a hook starts heavy checks, run the initiating command through `$HOME/.local/bin/slopestyle-heavy` and let the hook own checks it already runs instead of pre-running them. Exit 75 means the guard timed out waiting for the reported owner, not that the check failed.
 - Stop background services and browsers started for verification when the check ends. Never disturb processes another worker owns.
+
+## Run commands
+
+- Set test and typecheck timeouts with enough margin for a slow run to finish.
+- Keep iterative output focused and bounded; request the full log only when the failure evidence needs it.
 
 ## Design
 
@@ -44,6 +54,8 @@ When a repository lacks a scripted path to drive its real UI, CLI, service, or l
 - **Drive:** stable user-level controls, selectors, commands, or requests
 - **Evidence:** action plus resulting visible and persistent side effects
 - **Cleanup:** remove only processes and scratch state created by this run
+
+A scenario is one round trip whether the orchestrator or a delegate drives it: one scripted command performs the actions and captures the evidence at its end. A delegated driver does mechanical work, so it runs on a cheaper model than the orchestrator and gets the scenario list and evidence contract in its brief.
 
 Capture process identity when launching. Never kill by broad process name, guessed port ownership, or a pattern that can hit the user's running environment. Execute the generated skill end to end once before calling it usable. Report unrelated startup blockers instead of creating hidden fallback scaffolding.
 
