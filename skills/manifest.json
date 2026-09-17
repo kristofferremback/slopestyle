@@ -238,8 +238,8 @@
       "provenance": "original"
     },
     {
-      "name": "review-ocr",
-      "path": "skills/review-ocr",
+      "name": "review-beta",
+      "path": "skills/review-beta",
       "targets": [
         "pi",
         "claude-code",

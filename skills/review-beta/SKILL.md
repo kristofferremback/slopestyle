@@ -1,10 +1,10 @@
 ---
-name: review-ocr
-description: Use when the user names review-ocr or asks for a coverage-ledger review of a diff or pull request.
+name: review-beta
+description: Use when the user names review-beta or asks for a coverage-ledger review of a diff or pull request.
 disable-model-invocation: true
 ---
 
-# Review OCR
+# Review beta
 
 Experimental sibling of `review` for code diffs and pull requests, adapted from Alibaba's Open Code Review. Code decides what gets reviewed and whether findings hold. Fresh-context reviewers spend their attention on finding defects. Kris runs it side by side with `review` to compare, so keep the two skills independent.
 
