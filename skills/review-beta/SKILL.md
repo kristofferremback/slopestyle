@@ -1,7 +1,6 @@
 ---
 name: review-beta
 description: Use when the user names review-beta or asks for a coverage-ledger review of a diff or pull request.
-disable-model-invocation: true
 ---
 
 # Review beta
