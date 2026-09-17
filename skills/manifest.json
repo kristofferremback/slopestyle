@@ -238,6 +238,19 @@
       "provenance": "original"
     },
     {
+      "name": "review-ocr",
+      "path": "skills/review-ocr",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [],
+      "source": "https://github.com/alibaba/open-code-review",
+      "provenance": "adapted"
+    },
+    {
       "name": "seer",
       "path": "skills/seer",
       "targets": [
