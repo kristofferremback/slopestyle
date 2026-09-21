@@ -9,7 +9,7 @@ import { insights } from "../scripts/lib/usage/insights.ts";
 import { credentialsToken, ensureLimitTables, limitsView, parseLimits, pollLimits } from "../scripts/lib/usage/limits.ts";
 import { cachedShare, tokenCount } from "../scripts/lib/usage/format.ts";
 import { groupResets, placeResetLabels } from "../scripts/lib/usage/resets.ts";
-import { baseModel, costUsd, usageValue } from "../scripts/lib/usage/pricing.ts";
+import { baseModel, costUsd, usageUsdEquivalent, usageValue } from "../scripts/lib/usage/pricing.ts";
 import { sessionDetail, sessions, timeline } from "../scripts/lib/usage/query.ts";
 import { createServer, parseRange } from "../scripts/lib/usage/server.ts";
 
@@ -211,6 +211,7 @@ test("should price a request from its usage when the model is known", () => {
   expect(costUsd("claude-mystery-9", { input: 1, cache5m: 0, cache1h: 0, cacheRead: 0, output: 0 })).toBeUndefined();
   expect(baseModel("claude-fable-5-1[1m]")).toBe("claude-fable-5-1");
   expect(usageValue("codex", "gpt-5.6-sol", { input: 20_000, cache5m: 0, cache1h: 0, cacheRead: 80_000, output: 1_000 })).toBeCloseTo(3.3, 9);
+  expect(usageUsdEquivalent("codex", 250)).toBe(10);
 });
 
 test("should parse Codex limit windows from transcript events", () => {
@@ -245,6 +246,7 @@ test("should attribute Codex usage to root threads, nested agents, models, and e
     efforts: { high: 1, low: 1, medium: 1 },
   });
   expect(summary!.value).toBeCloseTo(3.7875, 9);
+  expect(summary!.usd_equivalent).toBeCloseTo(0.1515, 9);
   expect(summary!.sub_value).toBeCloseTo(0.4875, 9);
   const detail = sessionDetail(codexDb, codexFixture.rootId, day, "codex")!;
   expect(detail.agents.map((agent) => [agent.description, agent.subagent_type, agent.requests])).toEqual([
@@ -416,10 +418,11 @@ test("should select Codex independently through the HTTP API", async () => {
     const list = (await (await fetch(`${base}/api/sessions?${query}`)).json()) as { id: string; efforts: Record<string, number> }[];
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ id: codexFixture.rootId, efforts: { high: 2, low: 1, medium: 1 } });
-    const timeline = (await (await fetch(`${base}/api/timeline?${query}`)).json()) as { provider: string; unit: string; total_value: number };
+    const timeline = (await (await fetch(`${base}/api/timeline?${query}`)).json()) as { provider: string; unit: string; total_value: number; total_usd_equivalent: number };
     expect(timeline.provider).toBe("codex");
     expect(timeline.unit).toBe("credits");
     expect(timeline.total_value).toBeGreaterThan(3.7);
+    expect(timeline.total_usd_equivalent).toBeCloseTo(timeline.total_value / 25, 9);
     expect((await fetch(`${base}/api/timeline?provider=openai`)).status).toBe(400);
   } finally {
     server.stop(true);
@@ -550,7 +553,7 @@ test("should explain the range with insights that name the numbers", () => {
   const rate = view.insights.find((insight) => insight.kind === "window_rate")!;
   expect(rate.data.percent).toBe(36);
   expect(rate.text).toContain("14:00 UTC");
-  expect(insights(db, { fromMs: 0, toMs: 1 })).toEqual({ provider: "claude", unit: "usd", total_value: 0, insights: [] });
+  expect(insights(db, { fromMs: 0, toMs: 1 })).toEqual({ provider: "claude", unit: "usd", total_value: 0, total_usd_equivalent: 0, insights: [] });
 });
 
 test("should group resets that would overprint their labels", () => {
@@ -606,7 +609,9 @@ test("should print a report for a range from the CLI", async () => {
 
   const codex = Bun.spawnSync([process.execPath, cli, "report", "--provider", "codex", "--codex-dir", codexDir, "--db", resolve(root, "codex-usage.sqlite"), "--host", host, "--from", String(day.fromMs), "--to", String(day.toMs), "--json"], { stdout: "pipe", stderr: "pipe" });
   expect(codex.exitCode).toBe(0);
-  const codexReport = JSON.parse(codex.stdout.toString()) as { provider: string; unit: string; pricing: string; sessions: { title: string }[] };
+  const codexReport = JSON.parse(codex.stdout.toString()) as { provider: string; unit: string; pricing: string; total_value: number; total_usd_equivalent: number; sessions: { title: string; value: number; usd_equivalent: number }[] };
   expect(codexReport).toMatchObject({ provider: "codex", unit: "credits", pricing: "OpenAI credit rate card" });
+  expect(codexReport.total_usd_equivalent).toBeCloseTo(codexReport.total_value / 25, 9);
+  expect(codexReport.sessions[0]!.usd_equivalent).toBeCloseTo(codexReport.sessions[0]!.value / 25, 9);
   expect(codexReport.sessions[0]!.title).toBe("Investigate the quota drain");
 });

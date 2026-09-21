@@ -1,6 +1,11 @@
 export type Provider = "claude" | "codex";
 export type UsageUnit = "usd" | "credits";
 
+// OpenAI's current Codex credit rates are 25 times its standard API dollar
+// rates for every supported model. This is an API-price comparison, not the
+// purchase price of a credit, which varies by plan or agreement.
+export const codexCreditsPerUsdEquivalent = 25;
+
 // USD per million tokens at Anthropic API list prices. Subscription plans meter
 // differently, so every figure derived from this table is labeled as an
 // API-equivalent proxy in the UI and the API.
@@ -76,4 +81,8 @@ export function costUsd(model: string, tokens: TokenCounts): number | undefined 
 
 export function usageUnit(provider: Provider): UsageUnit {
   return provider === "claude" ? "usd" : "credits";
+}
+
+export function usageUsdEquivalent(provider: Provider, value: number): number {
+  return provider === "claude" ? value : value / codexCreditsPerUsdEquivalent;
 }

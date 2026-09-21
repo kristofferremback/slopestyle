@@ -5,7 +5,7 @@ description: Use when Kris asks what is eating Claude or Codex quota, which sess
 
 # Usage
 
-`slopestyle-usage` indexes Claude Code and Codex transcripts on this machine. Claude usage is priced in API-equivalent dollars. Codex usage uses OpenAI's ChatGPT Work and Codex credit rate card. Subscription percentages are still the truth about the plan.
+`slopestyle-usage` indexes Claude Code and Codex transcripts on this machine. Claude usage is priced in API-equivalent dollars. Codex usage uses OpenAI's ChatGPT Work and Codex credit rate card, with the corresponding API-equivalent dollars shown first and raw credits retained for subscription comparisons. Credit purchase prices vary by plan, so neither dollar figure is an invoice. Subscription percentages are still the truth about the plan.
 
 ## Ask the tool, not the transcripts
 

@@ -106,7 +106,7 @@ Datadog includes a one-time migration for the original `~/.codex/skills/datadog`
 
 ## Usage dashboard
 
-`scripts/usage.ts` installs as `~/.local/bin/slopestyle-usage`. It indexes Claude Code transcripts under `~/.claude/projects` and active and archived Codex transcripts under `~/.codex` into `~/.local/state/slopestyle/usage.sqlite`. Claude requests use API list prices as a subscription proxy. Codex requests use the [OpenAI pricing documentation](https://learn.chatgpt.com/docs/pricing) credit rate card, while limit events in the Codex transcripts supply the real shared allowance percentage and reset time.
+`scripts/usage.ts` installs as `~/.local/bin/slopestyle-usage`. It indexes Claude Code transcripts under `~/.claude/projects` and active and archived Codex transcripts under `~/.codex` into `~/.local/state/slopestyle/usage.sqlite`. Claude requests use API list prices as a subscription proxy. Codex requests use the [OpenAI pricing documentation](https://learn.chatgpt.com/docs/pricing) credit rate card. The dashboard shows the corresponding API-equivalent dollars first and raw credits second. Credit purchase prices vary by plan, so the dollar figure is a comparison rather than an invoice. Limit events in the Codex transcripts supply the real shared allowance percentage and reset time.
 
 ```bash
 slopestyle-usage serve                 # page on a slopestyle-ports port, bound to 127.0.0.1

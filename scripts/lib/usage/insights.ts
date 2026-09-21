@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { limitsView } from "./limits.ts";
-import { baseModel, type Provider, type UsageUnit, usageUnit } from "./pricing.ts";
+import { baseModel, type Provider, type UsageUnit, usageUnit, usageUsdEquivalent } from "./pricing.ts";
 import { type Range, sessions, type SessionSummary } from "./query.ts";
 
 export interface Insight {
@@ -14,6 +14,7 @@ export interface InsightsView {
   provider: Provider;
   unit: UsageUnit;
   total_value: number;
+  total_usd_equivalent: number;
   insights: Insight[];
 }
 
@@ -23,14 +24,15 @@ const fanOutAgents = 4;
 const fanOutWindowMs = 10 * 60_000;
 
 function amount(provider: Provider, value: number): string {
-  return provider === "claude" ? `$${value.toFixed(value >= 100 ? 0 : 2)}` : `${value.toFixed(value >= 100 ? 0 : 1)} credits`;
+  const usd = usageUsdEquivalent(provider, value);
+  return `$${usd.toFixed(usd >= 100 ? 0 : 2)}${provider === "codex" ? " API-equivalent" : ""}`;
 }
 
 export function insights(db: Database, range: Range, now = Date.now(), provider: Provider = "claude"): InsightsView {
   const rows = sessions(db, range, provider);
   const total = rows.reduce((sum, row) => sum + row.value, 0);
   const list: Insight[] = [];
-  if (total === 0) return { provider, unit: usageUnit(provider), total_value: 0, insights: list };
+  if (total === 0) return { provider, unit: usageUnit(provider), total_value: 0, total_usd_equivalent: 0, insights: list };
 
   const top = rows[0]!;
   const topShare = pct(top.value, total);
@@ -157,13 +159,13 @@ export function insights(db: Database, range: Range, now = Date.now(), provider:
       list.push({
         kind: "shared_window",
         severity: sample.percent >= 80 ? "warn" : "info",
-        text: `${sample.label} usage is at ${Math.round(sample.percent)}%; ${amount(provider, local)} is attributable to local Codex threads in that window. ChatGPT Work and other shared agentic features may account for the rest.`,
-        data: { kind: sample.kind, percent: sample.percent, local_value: local, resets_ms: window.end_ms },
+        text: `${sample.label} usage is at ${Math.round(sample.percent)}%; ${amount(provider, local)} (${local.toFixed(local >= 100 ? 0 : 1)} credits) is attributable to local Codex threads in that window. ChatGPT Work and other shared agentic features may account for the rest.`,
+        data: { kind: sample.kind, percent: sample.percent, local_value: local, local_usd_equivalent: usageUsdEquivalent(provider, local), resets_ms: window.end_ms },
       });
     }
   }
 
-  return { provider, unit: usageUnit(provider), total_value: total, insights: list };
+  return { provider, unit: usageUnit(provider), total_value: total, total_usd_equivalent: usageUsdEquivalent(provider, total), insights: list };
 }
 
 interface FanOut {

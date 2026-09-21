@@ -3,6 +3,7 @@ import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, T
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { cachedShare, tokenCount } from "../lib/usage/format.ts";
+import { usageUsdEquivalent } from "../lib/usage/pricing.ts";
 import { groupResets, placeResetLabels, type ResetLabel } from "../lib/usage/resets.ts";
 
 echarts.use([BarChart, LineChart, DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, ToolboxComponent, TooltipComponent, CanvasRenderer]);
@@ -19,6 +20,7 @@ interface Timeline {
   provider: Provider;
   unit: UsageUnit;
   total_value: number;
+  total_usd_equivalent: number;
   total_input_tokens: number;
   total_output_tokens: number;
   unpriced_models: string[];
@@ -33,6 +35,7 @@ interface SessionSummary {
   started_ms: number | null;
   ended_ms: number | null;
   value: number;
+  usd_equivalent: number;
   sub_value: number;
   input_tokens: number;
   cache_read_tokens: number;
@@ -58,12 +61,13 @@ interface RequestPoint {
   output: number;
   effort: string | null;
   value: number | null;
+  usd_equivalent: number;
 }
 
 interface SessionDetail {
   session: SessionSummary;
   requests: RequestPoint[];
-  agents: { id: string; subagent_type: string | null; model_requested: string | null; description: string | null; prompt_head: string | null; requests: number; value: number; input_tokens: number; cache_read_tokens: number; output_tokens: number; peak_context: number; models: Record<string, number>; efforts: Record<string, number> }[];
+  agents: { id: string; subagent_type: string | null; model_requested: string | null; description: string | null; prompt_head: string | null; requests: number; value: number; usd_equivalent: number; input_tokens: number; cache_read_tokens: number; output_tokens: number; peak_context: number; models: Record<string, number>; efforts: Record<string, number> }[];
   events: { ts_ms: number; agent_id: string; kind: string; data: Record<string, unknown> }[];
 }
 
@@ -79,6 +83,7 @@ interface InsightsView {
   provider: Provider;
   unit: UsageUnit;
   total_value: number;
+  total_usd_equivalent: number;
   insights: { kind: string; severity: "info" | "warn"; text: string }[];
 }
 
@@ -225,7 +230,6 @@ function toLocalInput(ms: number): string {
 const usd = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 const usdFine = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const credits = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
-const creditsFine = new Intl.NumberFormat(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 3 });
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 const dateTimeFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
@@ -249,7 +253,7 @@ interface TooltipParam {
 // Per-request cost with the tokens behind it. Each series is one request
 // group, so the hovered params index straight into it.
 function formatValue(value: number, fine = false): string {
-  return state.provider === "claude" ? (fine ? usdFine : usd).format(value) : `${(fine ? creditsFine : credits).format(value)} cr`;
+  return (fine ? usdFine : usd).format(usageUsdEquivalent(state.provider, value));
 }
 
 function costTooltip(params: TooltipParam[], groups: RequestPoint[][]): string {
@@ -424,7 +428,7 @@ function renderLimits(view: LimitsView, keepZoom: boolean): void {
       const tile = document.createElement("div");
       tile.className = `tile${sample.percent >= 80 ? " hot" : ""}`;
       const window = view.windows.find((entry) => entry.kind === sample.kind && entry.current);
-      const parts = [sample.resets_ms ? `resets in ${untilLabel(sample.resets_ms)} at ${sample.resets_ms - Date.now() < day ? timeFormat.format(sample.resets_ms) : dateTimeFormat.format(sample.resets_ms)}` : "", window ? `${formatValue(window.value)} attributed locally` : ""].filter(Boolean);
+      const parts = [sample.resets_ms ? `resets in ${untilLabel(sample.resets_ms)} at ${sample.resets_ms - Date.now() < day ? timeFormat.format(sample.resets_ms) : dateTimeFormat.format(sample.resets_ms)}` : "", window ? `${formatValue(window.value)}${state.provider === "codex" ? " API-equivalent" : ""} attributed locally` : ""].filter(Boolean);
       tile.innerHTML = `<span class="hint">${escape(sample.label)}</span><strong>${Math.round(sample.percent)}%</strong><div class="bar" role="meter" aria-valuenow="${Math.round(sample.percent)}" aria-valuemin="0" aria-valuemax="100" aria-label="${escape(sample.label)} used"><span style="width:${Math.min(100, sample.percent)}%"></span></div><span class="sub">${escape(parts.join(" · "))}</span>`;
       return tile;
     }),
@@ -569,7 +573,7 @@ function renderTimeline(view: Timeline, keepZoom: boolean): void {
     if (entry) void openSession(entry.session_id, true);
   });
   totalEl.textContent = formatValue(view.total_value);
-  totalUnitEl.textContent = view.unit === "usd" ? "API list prices" : "OpenAI credit rates";
+  totalUnitEl.textContent = view.unit === "usd" ? "API list prices" : `API-equivalent · ${credits.format(view.total_value)} credits`;
   totalTokensEl.textContent = `${tokens(view.total_input_tokens)} in · ${tokens(view.total_output_tokens)} out`;
   const unpriced = view.unpriced_models;
   noticeEl.hidden = unpriced.length === 0;
@@ -636,7 +640,7 @@ function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean):
     session.cwd ?? session.project,
     session.git_branch,
     session.started_ms ? `${dateTimeFormat.format(session.started_ms)}${session.ended_ms ? ` to ${timeFormat.format(session.ended_ms)}` : ""}` : null,
-    `${formatValue(session.value)} in range`,
+    `${formatValue(session.value)}${state.provider === "codex" ? " API-equivalent" : ""} in range`,
     `${tokens(session.input_tokens)} in${session.cache_read_tokens ? `, ${cachedShare(session.input_tokens, session.cache_read_tokens)}` : ""}`,
     `${tokens(session.output_tokens)} out`,
     `${session.requests} requests`,

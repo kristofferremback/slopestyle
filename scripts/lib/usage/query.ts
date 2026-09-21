@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { unpricedModels } from "./ingest.ts";
-import { type Provider, type UsageUnit, usageUnit } from "./pricing.ts";
+import { type Provider, type UsageUnit, usageUnit, usageUsdEquivalent } from "./pricing.ts";
 
 export interface Range {
   fromMs: number;
@@ -21,6 +21,7 @@ export interface SessionSummary {
   started_ms: number | null;
   ended_ms: number | null;
   value: number;
+  usd_equivalent: number;
   sub_value: number;
   // Input counts every token the model read: fresh, cache writes, and cache reads.
   input_tokens: number;
@@ -43,6 +44,7 @@ export interface Timeline {
   provider: Provider;
   unit: UsageUnit;
   total_value: number;
+  total_usd_equivalent: number;
   total_input_tokens: number;
   total_output_tokens: number;
   unpriced_models: string[];
@@ -118,6 +120,7 @@ export function timeline(db: Database, range: Range, bucket: Bucket, offsetMinut
     series: top.map((id) => ({ session_id: id, title: titles.get(id) ?? id.slice(0, 8), values: perSession.get(id)! })),
     other,
     total_value: total,
+    total_usd_equivalent: usageUsdEquivalent(provider, total),
     total_input_tokens: inputTokens,
     total_output_tokens: outputTokens,
     unpriced_models: unpricedModels(db, provider),
@@ -159,6 +162,7 @@ export function sessions(db: Database, range: Range, provider: Provider = "claud
         started_ms: null,
         ended_ms: null,
         value: 0,
+        usd_equivalent: 0,
         sub_value: 0,
         input_tokens: 0,
         cache_read_tokens: 0,
@@ -175,6 +179,7 @@ export function sessions(db: Database, range: Range, provider: Provider = "claud
       agentIds.set(row.session_id, new Set());
     }
     summary.value += row.cost;
+    summary.usd_equivalent += usageUsdEquivalent(provider, row.cost);
     summary.input_tokens += row.input_tokens;
     summary.cache_read_tokens += row.cache_read;
     summary.output_tokens += row.output;
@@ -226,6 +231,7 @@ export interface RequestPoint {
   thinking: number;
   effort: string | null;
   value: number | null;
+  usd_equivalent: number;
 }
 
 export interface AgentSummary {
@@ -238,6 +244,7 @@ export interface AgentSummary {
   ended_ms: number | null;
   requests: number;
   value: number;
+  usd_equivalent: number;
   input_tokens: number;
   cache_read_tokens: number;
   output_tokens: number;
@@ -257,18 +264,19 @@ export function sessionDetail(db: Database, id: string, range: Range, provider: 
   const summary = sessions(db, range, provider).find((row) => row.id === id);
   if (!summary) return undefined;
   const requests = db
-    .query<RequestPoint, [Provider, string, number, number]>(
+    .query<Omit<RequestPoint, "usd_equivalent">, [Provider, string, number, number]>(
       `SELECT ts_ms, agent_id, model, effort, context, input, cache_5m, cache_1h, cache_read, output, thinking, value
        FROM requests WHERE provider = ? AND session_id = ? AND ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms, agent_id, request_id`,
     )
-    .all(provider, id, range.fromMs, range.toMs);
+    .all(provider, id, range.fromMs, range.toMs)
+    .map((request) => ({ ...request, usd_equivalent: usageUsdEquivalent(provider, request.value ?? 0) }));
   const agents = new Map<string, AgentSummary>();
   for (const row of db
-    .query<Omit<AgentSummary, "requests" | "value" | "input_tokens" | "cache_read_tokens" | "output_tokens" | "peak_context" | "models" | "efforts">, [Provider, string]>(
+    .query<Omit<AgentSummary, "requests" | "value" | "usd_equivalent" | "input_tokens" | "cache_read_tokens" | "output_tokens" | "peak_context" | "models" | "efforts">, [Provider, string]>(
       "SELECT id, subagent_type, model_requested, description, prompt_head, started_ms, ended_ms FROM agents WHERE provider = ? AND session_id = ?",
     )
     .all(provider, id)) {
-    agents.set(row.id, { ...row, requests: 0, value: 0, input_tokens: 0, cache_read_tokens: 0, output_tokens: 0, peak_context: 0, models: {}, efforts: {} });
+    agents.set(row.id, { ...row, requests: 0, value: 0, usd_equivalent: 0, input_tokens: 0, cache_read_tokens: 0, output_tokens: 0, peak_context: 0, models: {}, efforts: {} });
   }
   for (const request of requests) {
     if (request.agent_id === "") continue;
@@ -276,6 +284,7 @@ export function sessionDetail(db: Database, id: string, range: Range, provider: 
     if (!agent) continue;
     agent.requests += 1;
     agent.value += request.value ?? 0;
+    agent.usd_equivalent += request.usd_equivalent;
     agent.input_tokens += request.input + request.cache_5m + request.cache_1h + request.cache_read;
     agent.cache_read_tokens += request.cache_read;
     agent.output_tokens += request.output;

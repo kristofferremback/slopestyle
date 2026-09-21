@@ -10,7 +10,7 @@ import { credentialsToken, limitsView } from "./lib/usage/limits.ts";
 import { usagePort } from "./lib/usage/port.ts";
 import { sessions } from "./lib/usage/query.ts";
 import { createServer, parseRange } from "./lib/usage/server.ts";
-import { type Provider, usageUnit } from "./lib/usage/pricing.ts";
+import { type Provider, usageUnit, usageUsdEquivalent } from "./lib/usage/pricing.ts";
 import { manageService, type ServiceAction, serviceActions } from "./lib/usage/service.ts";
 import homepage from "./usage/index.html";
 
@@ -153,13 +153,14 @@ function report(): void {
   const totalInput = rows.reduce((sum, row) => sum + row.input_tokens, 0);
   const totalOutput = rows.reduce((sum, row) => sum + row.output_tokens, 0);
   if (options.json) {
-    console.log(JSON.stringify({ provider: options.provider, range, unit: usageUnit(options.provider), pricing: options.provider === "claude" ? "API list prices" : "OpenAI credit rate card", total_value: view.total_value, total_input_tokens: totalInput, total_output_tokens: totalOutput, sessions: rows.slice(0, options.limit), limits, insights: view.insights }, null, 2));
+    console.log(JSON.stringify({ provider: options.provider, range, unit: usageUnit(options.provider), pricing: options.provider === "claude" ? "API list prices" : "OpenAI credit rate card", total_value: view.total_value, total_usd_equivalent: view.total_usd_equivalent, total_input_tokens: totalInput, total_output_tokens: totalOutput, sessions: rows.slice(0, options.limit), limits, insights: view.insights }, null, 2));
     return;
   }
   const money = (value: number) => `$${value.toFixed(2)}`;
-  const amount = (value: number) => (options.provider === "claude" ? money(value) : `${value.toFixed(value >= 100 ? 0 : 1)} cr`);
+  const amount = (value: number) => money(usageUsdEquivalent(options.provider, value));
   const time = (ms: number) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  console.log(`${time(range.fromMs)} to ${time(range.toMs)}: ${amount(view.total_value)} ${options.provider === "claude" ? "at API list prices" : "at OpenAI credit rates"}, ${tokenCount(totalInput)} in and ${tokenCount(totalOutput)} out, across ${rows.length} sessions`);
+  const credits = options.provider === "codex" ? ` (${view.total_value.toFixed(view.total_value >= 100 ? 0 : 1)} credits)` : "";
+  console.log(`${time(range.fromMs)} to ${time(range.toMs)}: ${amount(view.total_value)} ${options.provider === "claude" ? "at API list prices" : `API-equivalent${credits}`}, ${tokenCount(totalInput)} in and ${tokenCount(totalOutput)} out, across ${rows.length} sessions`);
   console.log("");
   for (const row of rows.slice(0, options.limit)) {
     const models = Object.entries(row.models)
