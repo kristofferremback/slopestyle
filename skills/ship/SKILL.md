@@ -34,6 +34,7 @@ If a merge or rebase conflicts, follow [conflict resolution](references/conflict
 - Never open an issue, pull request, comment, or maintainer message in someone else's repository unless Kristoffer explicitly asked while working on that repository.
 - Check whether the branch already has a PR before creating one.
 - Preserve the stack and review shape chosen by `build`.
+- When a slice stacks on an unmerged parent, create and submit it with `gh stack` so bases and ordering stay correct.
 - Open a ready PR by default so checks and reviewers run. Use draft only when requested or when the review contract is genuinely incomplete.
 - Read recent merged PRs and git history before choosing title and body conventions.
 - Follow [PR writing](references/pr-writing.md).
