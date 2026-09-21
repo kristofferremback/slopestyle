@@ -3,12 +3,14 @@
 import { resolve } from "node:path";
 import { stateRoot } from "./lib/core.ts";
 import { tokenCount } from "./lib/usage/format.ts";
+import { ingestCodex } from "./lib/usage/codex.ts";
 import { ingest, openUsageDb } from "./lib/usage/ingest.ts";
 import { insights } from "./lib/usage/insights.ts";
 import { credentialsToken, limitsView } from "./lib/usage/limits.ts";
 import { usagePort } from "./lib/usage/port.ts";
 import { sessions } from "./lib/usage/query.ts";
 import { createServer, parseRange } from "./lib/usage/server.ts";
+import { type Provider, usageUnit, usageUsdEquivalent } from "./lib/usage/pricing.ts";
 import { manageService, type ServiceAction, serviceActions } from "./lib/usage/service.ts";
 import homepage from "./usage/index.html";
 
@@ -17,14 +19,14 @@ function usage(exitCode: number, message?: string): never {
   console.error(`Usage: slopestyle-usage <command> [options]
 
 Commands:
-  serve [--port N] [--projects DIR] [--db PATH] [--host NAME]
-      Index Claude Code transcripts and serve the usage page on 127.0.0.1.
+  serve [--port N] [--projects DIR] [--codex-dir DIR] [--db PATH] [--host NAME]
+      Index Claude Code and Codex transcripts and serve the usage page on 127.0.0.1.
       Without --port the port comes from "slopestyle-ports claim usage".
       Polls the plan's 5-hour and weekly limits every two minutes with the
       OAuth token Claude Code keeps in its credentials (--no-limits to skip).
-  index [--projects DIR] [--db PATH] [--host NAME]
-      Index transcripts without serving.
-  report [--from WHEN] [--to WHEN] [--since WHEN] [--json] [--limit N]
+  index [--provider claude|codex] [--projects DIR] [--codex-dir DIR] [--db PATH] [--host NAME]
+      Index one provider's transcripts without serving.
+  report [--provider claude|codex] [--from WHEN] [--to WHEN] [--since WHEN] [--json] [--limit N]
       Index, then print spend by session, current limits, and insights for a
       range. WHEN is ISO 8601, unix milliseconds, or a local HH:MM today.
       Defaults to today. --since sets --from and leaves --to at now.
@@ -34,10 +36,12 @@ Commands:
 
 Defaults:
   --projects  $HOME/.claude/projects
+  --codex-dir $HOME/.codex
   --db        $HOME/.local/state/slopestyle/usage.sqlite
   --host      this machine's hostname
 
-Costs are API list prices, a proxy for subscription usage.`);
+Claude values use API list prices as a proxy. Codex values use OpenAI's
+ChatGPT Work and Codex credit rate card.`);
   process.exit(exitCode);
 }
 
@@ -55,6 +59,8 @@ if (command === "service") {
 const options = {
   port: undefined as number | undefined,
   projects: resolve(home, ".claude/projects"),
+  codexDir: resolve(home, ".codex"),
+  provider: "claude" as Provider,
   db: resolve(stateRoot(home), "usage.sqlite"),
   host: undefined as string | undefined,
   limits: true,
@@ -77,6 +83,15 @@ for (let index = 0; index < args.length; index += 1) {
     case "--projects":
       options.projects = resolve(value());
       break;
+    case "--codex-dir":
+      options.codexDir = resolve(value());
+      break;
+    case "--provider": {
+      const provider = value();
+      if (provider !== "claude" && provider !== "codex") usage(2, "--provider must be claude or codex");
+      options.provider = provider;
+      break;
+    }
     case "--db":
       options.db = resolve(value());
       break;
@@ -124,32 +139,35 @@ function whenToMs(when: string | undefined): string | undefined {
 
 function report(): void {
   const db = openUsageDb(options.db);
-  ingest(db, { projectsDir: options.projects, host: options.host });
+  if (options.provider === "claude") ingest(db, { projectsDir: options.projects, host: options.host });
+  else ingestCodex(db, { codexDir: options.codexDir, host: options.host });
   const params = new URLSearchParams({ tz: String(-new Date().getTimezoneOffset()) });
   const from = whenToMs(options.from);
   const to = whenToMs(options.to);
   if (from) params.set("from", from);
   if (to) params.set("to", to);
   const { range } = parseRange(params);
-  const rows = sessions(db, range);
-  const limits = limitsView(db, range.fromMs, range.toMs);
-  const view = insights(db, range);
+  const rows = sessions(db, range, options.provider);
+  const limits = limitsView(db, range.fromMs, range.toMs, Date.now(), options.provider);
+  const view = insights(db, range, Date.now(), options.provider);
   const totalInput = rows.reduce((sum, row) => sum + row.input_tokens, 0);
   const totalOutput = rows.reduce((sum, row) => sum + row.output_tokens, 0);
   if (options.json) {
-    console.log(JSON.stringify({ range, pricing: "API list prices", total_usd: view.total_usd, total_input_tokens: totalInput, total_output_tokens: totalOutput, sessions: rows.slice(0, options.limit), limits, insights: view.insights }, null, 2));
+    console.log(JSON.stringify({ provider: options.provider, range, unit: usageUnit(options.provider), pricing: options.provider === "claude" ? "API list prices" : "OpenAI credit rate card", total_value: view.total_value, total_usd_equivalent: view.total_usd_equivalent, total_input_tokens: totalInput, total_output_tokens: totalOutput, sessions: rows.slice(0, options.limit), limits, insights: view.insights }, null, 2));
     return;
   }
   const money = (value: number) => `$${value.toFixed(2)}`;
+  const amount = (value: number) => money(usageUsdEquivalent(options.provider, value));
   const time = (ms: number) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  console.log(`${time(range.fromMs)} to ${time(range.toMs)}: ${money(view.total_usd)} at API list prices, ${tokenCount(totalInput)} in and ${tokenCount(totalOutput)} out, across ${rows.length} sessions`);
+  const credits = options.provider === "codex" ? ` (${view.total_value.toFixed(view.total_value >= 100 ? 0 : 1)} credits)` : "";
+  console.log(`${time(range.fromMs)} to ${time(range.toMs)}: ${amount(view.total_value)} ${options.provider === "claude" ? "at API list prices" : `API-equivalent${credits}`}, ${tokenCount(totalInput)} in and ${tokenCount(totalOutput)} out, across ${rows.length} sessions`);
   console.log("");
   for (const row of rows.slice(0, options.limit)) {
     const models = Object.entries(row.models)
       .sort((a, b) => b[1] - a[1])
       .map(([model, n]) => `${model.replace(/^claude-/, "")}×${n}`)
       .join(" ");
-    console.log(`${money(row.cost_usd).padStart(8)}  ${row.cost_sub_usd > 0 ? `${money(row.cost_sub_usd)} in ${row.agents} agents`.padEnd(22) : "".padEnd(22)}  ${String(row.requests).padStart(4)} req  ${tokenCount(row.input_tokens).padStart(5)} in  ${tokenCount(row.output_tokens).padStart(5)} out  peak ${String(Math.round(row.peak_context / 1000)).padStart(4)}k  ${row.title}`);
+    console.log(`${amount(row.value).padStart(8)}  ${row.sub_value > 0 ? `${amount(row.sub_value)} in ${row.agents} agents`.padEnd(22) : "".padEnd(22)}  ${String(row.requests).padStart(4)} req  ${tokenCount(row.input_tokens).padStart(5)} in  ${tokenCount(row.output_tokens).padStart(5)} out  peak ${String(Math.round(row.peak_context / 1000)).padStart(4)}k  ${row.title}`);
     console.log(`${"".padStart(8)}  ${row.id}  ${row.project}  ${models}`);
   }
   console.log("");
@@ -173,7 +191,7 @@ switch (command) {
     break;
   case "index": {
     const db = openUsageDb(options.db);
-    const stats = ingest(db, { projectsDir: options.projects, host: options.host });
+    const stats = options.provider === "claude" ? ingest(db, { projectsDir: options.projects, host: options.host }) : ingestCodex(db, { codexDir: options.codexDir, host: options.host });
     console.log(`Indexed ${stats.filesChanged} changed of ${stats.filesScanned} transcripts, ${stats.requestsAdded} new requests, into ${options.db}`);
     break;
   }
@@ -183,11 +201,12 @@ switch (command) {
     const server = createServer({
       db,
       ingest: { projectsDir: options.projects, host: options.host },
+      codex: { codexDir: options.codexDir, host: options.host },
       port,
       homepage,
       tokenSource: options.limits ? () => credentialsToken(home) : undefined,
     });
-    console.log(`slopestyle-usage serving ${options.projects} at http://127.0.0.1:${server.port}/`);
+    console.log(`slopestyle-usage serving Claude and Codex usage at http://127.0.0.1:${server.port}/`);
     break;
   }
   case undefined:

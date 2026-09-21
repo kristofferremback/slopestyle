@@ -2,9 +2,9 @@ import { Database } from "bun:sqlite";
 import { closeSync, existsSync, mkdirSync, openSync, readSync, readdirSync, statSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname, resolve } from "node:path";
-import { costUsd, priceFor } from "./pricing.ts";
+import { costUsd, priceFor, type Provider } from "./pricing.ts";
 
-export const schemaVersion = "1";
+export const schemaVersion = "2";
 
 export function openUsageDb(path: string): Database {
   mkdirSync(dirname(path), { recursive: true });
@@ -19,32 +19,34 @@ export function openUsageDb(path: string): Database {
     for (const table of ["files", "sessions", "agents", "requests", "events"]) db.exec(`DROP TABLE IF EXISTS ${table}`);
     db.exec(`
       CREATE TABLE files (
-        path TEXT PRIMARY KEY, host TEXT NOT NULL, project TEXT NOT NULL, session_id TEXT NOT NULL,
-        agent_id TEXT, size INTEGER NOT NULL, mtime_ms INTEGER NOT NULL, offset INTEGER NOT NULL
+        path TEXT PRIMARY KEY, provider TEXT NOT NULL, host TEXT NOT NULL, project TEXT NOT NULL, session_id TEXT NOT NULL,
+        agent_id TEXT, size INTEGER NOT NULL, mtime_ms INTEGER NOT NULL, offset INTEGER NOT NULL, state TEXT
       );
       CREATE TABLE sessions (
-        id TEXT PRIMARY KEY, host TEXT NOT NULL, project TEXT NOT NULL, cwd TEXT, git_branch TEXT, version TEXT,
-        title TEXT, first_prompt TEXT, started_ms INTEGER, ended_ms INTEGER
+        provider TEXT NOT NULL, id TEXT NOT NULL, host TEXT NOT NULL, project TEXT NOT NULL, cwd TEXT, git_branch TEXT, version TEXT,
+        title TEXT, first_prompt TEXT, started_ms INTEGER, ended_ms INTEGER,
+        PRIMARY KEY (provider, id)
       );
       CREATE TABLE agents (
-        id TEXT PRIMARY KEY, session_id TEXT NOT NULL, host TEXT NOT NULL, subagent_type TEXT, model_requested TEXT,
-        description TEXT, prompt_head TEXT, started_ms INTEGER, ended_ms INTEGER
+        provider TEXT NOT NULL, id TEXT NOT NULL, session_id TEXT NOT NULL, host TEXT NOT NULL, subagent_type TEXT, model_requested TEXT,
+        description TEXT, prompt_head TEXT, started_ms INTEGER, ended_ms INTEGER,
+        PRIMARY KEY (provider, id)
       );
-      CREATE INDEX agents_session ON agents(session_id);
+      CREATE INDEX agents_session ON agents(provider, session_id);
       CREATE TABLE requests (
-        host TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL DEFAULT '', request_id TEXT NOT NULL,
-        ts_ms INTEGER NOT NULL, model TEXT NOT NULL, input INTEGER NOT NULL, cache_5m INTEGER NOT NULL,
+        provider TEXT NOT NULL, host TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL DEFAULT '', request_id TEXT NOT NULL,
+        ts_ms INTEGER NOT NULL, model TEXT NOT NULL, effort TEXT, input INTEGER NOT NULL, cache_5m INTEGER NOT NULL,
         cache_1h INTEGER NOT NULL, cache_read INTEGER NOT NULL, output INTEGER NOT NULL, thinking INTEGER NOT NULL,
-        context INTEGER NOT NULL, cost_usd REAL,
-        PRIMARY KEY (host, session_id, agent_id, request_id)
+        context INTEGER NOT NULL, value REAL,
+        PRIMARY KEY (provider, host, session_id, agent_id, request_id)
       );
-      CREATE INDEX requests_ts ON requests(ts_ms);
-      CREATE INDEX requests_session ON requests(session_id, ts_ms);
+      CREATE INDEX requests_ts ON requests(provider, ts_ms);
+      CREATE INDEX requests_session ON requests(provider, session_id, ts_ms);
       CREATE TABLE events (
-        id INTEGER PRIMARY KEY, host TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL DEFAULT '',
+        id INTEGER PRIMARY KEY, provider TEXT NOT NULL, host TEXT NOT NULL, session_id TEXT NOT NULL, agent_id TEXT NOT NULL DEFAULT '',
         ts_ms INTEGER NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL
       );
-      CREATE INDEX events_session ON events(session_id, ts_ms);
+      CREATE INDEX events_session ON events(provider, session_id, ts_ms);
       INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '${schemaVersion}');
     `);
   }
@@ -166,7 +168,7 @@ function promptHead(text: string): string {
 // Reads the bytes of a file from `offset` and returns the complete lines plus
 // the offset just past the last newline, so a partially written trailing line
 // is retried on the next pass.
-function readNewLines(path: string, offset: number, size: number): { lines: string[]; end: number } {
+export function readNewLines(path: string, offset: number, size: number): { lines: string[]; end: number } {
   if (size <= offset) return { lines: [], end: offset };
   const fd = openSync(path, "r");
   try {
@@ -195,17 +197,17 @@ export function ingest(db: Database, options: IngestOptions): IngestStats {
   }
 
   const upsertFile = db.query(
-    `INSERT INTO files (path, host, project, session_id, agent_id, size, mtime_ms, offset) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO files (path, provider, host, project, session_id, agent_id, size, mtime_ms, offset) VALUES (?, 'claude', ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(path) DO UPDATE SET size = excluded.size, mtime_ms = excluded.mtime_ms, offset = excluded.offset`,
   );
   const deleteFileRows = [
-    db.query("DELETE FROM requests WHERE host = ? AND session_id = ? AND agent_id = ?"),
-    db.query("DELETE FROM events WHERE host = ? AND session_id = ? AND agent_id = ?"),
+    db.query("DELETE FROM requests WHERE provider = 'claude' AND host = ? AND session_id = ? AND agent_id = ?"),
+    db.query("DELETE FROM events WHERE provider = 'claude' AND host = ? AND session_id = ? AND agent_id = ?"),
   ];
   const upsertSession = db.query(
-    `INSERT INTO sessions (id, host, project, cwd, git_branch, version, title, first_prompt, started_ms, ended_ms)
-     VALUES ($id, $host, $project, $cwd, $git_branch, $version, $title, $first_prompt, $started_ms, $ended_ms)
-     ON CONFLICT(id) DO UPDATE SET
+    `INSERT INTO sessions (provider, id, host, project, cwd, git_branch, version, title, first_prompt, started_ms, ended_ms)
+     VALUES ('claude', $id, $host, $project, $cwd, $git_branch, $version, $title, $first_prompt, $started_ms, $ended_ms)
+     ON CONFLICT(provider, id) DO UPDATE SET
        cwd = COALESCE(excluded.cwd, sessions.cwd), git_branch = COALESCE(excluded.git_branch, sessions.git_branch),
        version = COALESCE(excluded.version, sessions.version), title = COALESCE(excluded.title, sessions.title),
        first_prompt = COALESCE(sessions.first_prompt, excluded.first_prompt),
@@ -213,17 +215,17 @@ export function ingest(db: Database, options: IngestOptions): IngestStats {
        ended_ms = MAX(COALESCE(sessions.ended_ms, excluded.ended_ms), COALESCE(excluded.ended_ms, sessions.ended_ms))`,
   );
   const upsertAgent = db.query(
-    `INSERT INTO agents (id, session_id, host, prompt_head, started_ms, ended_ms) VALUES ($id, $session_id, $host, $prompt_head, $started_ms, $ended_ms)
-     ON CONFLICT(id) DO UPDATE SET
+    `INSERT INTO agents (provider, id, session_id, host, prompt_head, started_ms, ended_ms) VALUES ('claude', $id, $session_id, $host, $prompt_head, $started_ms, $ended_ms)
+     ON CONFLICT(provider, id) DO UPDATE SET
        prompt_head = COALESCE(agents.prompt_head, excluded.prompt_head),
        started_ms = MIN(COALESCE(agents.started_ms, excluded.started_ms), COALESCE(excluded.started_ms, agents.started_ms)),
        ended_ms = MAX(COALESCE(agents.ended_ms, excluded.ended_ms), COALESCE(excluded.ended_ms, agents.ended_ms))`,
   );
   const insertRequest = db.query(
-    `INSERT OR IGNORE INTO requests (host, session_id, agent_id, request_id, ts_ms, model, input, cache_5m, cache_1h, cache_read, output, thinking, context, cost_usd)
-     VALUES ($host, $session_id, $agent_id, $request_id, $ts_ms, $model, $input, $cache_5m, $cache_1h, $cache_read, $output, $thinking, $context, $cost_usd)`,
+    `INSERT OR IGNORE INTO requests (provider, host, session_id, agent_id, request_id, ts_ms, model, input, cache_5m, cache_1h, cache_read, output, thinking, context, value)
+     VALUES ('claude', $host, $session_id, $agent_id, $request_id, $ts_ms, $model, $input, $cache_5m, $cache_1h, $cache_read, $output, $thinking, $context, $value)`,
   );
-  const insertEvent = db.query("INSERT INTO events (host, session_id, agent_id, ts_ms, kind, data) VALUES (?, ?, ?, ?, ?, ?)");
+  const insertEvent = db.query("INSERT INTO events (provider, host, session_id, agent_id, ts_ms, kind, data) VALUES ('claude', ?, ?, ?, ?, ?, ?)");
 
   const files = listTranscripts(options.projectsDir);
   // Parent transcripts first so agent calls exist before subagent rows link to them.
@@ -316,7 +318,7 @@ export function ingest(db: Database, options: IngestOptions): IngestStats {
         $output: output,
         $thinking: thinking,
         $context: input + cache5m + cache1h + cacheRead,
-        $cost_usd: cost ?? null,
+        $value: cost ?? null,
       });
       added += result.changes;
     }
@@ -400,12 +402,12 @@ export function ingest(db: Database, options: IngestOptions): IngestStats {
 function linkAgentCalls(db: Database, host: string): void {
   const pending = db
     .query<{ id: string; session_id: string; prompt_head: string }, [string]>(
-      "SELECT id, session_id, prompt_head FROM agents WHERE host = ? AND subagent_type IS NULL AND prompt_head IS NOT NULL",
+      "SELECT id, session_id, prompt_head FROM agents WHERE provider = 'claude' AND host = ? AND subagent_type IS NULL AND prompt_head IS NOT NULL",
     )
     .all(host);
   if (pending.length === 0) return;
-  const calls = db.query<{ data: string }, [string, string]>("SELECT data FROM events WHERE host = ? AND session_id = ? AND kind = 'agent_call'");
-  const update = db.query("UPDATE agents SET subagent_type = ?, model_requested = ?, description = ? WHERE id = ?");
+  const calls = db.query<{ data: string }, [string, string]>("SELECT data FROM events WHERE provider = 'claude' AND host = ? AND session_id = ? AND kind = 'agent_call'");
+  const update = db.query("UPDATE agents SET subagent_type = ?, model_requested = ?, description = ? WHERE provider = 'claude' AND id = ?");
   for (const agent of pending) {
     for (const row of calls.all(host, agent.session_id)) {
       const call = JSON.parse(row.data) as { description: string | null; subagent_type: string | null; model: string | null; prompt_head: string };
@@ -416,10 +418,10 @@ function linkAgentCalls(db: Database, host: string): void {
   }
 }
 
-export function unpricedModels(db: Database): string[] {
+export function unpricedModels(db: Database, provider: Provider = "claude"): string[] {
   return db
-    .query<{ model: string }, []>("SELECT DISTINCT model FROM requests WHERE cost_usd IS NULL")
-    .all()
+    .query<{ model: string }, [Provider]>("SELECT DISTINCT model FROM requests WHERE provider = ? AND value IS NULL")
+    .all(provider)
     .map((row) => row.model)
-    .filter((model) => priceFor(model) === undefined);
+    .filter((model) => priceFor(model, provider) === undefined);
 }
