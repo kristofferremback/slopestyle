@@ -1,23 +1,24 @@
 import { BarChart, LineChart } from "echarts/charts";
-import { DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, ToolboxComponent, TooltipComponent } from "echarts/components";
+import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { cachedShare, tokenCount } from "../lib/usage/format.ts";
 import { usageUsdEquivalent } from "../lib/usage/pricing.ts";
 import { groupResets, placeResetLabels, type ResetLabel } from "../lib/usage/resets.ts";
 
-echarts.use([BarChart, LineChart, DataZoomComponent, GridComponent, LegendComponent, MarkLineComponent, ToolboxComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([BarChart, LineChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer]);
 
 type Bucket = "15m" | "hour" | "day";
 type Provider = "claude" | "codex";
+type Scope = Provider | "all";
 type UsageUnit = "usd" | "credits";
 
 interface Timeline {
   bucket: Bucket;
   buckets: number[];
-  series: { session_id: string; title: string; values: number[] }[];
+  series: { session_id: string; provider: Provider; title: string; values: number[] }[];
   other: number[];
-  provider: Provider;
+  scope: Scope;
   unit: UsageUnit;
   total_value: number;
   total_usd_equivalent: number;
@@ -28,6 +29,7 @@ interface Timeline {
 
 interface SessionSummary {
   id: string;
+  provider: Provider;
   title: string;
   project: string;
   cwd: string | null;
@@ -72,27 +74,50 @@ interface SessionDetail {
 }
 
 interface LimitsView {
-  polling: boolean;
-  status: { polled_ms: number; ok: boolean; error?: string } | null;
-  latest: { ts_ms: number; kind: string; label: string; percent: number; resets_ms: number | null }[];
-  samples: { ts_ms: number; kind: string; percent: number }[];
-  windows: { kind: string; label: string; start_ms: number; end_ms: number; current: boolean; value: number }[];
+  polling: { claude?: boolean; codex?: boolean };
+  status: { provider: Provider; status: { polled_ms: number; ok: boolean; error?: string } }[];
+  latest: { provider: Provider; ts_ms: number; kind: string; label: string; percent: number; resets_ms: number | null }[];
+  samples: { provider: Provider; ts_ms: number; kind: string; percent: number }[];
+  windows: { provider: Provider; kind: string; label: string; start_ms: number; end_ms: number; current: boolean; value: number }[];
+}
+
+interface QuotaWindow {
+  provider: Provider;
+  kind: string;
+  label: string;
+  percent: number;
+  start_ms: number;
+  end_ms: number;
+  resets_ms: number | null;
+  local_value: number;
+  local_usd_equivalent: number;
+  sessions: { session_id: string; provider: Provider; key: string; title: string; value: number; usd_equivalent: number; percent_points: number }[];
+}
+
+interface QuotaView {
+  scope: Scope;
+  windows: QuotaWindow[];
 }
 
 interface InsightsView {
-  provider: Provider;
+  scope: Scope;
   unit: UsageUnit;
   total_value: number;
   total_usd_equivalent: number;
   insights: { kind: string; severity: "info" | "warn"; text: string }[];
 }
 
-interface State {
+interface SessionRef {
   provider: Provider;
+  id: string;
+}
+
+interface State {
+  scope: Scope;
   fromMs: number;
   toMs: number;
   bucket: Bucket | "";
-  session: string | null;
+  session: SessionRef | null;
   // The toolbar preset the range came from, so a refresh rolls a relative
   // range like "Last 24h" forward and the button stays highlighted.
   preset: string | null;
@@ -102,6 +127,10 @@ const hour = 3_600_000;
 const day = 24 * hour;
 const bucketMs: Record<Bucket, number> = { "15m": 15 * 60_000, hour, day };
 const tz = -new Date().getTimezoneOffset();
+// A drag shorter than this is a click on a bar, not a range selection.
+const dragThresholdPx = 8;
+// Selecting a sliver of a chart should still leave something to read.
+const minSelectionMs = 60_000;
 
 const $ = <T extends HTMLElement>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -128,6 +157,8 @@ const insightsEl = $<HTMLUListElement>("#insights");
 const customEl = $<HTMLDetailsElement>("#custom");
 const sortSelect = $<HTMLSelectElement>("#sort");
 const refreshButton = $<HTMLButtonElement>("#refresh");
+const zoomOutButton = $<HTMLButtonElement>("#zoom-out");
+const quotaHeadEl = $("#quota-head");
 const updatedEl = $("#updated");
 const narrow = matchMedia("(max-width: 640px)");
 
@@ -183,6 +214,20 @@ function matchingPreset(fromMs: number, toMs: number): string | null {
   return null;
 }
 
+function sessionKey(ref: SessionRef): string {
+  return `${ref.provider}:${ref.id}`;
+}
+
+// "claude:1a2b" in the URL. A bare id is a link from before both providers
+// shared the page, and means Claude.
+function parseSessionRef(value: string | null): SessionRef | null {
+  if (!value) return null;
+  const split = value.indexOf(":");
+  if (split < 0) return { provider: "claude", id: value };
+  const provider = value.slice(0, split);
+  return { provider: provider === "codex" ? "codex" : "claude", id: value.slice(split + 1) };
+}
+
 function readState(): State {
   const params = new URLSearchParams(location.search);
   const parse = (name: string): number | undefined => {
@@ -198,24 +243,25 @@ function readState(): State {
   const range = preset ? presetRange(preset) : undefined;
   const fromMs = range?.fromMs ?? parse("from") ?? presetRange("today")!.fromMs;
   const toMs = range?.toMs ?? parse("to") ?? presetRange("today")!.toMs;
+  const provider = params.get("provider");
   return {
-    provider: params.get("provider") === "codex" ? "codex" : "claude",
+    scope: provider === "codex" || provider === "all" ? provider : "claude",
     fromMs,
     toMs,
     bucket: bucket === "15m" || bucket === "hour" || bucket === "day" ? bucket : "",
-    session: params.get("session"),
+    session: parseSessionRef(params.get("session")),
     preset: range || preset === "window" ? preset : matchingPreset(fromMs, toMs),
   };
 }
 
 function writeState(state: State, push: boolean): void {
   const params = new URLSearchParams();
-  params.set("provider", state.provider);
+  params.set("provider", state.scope);
   params.set("from", String(state.fromMs));
   params.set("to", String(state.toMs));
   if (state.bucket) params.set("bucket", state.bucket);
   if (state.preset) params.set("preset", state.preset);
-  if (state.session) params.set("session", state.session);
+  if (state.session) params.set("session", sessionKey(state.session));
   const url = `${location.pathname}?${params}`;
   if (push) history.pushState(state, "", url);
   else history.replaceState(state, "", url);
@@ -250,12 +296,23 @@ interface TooltipParam {
   value: [number, number];
 }
 
-// Per-request cost with the tokens behind it. Each series is one request
-// group, so the hovered params index straight into it.
+// Every value the server sends is already in the scope's unit: dollars for
+// Claude, credits for Codex, API-equivalent dollars when both share the page.
+// Money always reads in dollars, so only a Codex-only view converts.
 function formatValue(value: number, fine = false): string {
-  return (fine ? usdFine : usd).format(usageUsdEquivalent(state.provider, value));
+  return (fine ? usdFine : usd).format(usageUsdEquivalent(state.scope === "codex" ? "codex" : "claude", value));
 }
 
+function providerLabel(provider: Provider): string {
+  return provider === "claude" ? "Claude Code" : "Codex";
+}
+
+function providerTag(provider: Provider): string {
+  return provider === "claude" ? "Claude" : "Codex";
+}
+
+// Per-request cost with the tokens behind it. Each series is one request
+// group, so the hovered params index straight into it.
 function costTooltip(params: TooltipParam[], groups: RequestPoint[][]): string {
   const first = params[0];
   if (!first) return "";
@@ -303,11 +360,26 @@ function untilLabel(ms: number): string {
   return `${Math.round(minutes / 60 / 24)} days`;
 }
 
+function spanLabel(ms: number): string {
+  if (ms < 90 * 60_000) return `${Math.max(1, Math.round(ms / 60_000))} min`;
+  if (ms < 48 * hour) return `${Math.round(ms / hour)} h`;
+  return `${Math.round(ms / day)} days`;
+}
+
+type SortKey = keyof SessionSummary | "quota";
+
 let state = readState();
-let colorBySession = new Map<string, string>();
+let colorByKey = new Map<string, string>();
 let currentSessions: SessionSummary[] = [];
 let currentWindows: LimitsView["windows"] = [];
-let sortKey: keyof SessionSummary = "value";
+let currentQuota: QuotaWindow[] = [];
+// The timeline's x axis is one category per bucket, so turning a selected
+// index back into a time needs the bucket starts that were drawn.
+let timelineBuckets: { starts: number[]; size: number } | null = null;
+// Set while a session detail is open, so its charts only answer for the span
+// they are actually drawing.
+let detailOpen = false;
+let sortKey: SortKey = "value";
 let sortDesc = true;
 let pushedDetail = false;
 let loading: Promise<void> | null = null;
@@ -315,13 +387,16 @@ let loadSeq = 0;
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 const refreshEveryMs = 10_000;
 
-const chart = echarts.init($("#chart"));
+const chartEl = $("#chart");
+const contextChartEl = $("#context-chart");
+const costChartEl = $("#cost-chart");
+const chart = echarts.init(chartEl);
 const limitsChart = echarts.init(limitsChartEl);
-const contextChart = echarts.init($("#context-chart"));
-const costChart = echarts.init($("#cost-chart"));
+const contextChart = echarts.init(contextChartEl);
+const costChart = echarts.init(costChartEl);
 
 function query(extra: Record<string, string> = {}): string {
-  const params = new URLSearchParams({ provider: state.provider, from: String(state.fromMs), to: String(state.toMs), tz: String(tz), ...extra });
+  const params = new URLSearchParams({ provider: state.scope, from: String(state.fromMs), to: String(state.toMs), tz: String(tz), ...extra });
   if (state.bucket) params.set("bucket", state.bucket);
   return params.toString();
 }
@@ -342,38 +417,59 @@ function theme() {
   };
 }
 
-interface ZoomRange {
-  start: number;
-  end: number;
+// Refreshes update the chart in place. Rebuilding it from scratch every ten
+// seconds used to leave the previous render's components subscribed to the same
+// canvas, so one drag fired once per render and each one zoomed the result of
+// the last.
+function draw(instance: echarts.ECharts, option: Record<string, unknown>): void {
+  instance.setOption(option, { replaceMerge: ["series"] });
 }
 
-// Charts zoom by dragging out a span, never by scrolling, so a page scroll
-// that crosses a chart cannot get caught in it. The toolbox arrow steps back
-// out. The first dataZoom holds the range so a refresh can redraw in place.
-function zoomOptions(t: ReturnType<typeof theme>, filterMode: "filter" | "none", zoom: ZoomRange | undefined, slider: boolean) {
-  const range = { start: zoom?.start ?? 0, end: zoom?.end ?? 100 };
-  return {
-    toolbox: {
-      right: 16,
-      top: 0,
-      padding: 0,
-      itemSize: 18,
-      itemGap: 12,
-      iconStyle: { borderColor: t.text },
-      emphasis: { iconStyle: { borderColor: css("--text-primary") } },
-      feature: { dataZoom: { yAxisIndex: "none", filterMode, title: { zoom: "Drag across a span to zoom", back: "Zoom out" } } },
-    },
-    dataZoom: [slider ? { type: "slider", bottom: 8, height: 20, borderColor: t.border, textStyle: { color: t.text }, ...range } : { type: "inside", disabled: true, filterMode, ...range }],
+// Dragging across a chart picks a time range for the whole page, so the totals,
+// the session table and the insights all describe exactly what was selected.
+// No chart zooms on its own.
+function enableRangeSelect(instance: echarts.ECharts, host: HTMLElement, resolve: () => ((value: number) => { fromMs: number; toMs: number }) | null, keepSession = false): void {
+  const band = document.createElement("div");
+  band.className = "select-band";
+  band.hidden = true;
+  host.appendChild(band);
+  let anchor: number | null = null;
+  const xOf = (event: PointerEvent) => event.clientX - host.getBoundingClientRect().left;
+  host.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || !resolve()) return;
+    anchor = xOf(event);
+    host.setPointerCapture(event.pointerId);
+  });
+  host.addEventListener("pointermove", (event) => {
+    if (anchor === null) return;
+    const now = xOf(event);
+    band.hidden = Math.abs(now - anchor) < dragThresholdPx;
+    band.style.left = `${Math.min(anchor, now)}px`;
+    band.style.width = `${Math.abs(now - anchor)}px`;
+  });
+  const cancel = () => {
+    anchor = null;
+    band.hidden = true;
   };
-}
-
-function currentZoom(instance: echarts.ECharts): ZoomRange | undefined {
-  const zoom = (instance.getOption()?.dataZoom as Partial<ZoomRange>[] | undefined)?.[0];
-  return zoom?.start !== undefined && zoom.end !== undefined ? { start: zoom.start, end: zoom.end } : undefined;
-}
-
-function armZoom(instance: echarts.ECharts): void {
-  instance.dispatchAction({ type: "takeGlobalCursor", key: "dataZoomSelect", dataZoomSelectActive: true });
+  host.addEventListener("pointercancel", cancel);
+  host.addEventListener("pointerup", (event) => {
+    const start = anchor;
+    cancel();
+    if (start === null) return;
+    const end = xOf(event);
+    // Anything shorter than a deliberate drag is a click, and the chart's own
+    // click handler owns it.
+    if (Math.abs(end - start) < dragThresholdPx) return;
+    const toRange = resolve();
+    if (!toRange) return;
+    const low = instance.convertFromPixel({ xAxisIndex: 0 }, Math.min(start, end));
+    const high = instance.convertFromPixel({ xAxisIndex: 0 }, Math.max(start, end));
+    if (typeof low !== "number" || typeof high !== "number" || !Number.isFinite(low) || !Number.isFinite(high)) return;
+    const fromMs = Math.max(state.fromMs, toRange(low).fromMs);
+    const toMs = Math.min(state.toMs, toRange(high).toMs);
+    if (toMs - fromMs < minSelectionMs) return;
+    setRange(fromMs, toMs, "", null, true, keepSession);
+  });
 }
 
 // A tick at local midnight shows the date, so a range that crosses days reads
@@ -399,6 +495,10 @@ function labelWidth(text: string): number {
 const mergeShare = 0.04;
 const hiddenLabel: ResetLabel = { show: false, align: "left" };
 
+function resetName(window: LimitsView["windows"][number]): string {
+  return state.scope === "all" ? `${providerTag(window.provider)} ${window.label.toLowerCase()}` : window.label;
+}
+
 // One dashed line per reset. Weekly resets minutes apart share one label
 // naming them both, 5-hour resets keep their own so a run of them never
 // swallows a weekly label, their labels go quiet past a day so a week view is
@@ -410,7 +510,7 @@ function resetLines(windows: LimitsView["windows"], chartPx: number, gridLeft: n
   const weekly = visible.filter((window) => window.kind !== "five_hour");
   const fiveHour = visible.filter((window) => window.kind === "five_hour").map((window) => [window]);
   const groups = [...groupResets(weekly, span * mergeShare), ...fiveHour].map((group) => {
-    const name = `${group.map((window) => window.label).join(" and ")} reset`;
+    const name = `${group.map((window) => resetName(window)).join(" and ")} reset`;
     const important = group.some((window) => window.kind !== "five_hour");
     return { group, name, mark: { x: gridLeft + ((group[0]!.end_ms - state.fromMs) / span) * plotPx, width: labelWidth(name), important, wanted: important || span <= day } };
   });
@@ -420,67 +520,70 @@ function resetLines(windows: LimitsView["windows"], chartPx: number, gridLeft: n
   );
 }
 
-function renderLimits(view: LimitsView, keepZoom: boolean): void {
+function renderLimits(view: LimitsView): void {
   currentWindows = view.windows;
   const t = theme();
   tilesEl.replaceChildren(
     ...view.latest.map((sample) => {
       const tile = document.createElement("div");
       tile.className = `tile${sample.percent >= 80 ? " hot" : ""}`;
-      const window = view.windows.find((entry) => entry.kind === sample.kind && entry.current);
-      const parts = [sample.resets_ms ? `resets in ${untilLabel(sample.resets_ms)} at ${sample.resets_ms - Date.now() < day ? timeFormat.format(sample.resets_ms) : dateTimeFormat.format(sample.resets_ms)}` : "", window ? `${formatValue(window.value)}${state.provider === "codex" ? " API-equivalent" : ""} attributed locally` : ""].filter(Boolean);
-      tile.innerHTML = `<span class="hint">${escape(sample.label)}</span><strong>${Math.round(sample.percent)}%</strong><div class="bar" role="meter" aria-valuenow="${Math.round(sample.percent)}" aria-valuemin="0" aria-valuemax="100" aria-label="${escape(sample.label)} used"><span style="width:${Math.min(100, sample.percent)}%"></span></div><span class="sub">${escape(parts.join(" · "))}</span>`;
+      const window = view.windows.find((entry) => entry.provider === sample.provider && entry.kind === sample.kind && entry.current);
+      const parts = [
+        sample.resets_ms ? `resets in ${untilLabel(sample.resets_ms)} at ${sample.resets_ms - Date.now() < day ? timeFormat.format(sample.resets_ms) : dateTimeFormat.format(sample.resets_ms)}` : "",
+        window ? `${usd.format(usageUsdEquivalent(sample.provider, window.value))}${sample.provider === "codex" ? " API-equivalent" : ""} attributed locally` : "",
+      ].filter(Boolean);
+      const name = state.scope === "all" ? `${providerLabel(sample.provider)} · ${sample.label}` : sample.label;
+      tile.innerHTML = `<span class="hint">${escape(name)}</span><strong>${Math.round(sample.percent)}%</strong><div class="bar" role="meter" aria-valuenow="${Math.round(sample.percent)}" aria-valuemin="0" aria-valuemax="100" aria-label="${escape(name)} used"><span style="width:${Math.min(100, sample.percent)}%"></span></div><span class="sub">${escape(parts.join(" · "))}</span>`;
       return tile;
     }),
   );
-  const notice = !view.polling ? (state.provider === "claude" ? "Limit polling is off for this server (--no-limits)." : "Codex transcript indexing is off for this server.") : view.status && !view.status.ok ? `Limits not updated: ${view.status.error}` : view.latest.length === 0 ? "No limit samples yet." : "";
-  limitsNoticeEl.hidden = notice === "";
-  limitsNoticeEl.textContent = notice;
-  const kinds = [...new Set(view.samples.map((sample) => sample.kind))];
+  const notices: string[] = [];
+  if (view.polling.claude === false) notices.push("Claude limit polling is off for this server (--no-limits).");
+  if (view.polling.codex === false) notices.push("Codex transcript indexing is off for this server.");
+  for (const entry of view.status) if (!entry.status.ok) notices.push(`${providerLabel(entry.provider)} limits not updated: ${entry.status.error}`);
+  if (view.latest.length === 0 && notices.length === 0) notices.push("No limit samples yet.");
+  limitsNoticeEl.hidden = notices.length === 0;
+  limitsNoticeEl.textContent = notices.join(" ");
+  const kinds = [...new Set(view.samples.map((sample) => `${sample.provider}:${sample.kind}`))];
   limitsChartEl.hidden = kinds.length === 0;
   if (kinds.length === 0) return;
   const colors = palette();
-  const labels = new Map(view.latest.map((sample) => [sample.kind, sample.label]));
+  const labels = new Map(view.latest.map((sample) => [`${sample.provider}:${sample.kind}`, state.scope === "all" ? `${providerTag(sample.provider)} ${sample.label.toLowerCase()}` : sample.label]));
   // A step line holds its last value until the next poll, so extend each
   // series to now (or the end of the range) instead of ending at the sample.
   const edge = Math.min(Date.now(), state.toMs);
-  const points = (kind: string): [number, number][] => {
-    const own = view.samples.filter((sample) => sample.kind === kind).map((sample): [number, number] => [sample.ts_ms, sample.percent]);
+  const points = (key: string): [number, number][] => {
+    const own = view.samples.filter((sample) => `${sample.provider}:${sample.kind}` === key).map((sample): [number, number] => [sample.ts_ms, sample.percent]);
     const last = own[own.length - 1];
     if (last && last[0] < edge) own.push([edge, last[1]]);
     return own;
   };
-  limitsChart.setOption(
-    {
-      backgroundColor: "transparent",
-      grid: { left: 48, right: 16, top: 48, bottom: 52 },
-      ...zoomOptions(t, "none", keepZoom ? currentZoom(limitsChart) : undefined, false),
-      legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
-      tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? `${Math.round(value)}%` : "") },
-      xAxis: { type: "time", min: state.fromMs, max: state.toMs, axisLabel: { color: t.text, formatter: axisTime, hideOverlap: true }, axisLine: { lineStyle: { color: t.border } } },
-      yAxis: { type: "value", min: 0, max: 100, axisLabel: { color: t.text, formatter: (value: number) => `${value}%` }, splitLine: { lineStyle: { color: t.border } } },
-      series: kinds.map((kind, index) => ({
-        name: labels.get(kind) ?? kind,
-        type: "line",
-        step: "end",
-        showSymbol: false,
-        lineStyle: { width: 2, color: colors[index % colors.length] },
-        itemStyle: { color: colors[index % colors.length] },
-        data: points(kind),
-        markLine:
-          index === 0
-            ? {
-                symbol: "none",
-                label: { color: t.text, position: "end", formatter: (params: { data: { name: string } }) => params.data.name },
-                lineStyle: { color: css("--critical"), type: "dashed" },
-                data: resetLines(view.windows, limitsChart.getWidth(), 48, 16),
-              }
-            : undefined,
-      })),
-    },
-    true,
-  );
-  armZoom(limitsChart);
+  draw(limitsChart, {
+    backgroundColor: "transparent",
+    grid: { left: 48, right: 16, top: 48, bottom: 52 },
+    legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
+    tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? `${Math.round(value)}%` : "") },
+    xAxis: { type: "time", min: state.fromMs, max: state.toMs, axisLabel: { color: t.text, formatter: axisTime, hideOverlap: true }, axisLine: { lineStyle: { color: t.border } } },
+    yAxis: { type: "value", min: 0, max: 100, axisLabel: { color: t.text, formatter: (value: number) => `${value}%` }, splitLine: { lineStyle: { color: t.border } } },
+    series: kinds.map((key, index) => ({
+      name: labels.get(key) ?? key,
+      type: "line",
+      step: "end",
+      showSymbol: false,
+      lineStyle: { width: 2, color: colors[index % colors.length] },
+      itemStyle: { color: colors[index % colors.length] },
+      data: points(key),
+      markLine:
+        index === 0
+          ? {
+              symbol: "none",
+              label: { color: t.text, position: "end", formatter: (params: { data: { name: string } }) => params.data.name },
+              lineStyle: { color: css("--critical"), type: "dashed" },
+              data: resetLines(view.windows, limitsChart.getWidth(), 48, 16),
+            }
+          : { data: [] },
+    })),
+  });
   limitsChart.resize();
 }
 
@@ -495,15 +598,14 @@ function renderInsights(view: InsightsView): void {
   );
 }
 
-function renderTimeline(view: Timeline, keepZoom: boolean): void {
-  state.provider = view.provider;
+function renderTimeline(view: Timeline): void {
+  state.scope = view.scope;
   const colors = palette();
   const t = theme();
-  const zoom = keepZoom ? currentZoom(chart) : undefined;
-  colorBySession = new Map(view.series.map((series, index) => [series.session_id, colors[index]!]));
+  colorByKey = new Map(view.series.map((series, index) => [sessionKey({ provider: series.provider, id: series.session_id }), colors[index]!]));
   const span = state.toMs - state.fromMs;
   const series = view.series.map((entry, index) => ({
-    name: entry.title,
+    name: state.scope === "all" ? `${entry.title} · ${providerTag(entry.provider)}` : entry.title,
     type: "bar" as const,
     stack: "spend",
     data: entry.values.map((value) => Math.round(value * 10000) / 10000),
@@ -532,7 +634,7 @@ function renderTimeline(view: Timeline, keepZoom: boolean): void {
   const plotPx = chart.getWidth() - gridLeft - 16;
   const resets = currentWindows
     .filter((window) => view.bucket !== "day" && window.kind === "five_hour" && window.end_ms > first && window.end_ms < state.toMs)
-    .map((window) => ({ index: Math.min(view.buckets.length - 1, Math.round((window.end_ms - first) / size)), name: `5h reset ${timeFormat.format(window.end_ms)}` }));
+    .map((window) => ({ index: Math.min(view.buckets.length - 1, Math.round((window.end_ms - first) / size)), name: `${state.scope === "all" ? `${providerTag(window.provider)} ` : ""}5h reset ${timeFormat.format(window.end_ms)}` }));
   const resetLabels = placeResetLabels(
     resets.map(({ index, name }) => ({ x: gridLeft + ((index + 0.5) / view.buckets.length) * plotPx, width: labelWidth(name), important: false, wanted: span <= day })),
     chart.getWidth(),
@@ -546,42 +648,58 @@ function renderTimeline(view: Timeline, keepZoom: boolean): void {
       data: resetMarks,
     };
   }
-  chart.setOption(
-    {
-      backgroundColor: "transparent",
-      textStyle: { color: t.text },
-      grid: { left: narrow.matches ? 48 : 56, right: 16, top: 48, bottom: series.length > 0 ? 96 : 56, containLabel: false },
-      ...zoomOptions(t, "filter", zoom, true),
-      legend: { bottom: 40, type: "scroll", formatter: legendName, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
-      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (value: unknown) => (typeof value === "number" ? formatValue(value) : ""), ...t.tooltip },
-      xAxis: {
-        type: "category",
-        data: view.buckets.map((ms) => bucketLabel(ms, view.bucket, span)),
-        axisTick: { show: false },
-        axisLine: { lineStyle: { color: t.border } },
-        axisLabel: { color: t.text },
-      },
-      yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => formatValue(value) }, splitLine: { lineStyle: { color: t.border } } },
-      series,
+  draw(chart, {
+    backgroundColor: "transparent",
+    textStyle: { color: t.text },
+    grid: { left: gridLeft, right: 16, top: 48, bottom: series.length > 0 ? 64 : 40, containLabel: false },
+    legend: { bottom: 0, type: "scroll", formatter: legendName, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (value: unknown) => (typeof value === "number" ? formatValue(value) : ""), ...t.tooltip },
+    xAxis: {
+      type: "category",
+      data: view.buckets.map((ms) => bucketLabel(ms, view.bucket, span)),
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: t.border } },
+      axisLabel: { color: t.text },
     },
-    true,
-  );
-  armZoom(chart);
+    yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => formatValue(value) }, splitLine: { lineStyle: { color: t.border } } },
+    series,
+  });
+  timelineBuckets = { starts: view.buckets, size };
   chart.off("click");
   chart.on("click", (event) => {
     const entry = view.series[event.seriesIndex ?? -1];
-    if (entry) void openSession(entry.session_id, true);
+    if (entry) void openSession({ provider: entry.provider, id: entry.session_id }, true);
   });
   totalEl.textContent = formatValue(view.total_value);
-  totalUnitEl.textContent = view.unit === "usd" ? "API list prices" : `API-equivalent · ${credits.format(view.total_value)} credits`;
+  totalUnitEl.textContent = view.unit === "credits" ? `API-equivalent · ${credits.format(view.total_value)} credits` : view.scope === "all" ? "API-equivalent across both" : "API list prices";
   totalTokensEl.textContent = `${tokens(view.total_input_tokens)} in · ${tokens(view.total_output_tokens)} out`;
   const unpriced = view.unpriced_models;
   noticeEl.hidden = unpriced.length === 0;
-  noticeEl.textContent = unpriced.length ? `No ${view.unit === "usd" ? "price" : "credit rate"}, so counted as zero: ${unpriced.join(", ")}` : "";
+  noticeEl.textContent = unpriced.length ? `No price or credit rate, so counted as zero: ${unpriced.join(", ")}` : "";
+}
+
+// The longest running window is the one that decides how much room is left, so
+// that is what a session is measured against.
+function quotaFor(row: { id: string; provider: Provider }): { points: number; window: QuotaWindow } | undefined {
+  const windows = currentQuota.filter((window) => window.provider === row.provider).sort((a, b) => b.end_ms - b.start_ms - (a.end_ms - a.start_ms));
+  for (const window of windows) {
+    const share = window.sessions.find((session) => session.session_id === row.id);
+    if (share) return { points: share.percent_points, window };
+  }
+  return undefined;
+}
+
+function renderQuota(view: QuotaView): void {
+  currentQuota = view.windows;
+  const longest = [...view.windows].sort((a, b) => b.end_ms - b.start_ms - (a.end_ms - a.start_ms))[0];
+  quotaHeadEl.title = longest
+    ? `Share of the ${longest.label.toLowerCase()} limit this session accounts for, taken from its share of what local transcripts spent inside that window. Usage on the same allowance without a local transcript inflates every share.`
+    : "No limit window with reported usage yet.";
 }
 
 function sortSessions(rows: SessionSummary[]): SessionSummary[] {
   const value = (row: SessionSummary): number | string => {
+    if (sortKey === "quota") return quotaFor(row)?.points ?? -1;
     if (sortKey === "models") return modelsLabel(row.models);
     const field = row[sortKey];
     return typeof field === "number" ? field : String(field ?? "");
@@ -597,18 +715,23 @@ function sortSessions(rows: SessionSummary[]): SessionSummary[] {
 function renderSessions(rows: SessionSummary[]): void {
   currentSessions = rows;
   emptyEl.hidden = rows.length > 0;
+  const selected = state.session ? sessionKey(state.session) : null;
   // A refresh rebuilds the rows, so keyboard focus follows the focused session.
   const focused = document.activeElement?.closest<HTMLTableRowElement>("#sessions tr")?.dataset.session;
   tableBody.replaceChildren(
     ...sortSessions(rows).map((row) => {
+      const key = sessionKey(row);
       const tr = document.createElement("tr");
-      tr.dataset.session = row.id;
-      tr.setAttribute("aria-selected", String(row.id === state.session));
-      const color = colorBySession.get(row.id) ?? css("--series-other");
+      tr.dataset.session = key;
+      tr.setAttribute("aria-selected", String(key === selected));
+      const color = colorByKey.get(key) ?? css("--series-other");
+      const share = quotaFor(row);
+      const tag = state.scope === "all" ? `<span class="tag">${providerTag(row.provider)}</span>` : "";
       tr.innerHTML = `
         <td><span class="swatch" style="background:${color}"></span></td>
-        <td class="title"><button type="button">${escape(row.title)}<span class="sub">${escape(row.project.replace(/^-/, "").replace(/-/g, "/"))}${row.git_branch ? ` · ${escape(row.git_branch)}` : ""}</span></button></td>
+        <td class="title"><button type="button">${escape(row.title)}<span class="sub">${tag}${escape(row.project.replace(/^-/, "").replace(/-/g, "/"))}${row.git_branch ? ` · ${escape(row.git_branch)}` : ""}</span></button></td>
         <td class="num">${formatValue(row.value)}</td>
+        <td class="num" data-label="quota">${share && share.points >= 0.05 ? `${share.points.toFixed(1)}%<span class="sub">of ${Math.round(share.window.percent)}% used</span>` : ""}</td>
         <td class="num">${row.sub_value > 0 ? `${formatValue(row.sub_value)}<span class="sub">in ${row.agents} agent${row.agents === 1 ? "" : "s"}</span>` : ""}</td>
         <td class="num" data-label="requests">${row.requests}${row.requests_sub ? `<span class="sub">${row.requests_sub} in agents</span>` : ""}</td>
         <td class="num" data-label="in">${tokensCell(row.input_tokens, row.cache_read_tokens)}</td>
@@ -616,10 +739,10 @@ function renderSessions(rows: SessionSummary[]): void {
         <td class="num" data-label="peak">${tokens(row.peak_context)}${row.compactions ? `<span class="sub">${row.compactions} compaction${row.compactions === 1 ? "" : "s"}</span>` : ""}</td>
         <td>${escape(modelsLabel(row.models))}${Object.keys(row.efforts).length ? `<span class="sub">${escape(effortsLabel(row.efforts))}</span>` : ""}</td>
         <td>${row.started_ms ? dateTimeFormat.format(row.started_ms) : ""}</td>`;
-      tr.querySelector("button")!.addEventListener("click", () => void openSession(row.id, true));
+      tr.querySelector("button")!.addEventListener("click", () => void openSession(row, true));
       tr.addEventListener("click", (event) => {
         if ((event.target as HTMLElement).closest("button")) return;
-        void openSession(row.id, true);
+        void openSession(row, true);
       });
       return tr;
     }),
@@ -632,15 +755,33 @@ function renderSessions(rows: SessionSummary[]): void {
   sortSelect.value = sortKey;
 }
 
-function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean): void {
+// A session's own span, so a four-minute thread is not one pixel wide inside a
+// day. Clamped to the page range, which is what the rest of the page describes.
+function detailBounds(detail: SessionDetail): { min: number; max: number } {
+  let first = Number.POSITIVE_INFINITY;
+  let last = Number.NEGATIVE_INFINITY;
+  for (const stamp of [...detail.requests.map((request) => request.ts_ms), ...detail.events.map((event) => event.ts_ms)]) {
+    first = Math.min(first, stamp);
+    last = Math.max(last, stamp);
+  }
+  if (!Number.isFinite(first)) return { min: state.fromMs, max: state.toMs };
+  const pad = Math.max(minSelectionMs, (last - first) * 0.05);
+  return { min: Math.max(state.fromMs, first - pad), max: Math.min(state.toMs, last + pad) };
+}
+
+function renderDetail(detail: SessionDetail, focus: boolean): void {
   const { session } = detail;
   detailEl.hidden = false;
+  detailOpen = true;
   $("#detail-title").textContent = session.title;
+  const share = quotaFor(session);
   $("#detail-meta").textContent = [
+    state.scope === "all" ? providerLabel(session.provider) : null,
     session.cwd ?? session.project,
     session.git_branch,
     session.started_ms ? `${dateTimeFormat.format(session.started_ms)}${session.ended_ms ? ` to ${timeFormat.format(session.ended_ms)}` : ""}` : null,
-    `${formatValue(session.value)}${state.provider === "codex" ? " API-equivalent" : ""} in range`,
+    `${formatValue(session.value)}${session.provider === "codex" ? " API-equivalent" : ""} in range`,
+    share && share.points >= 0.05 ? `about ${share.points.toFixed(1)} of the ${Math.round(share.window.percent)}% ${share.window.label.toLowerCase()} limit used so far` : null,
     `${tokens(session.input_tokens)} in${session.cache_read_tokens ? `, ${cachedShare(session.input_tokens, session.cache_read_tokens)}` : ""}`,
     `${tokens(session.output_tokens)} out`,
     `${session.requests} requests`,
@@ -649,17 +790,19 @@ function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean):
     .filter(Boolean)
     .join(" · ");
   const t = theme();
+  const bounds = detailBounds(detail);
+  const span = bounds.max - bounds.min;
   const main = detail.requests.filter((request) => request.agent_id === "");
   const agentRequests = detail.requests.filter((request) => request.agent_id !== "");
   const compactions = detail.events.filter((event) => event.kind === "compact" && event.agent_id === "");
   const compactionGroups = groupResets(
     compactions.map((event) => ({ ...event, end_ms: event.ts_ms })),
-    (state.toMs - state.fromMs) * mergeShare,
+    span * mergeShare,
   );
   const compactionLabels = placeResetLabels(
     compactionGroups.map((group) => {
       const name = group.length > 1 ? `${group.length} compactions` : "compacted";
-      const x = 56 + ((group[0]!.ts_ms - state.fromMs) / (state.toMs - state.fromMs)) * (contextChart.getWidth() - 72);
+      const x = 56 + ((group[0]!.ts_ms - bounds.min) / span) * (contextChart.getWidth() - 72);
       return { x, width: labelWidth(name), important: false, wanted: true };
     }),
     contextChart.getWidth(),
@@ -676,64 +819,60 @@ function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean):
     type: "time" as const,
     axisLabel: { color: t.text, formatter: axisTime, hideOverlap: true },
     axisLine: { lineStyle: { color: t.border } },
-    min: state.fromMs,
-    max: state.toMs,
+    min: bounds.min,
+    max: bounds.max,
   };
-  contextChart.setOption(
-    {
-      backgroundColor: "transparent",
-      // Legend at the bottom keeps the top clear for mark line labels.
-      grid: { left: 56, right: 16, top: 48, bottom: 56 },
-      ...zoomOptions(t, "none", keepZoom ? currentZoom(contextChart) : undefined, false),
-      legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
-      tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? `${tokens(value)} tokens` : "") },
-      xAxis: axis,
-      yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => tokens(value) }, splitLine: { lineStyle: { color: t.border } } },
-      series: [
-        {
-          name: "Main thread",
-          type: "line",
-          showSymbol: main.length < 60,
-          symbolSize: 8,
-          lineStyle: { width: 2, color: css("--series-1") },
-          itemStyle: { color: css("--series-1") },
-          data: main.map((request) => [request.ts_ms, request.context]),
-          markLine: {
-            symbol: "none",
-            label: { color: t.text, formatter: (params: { data: { name: string } }) => params.data.name },
-            lineStyle: { color: css("--critical"), type: "dashed" },
-            data: compactionMarks,
-          },
+  $("#detail-scale").textContent =
+    span < state.toMs - state.fromMs
+      ? `Both charts cover this session's own ${spanLabel(span)} rather than the whole range. Drag across either one to narrow the page to that slice.`
+      : "Drag across either chart to narrow the page to that slice.";
+  draw(contextChart, {
+    backgroundColor: "transparent",
+    // Legend at the bottom keeps the top clear for mark line labels.
+    grid: { left: 56, right: 16, top: 48, bottom: 56 },
+    legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
+    tooltip: { trigger: "axis", ...t.tooltip, valueFormatter: (value: unknown) => (typeof value === "number" ? `${tokens(value)} tokens` : "") },
+    xAxis: axis,
+    yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => tokens(value) }, splitLine: { lineStyle: { color: t.border } } },
+    series: [
+      {
+        name: "Main thread",
+        type: "line",
+        showSymbol: main.length < 60,
+        symbolSize: 8,
+        lineStyle: { width: 2, color: css("--series-1") },
+        itemStyle: { color: css("--series-1") },
+        data: main.map((request) => [request.ts_ms, request.context]),
+        markLine: {
+          symbol: "none",
+          label: { color: t.text, formatter: (params: { data: { name: string } }) => params.data.name },
+          lineStyle: { color: css("--critical"), type: "dashed" },
+          data: compactionMarks,
         },
-        {
-          name: "Subagents",
-          type: "line",
-          showSymbol: true,
-          symbolSize: 6,
-          lineStyle: { width: 0 },
-          itemStyle: { color: css("--series-2") },
-          data: agentRequests.map((request) => [request.ts_ms, request.context]),
-        },
-      ],
-    },
-    true,
-  );
-  costChart.setOption(
-    {
-      backgroundColor: "transparent",
-      grid: { left: 56, right: 16, top: 48, bottom: 56 },
-      ...zoomOptions(t, "none", keepZoom ? currentZoom(costChart) : undefined, false),
-      legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
-      tooltip: { trigger: "axis", ...t.tooltip, formatter: (params: unknown) => costTooltip(params as TooltipParam[], [main, agentRequests]) },
-      xAxis: axis,
-      yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => formatValue(value) }, splitLine: { lineStyle: { color: t.border } } },
-      series: [
-        { name: "Main thread", type: "bar", barMaxWidth: 6, itemStyle: { color: css("--series-1") }, data: main.map((request) => [request.ts_ms, request.value ?? 0]) },
-        { name: "Subagents", type: "bar", barMaxWidth: 6, itemStyle: { color: css("--series-2") }, data: agentRequests.map((request) => [request.ts_ms, request.value ?? 0]) },
-      ],
-    },
-    true,
-  );
+      },
+      {
+        name: "Subagents",
+        type: "line",
+        showSymbol: true,
+        symbolSize: 6,
+        lineStyle: { width: 0 },
+        itemStyle: { color: css("--series-2") },
+        data: agentRequests.map((request) => [request.ts_ms, request.context]),
+      },
+    ],
+  });
+  draw(costChart, {
+    backgroundColor: "transparent",
+    grid: { left: 56, right: 16, top: 48, bottom: 56 },
+    legend: { bottom: 0, textStyle: { color: t.text }, itemWidth: 12, itemHeight: 12 },
+    tooltip: { trigger: "axis", ...t.tooltip, formatter: (params: unknown) => costTooltip(params as TooltipParam[], [main, agentRequests]) },
+    xAxis: axis,
+    yAxis: { type: "value", axisLabel: { color: t.text, formatter: (value: number) => formatValue(value) }, splitLine: { lineStyle: { color: t.border } } },
+    series: [
+      { name: "Main thread", type: "bar", barMaxWidth: 6, itemStyle: { color: css("--series-1") }, data: main.map((request) => [request.ts_ms, request.value ?? 0]) },
+      { name: "Subagents", type: "bar", barMaxWidth: 6, itemStyle: { color: css("--series-2") }, data: agentRequests.map((request) => [request.ts_ms, request.value ?? 0]) },
+    ],
+  });
   $("#agents-empty").hidden = detail.agents.length > 0;
   agentsBody.replaceChildren(
     ...detail.agents.map((agent) => {
@@ -749,25 +888,24 @@ function renderDetail(detail: SessionDetail, focus: boolean, keepZoom: boolean):
       return tr;
     }),
   );
-  armZoom(contextChart);
-  armZoom(costChart);
   contextChart.resize();
   costChart.resize();
   if (focus) $<HTMLButtonElement>("#detail-close").focus();
 }
 
-async function openSession(id: string, push: boolean, keepZoom = false): Promise<void> {
+async function openSession(ref: SessionRef, push: boolean): Promise<void> {
   // Switching sessions replaces the detail entry so Escape closes instead of
   // stepping back to the previous session.
   const switching = state.session !== null && pushedDetail;
-  state = { ...state, session: id };
+  state = { ...state, session: { provider: ref.provider, id: ref.id } };
   if (push) {
     writeState(state, !switching);
     pushedDetail = true;
   }
-  for (const row of tableBody.querySelectorAll("tr")) row.setAttribute("aria-selected", String(row.dataset.session === id));
+  const key = sessionKey(state.session!);
+  for (const row of tableBody.querySelectorAll("tr")) row.setAttribute("aria-selected", String(row.dataset.session === key));
   try {
-    renderDetail(await getJson<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}?${query()}`), push, keepZoom);
+    renderDetail(await getJson<SessionDetail>(`/api/sessions/${encodeURIComponent(ref.id)}?${query({ session_provider: ref.provider })}`), push);
   } catch (error) {
     closeDetail(false);
     noticeEl.hidden = false;
@@ -777,6 +915,7 @@ async function openSession(id: string, push: boolean, keepZoom = false): Promise
 
 function closeDetail(viaHistory: boolean): void {
   detailEl.hidden = true;
+  detailOpen = false;
   state = { ...state, session: null };
   for (const row of tableBody.querySelectorAll("tr")) row.setAttribute("aria-selected", "false");
   if (viaHistory && pushedDetail) {
@@ -787,7 +926,7 @@ function closeDetail(viaHistory: boolean): void {
   }
 }
 
-async function load(refreshing = false): Promise<void> {
+async function load(): Promise<void> {
   // A newer load owns the page: an older one that finishes later must not
   // paint over it.
   const seq = ++loadSeq;
@@ -806,20 +945,26 @@ async function load(refreshing = false): Promise<void> {
       fromInput.value = toLocalInput(state.fromMs);
       toInput.value = toLocalInput(state.toMs);
       bucketSelect.value = state.bucket;
-      providerSelect.value = state.provider;
-      const [view, rows, limits, insights] = await Promise.all([
+      providerSelect.value = state.scope;
+      zoomOutButton.textContent = `Zoom out to ${spanLabel((state.toMs - state.fromMs) * 2)}`;
+      const [view, rows, limits, quota, insightsView] = await Promise.all([
         getJson<Timeline>(`/api/timeline?${query()}`),
         getJson<SessionSummary[]>(`/api/sessions?${query()}`),
         getJson<LimitsView>(`/api/limits?${query()}`),
+        getJson<QuotaView>(`/api/quota?${query()}`),
         getJson<InsightsView>(`/api/insights?${query()}`),
       ]);
       if (seq !== loadSeq) return;
-      renderLimits(limits, refreshing);
-      renderInsights(insights);
-      renderTimeline(view, refreshing);
+      renderLimits(limits);
+      renderInsights(insightsView);
+      renderQuota(quota);
+      renderTimeline(view);
       renderSessions(rows);
-      if (state.session) await openSession(state.session, false, refreshing);
-      else detailEl.hidden = true;
+      if (state.session) await openSession(state.session, false);
+      else {
+        detailEl.hidden = true;
+        detailOpen = false;
+      }
       updatedEl.textContent = `Updated ${clockFormat.format(Date.now())}`;
     } catch (error) {
       if (seq !== loadSeq) return;
@@ -856,7 +1001,7 @@ async function refresh(force: boolean): Promise<void> {
   refreshButton.disabled = force;
   try {
     if (force) await getJson("/api/refresh", { method: "POST" });
-    await load(true);
+    await load();
   } catch (error) {
     noticeEl.hidden = false;
     noticeEl.textContent = (error as Error).message;
@@ -865,20 +1010,42 @@ async function refresh(force: boolean): Promise<void> {
   }
 }
 
-function setRange(fromMs: number, toMs: number, bucket = state.bucket, preset: string | null = null): void {
-  if (toMs <= fromMs) return;
-  state = { provider: state.provider, fromMs, toMs, bucket, session: null, preset };
-  writeState(state, false);
+// A time axis converts pixels to fractional milliseconds, and the server only
+// accepts whole ones.
+function setRange(fromMs: number, toMs: number, bucket = state.bucket, preset: string | null = null, push = false, keepSession = false): void {
+  const from = Math.floor(fromMs);
+  const to = Math.ceil(toMs);
+  if (to <= from) return;
+  state = { scope: state.scope, fromMs: from, toMs: to, bucket, session: keepSession ? state.session : null, preset };
+  writeState(state, push);
+  pushedDetail = false;
   void load();
 }
 
 async function currentWindowRange(): Promise<{ fromMs: number; toMs: number } | undefined> {
   const now = Date.now();
-  const params = new URLSearchParams({ provider: state.provider, from: String(now - 5 * hour), to: String(now + 5 * hour), tz: String(tz) });
+  const params = new URLSearchParams({ provider: state.scope, from: String(now - 5 * hour), to: String(now + 5 * hour), tz: String(tz) });
   const limits = await getJson<LimitsView>(`/api/limits?${params}`);
   const window = limits.windows.filter((entry) => entry.current).sort((a, b) => a.end_ms - a.start_ms - (b.end_ms - b.start_ms))[0];
   return window ? { fromMs: window.start_ms, toMs: window.end_ms } : undefined;
 }
+
+// A selected bucket covers the span it was drawn for, not the instant its bar
+// starts, so selecting the last bar of an hour view selects that whole hour.
+enableRangeSelect(chart, chartEl, () => {
+  const buckets = timelineBuckets;
+  if (!buckets) return null;
+  return (index: number) => {
+    const clamped = Math.min(buckets.starts.length - 1, Math.max(0, Math.round(index)));
+    const start = buckets.starts[clamped]!;
+    return { fromMs: start, toMs: start + buckets.size };
+  };
+});
+const instant = (ms: number) => ({ fromMs: ms, toMs: ms });
+enableRangeSelect(limitsChart, limitsChartEl, () => instant);
+// Narrowing from a session's own chart is about that session, so it stays open.
+enableRangeSelect(contextChart, contextChartEl, () => (detailOpen ? instant : null), true);
+enableRangeSelect(costChart, costChartEl, () => (detailOpen ? instant : null), true);
 
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-preset]")) {
   button.addEventListener("click", async () => {
@@ -900,6 +1067,13 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-preset]
     setRange(range.fromMs, range.toMs, preset === "window" ? "" : state.bucket, preset);
   });
 }
+// Widening keeps the middle of what is on screen, so whatever is being read
+// stays in view. Back steps through earlier selections instead.
+zoomOutButton.addEventListener("click", () => {
+  const span = state.toMs - state.fromMs;
+  const middle = state.fromMs + span / 2;
+  setRange(Math.round(middle - span), Math.round(middle + span), "", null, true);
+});
 function syncCustomRange(): void {
   if (!narrow.matches) customEl.open = true;
 }
@@ -909,14 +1083,14 @@ narrow.addEventListener("change", () => {
   void load();
 });
 sortSelect.addEventListener("change", () => {
-  sortKey = sortSelect.value as keyof SessionSummary;
+  sortKey = sortSelect.value as SortKey;
   sortDesc = sortKey !== "title";
   renderSessions(currentSessions);
 });
 providerSelect.addEventListener("change", () => {
-  const provider = providerSelect.value as Provider;
+  const scope = providerSelect.value as Scope;
   const today = state.preset === "window" ? presetRange("today") : undefined;
-  state = { ...state, ...today, provider, session: null, preset: today ? "today" : state.preset };
+  state = { ...state, ...today, scope, session: null, preset: today ? "today" : state.preset };
   writeState(state, true);
   void load();
 });
@@ -925,7 +1099,7 @@ toInput.addEventListener("change", () => setRange(state.fromMs, new Date(toInput
 bucketSelect.addEventListener("change", () => setRange(state.fromMs, state.toMs, bucketSelect.value as Bucket | "", state.preset));
 for (const button of document.querySelectorAll<HTMLButtonElement>("th button[data-sort]")) {
   button.addEventListener("click", () => {
-    const key = button.dataset.sort as keyof SessionSummary;
+    const key = button.dataset.sort as SortKey;
     if (sortKey === key) sortDesc = !sortDesc;
     else {
       sortKey = key;
@@ -945,7 +1119,7 @@ document.addEventListener("keydown", (event) => {
 });
 window.addEventListener("popstate", () => {
   const next = readState();
-  const rangeChanged = next.provider !== state.provider || next.fromMs !== state.fromMs || next.toMs !== state.toMs || next.bucket !== state.bucket || next.preset !== state.preset;
+  const rangeChanged = next.scope !== state.scope || next.fromMs !== state.fromMs || next.toMs !== state.toMs || next.bucket !== state.bucket || next.preset !== state.preset;
   state = next;
   pushedDetail = false;
   if (rangeChanged) void load();

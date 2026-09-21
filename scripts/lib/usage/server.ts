@@ -3,8 +3,9 @@ import { ingestCodex, type CodexIngestOptions } from "./codex.ts";
 import { ingest, type IngestOptions } from "./ingest.ts";
 import { insights } from "./insights.ts";
 import { type Fetcher, fetchUsage, limitsView, pollLimits, type TokenSource } from "./limits.ts";
+import { quotaView } from "./quota.ts";
 import { type Bucket, bucketMs, type Range, sessionDetail, sessions, timeline } from "./query.ts";
-import type { Provider } from "./pricing.ts";
+import type { Provider, Scope } from "./pricing.ts";
 
 export interface ServerOptions {
   db: Database;
@@ -62,10 +63,10 @@ export function parseBucket(params: URLSearchParams, range: Range): Bucket {
   throw new HttpError(400, "bucket must be 15m, hour, or day");
 }
 
-export function parseProvider(params: URLSearchParams): Provider {
+export function parseScope(params: URLSearchParams): Scope {
   const value = params.get("provider") ?? "claude";
-  if (value === "claude" || value === "codex") return value;
-  throw new HttpError(400, "provider must be claude or codex");
+  if (value === "claude" || value === "codex" || value === "all") return value;
+  throw new HttpError(400, "provider must be claude, codex, or all");
 }
 
 export function createServer(options: ServerOptions) {
@@ -93,6 +94,10 @@ export function createServer(options: ServerOptions) {
     return pollLimits(options.db, options.tokenSource, options.fetcher ?? fetchUsage);
   };
   const windowSpend = options.db.query<{ total: number }, [Provider, number, number]>("SELECT COALESCE(SUM(value), 0) AS total FROM requests WHERE provider = ? AND ts_ms >= ? AND ts_ms < ?");
+  const polling = (scope: Scope) => ({
+    claude: scope !== "codex" ? options.tokenSource !== undefined : undefined,
+    codex: scope !== "claude" ? options.codex !== undefined : undefined,
+  });
   const handle = (fn: (url: URL) => unknown) => (request: Request) => {
     try {
       refresh();
@@ -105,14 +110,16 @@ export function createServer(options: ServerOptions) {
   const routes: Record<string, (request: Request & { params?: Record<string, string> }) => Response | Promise<Response>> = {
     "/api/timeline": handle((url) => {
       const { range, offsetMinutes } = parseRange(url.searchParams);
-      return timeline(options.db, range, parseBucket(url.searchParams, range), offsetMinutes, parseProvider(url.searchParams));
+      return timeline(options.db, range, parseBucket(url.searchParams, range), offsetMinutes, parseScope(url.searchParams));
     }),
-    "/api/sessions": handle((url) => sessions(options.db, parseRange(url.searchParams).range, parseProvider(url.searchParams))),
+    "/api/sessions": handle((url) => sessions(options.db, parseRange(url.searchParams).range, parseScope(url.searchParams))),
     "/api/sessions/:id": (request) => {
       const url = new URL(request.url);
       try {
         refresh();
-        const detail = sessionDetail(options.db, request.params!.id, parseRange(url.searchParams).range, parseProvider(url.searchParams));
+        const own = url.searchParams.get("session_provider");
+        if (own !== null && own !== "claude" && own !== "codex") return json({ error: "session_provider must be claude or codex" }, 400);
+        const detail = sessionDetail(options.db, request.params!.id, parseRange(url.searchParams).range, parseScope(url.searchParams), own ?? undefined);
         return detail ? json(detail) : json({ error: "No requests for that session in the range" }, 404);
       } catch (error) {
         if (error instanceof HttpError) return json({ error: error.message }, error.status);
@@ -121,11 +128,12 @@ export function createServer(options: ServerOptions) {
     },
     "/api/limits": handle((url) => {
       const { range } = parseRange(url.searchParams);
-      const provider = parseProvider(url.searchParams);
-      const view = limitsView(options.db, range.fromMs, range.toMs, Date.now(), provider);
-      return { ...view, provider, polling: provider === "codex" ? options.codex !== undefined : options.tokenSource !== undefined, windows: view.windows.map((window) => ({ ...window, value: windowSpend.get(provider, window.start_ms, window.end_ms)!.total })) };
+      const scope = parseScope(url.searchParams);
+      const view = limitsView(options.db, range.fromMs, range.toMs, Date.now(), scope);
+      return { ...view, scope, polling: polling(scope), windows: view.windows.map((window) => ({ ...window, value: windowSpend.get(window.provider, window.start_ms, window.end_ms)!.total })) };
     }),
-    "/api/insights": handle((url) => insights(options.db, parseRange(url.searchParams).range, Date.now(), parseProvider(url.searchParams))),
+    "/api/quota": handle((url) => quotaView(options.db, Date.now(), parseScope(url.searchParams))),
+    "/api/insights": handle((url) => insights(options.db, parseRange(url.searchParams).range, Date.now(), parseScope(url.searchParams))),
     "/api/refresh": async (request) => {
       if (request.method !== "POST") return json({ error: "Use POST" }, 405);
       const stats = refresh(true);

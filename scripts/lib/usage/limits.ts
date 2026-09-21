@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { run } from "../core.ts";
-import type { Provider } from "./pricing.ts";
+import { type Provider, type Scope, scopeProviders } from "./pricing.ts";
 
 // Claude Code's own /usage reads GET /api/oauth/usage with the OAuth token it
 // keeps in ~/.claude/.credentials.json (Linux) or the login Keychain (macOS).
@@ -197,6 +197,7 @@ export async function pollLimits(db: Database, tokenSource: TokenSource, fetcher
 }
 
 export interface LimitWindow {
+  provider: Provider;
   kind: string;
   label: string;
   start_ms: number;
@@ -205,36 +206,49 @@ export interface LimitWindow {
 }
 
 export interface LimitsView {
-  status: PollStatus | null;
-  latest: (LimitSample & { ts_ms: number })[];
-  samples: { ts_ms: number; kind: string; percent: number }[];
+  status: { provider: Provider; status: PollStatus }[];
+  latest: (LimitSample & { provider: Provider; ts_ms: number })[];
+  samples: { provider: Provider; ts_ms: number; kind: string; percent: number }[];
   windows: LimitWindow[];
 }
 
 // Each distinct reset time seen for a limit marks the end of one window. The
 // 5-hour window opens 5 hours before it resets; the weekly ones a week before.
-export function limitsView(db: Database, fromMs: number, toMs: number, now = Date.now(), provider: Provider = "claude"): LimitsView {
+// Samples written before window_ms existed carry it as NULL, so windows are
+// keyed by provider, kind and reset time to keep one window per reset.
+export function limitsView(db: Database, fromMs: number, toMs: number, now = Date.now(), scope: Scope = "claude"): LimitsView {
   ensureLimitTables(db);
-  const statusRow = db.query<{ value: string }, [Provider]>("SELECT value FROM limit_status WHERE provider = ? AND key = 'last_poll'").get(provider);
+  const list = scopeProviders(scope);
+  const marks = list.map(() => "?").join(",");
+  const status = db
+    .query<{ provider: Provider; value: string }, Provider[]>(`SELECT provider, value FROM limit_status WHERE key = 'last_poll' AND provider IN (${marks})`)
+    .all(...list)
+    .map((row) => ({ provider: row.provider, status: JSON.parse(row.value) as PollStatus }));
   const latest = db
-    .query<LimitSample & { ts_ms: number }, [Provider]>(
-      "SELECT s.ts_ms, s.kind, s.label, s.percent, s.resets_ms, s.window_ms FROM limit_samples s WHERE s.provider = ? AND s.ts_ms = (SELECT MAX(ts_ms) FROM limit_samples WHERE provider = s.provider AND kind = s.kind) ORDER BY s.kind",
+    .query<LimitSample & { provider: Provider; ts_ms: number }, Provider[]>(
+      `SELECT s.provider, s.ts_ms, s.kind, s.label, s.percent, s.resets_ms, s.window_ms FROM limit_samples s
+       WHERE s.provider IN (${marks}) AND s.ts_ms = (SELECT MAX(ts_ms) FROM limit_samples WHERE provider = s.provider AND kind = s.kind)
+       ORDER BY s.provider, s.kind`,
     )
-    .all(provider)
+    .all(...list)
     .filter((sample) => sample.resets_ms === null || sample.resets_ms > now);
   const samples = db
-    .query<{ ts_ms: number; kind: string; percent: number }, [Provider, number, number]>("SELECT ts_ms, kind, percent FROM limit_samples WHERE provider = ? AND ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms")
-    .all(provider, fromMs, toMs);
+    .query<{ provider: Provider; ts_ms: number; kind: string; percent: number }, [number, number, ...Provider[]]>(
+      `SELECT provider, ts_ms, kind, percent FROM limit_samples WHERE ts_ms >= ? AND ts_ms < ? AND provider IN (${marks}) ORDER BY ts_ms`,
+    )
+    .all(fromMs, toMs, ...list);
   const windows: LimitWindow[] = [];
   for (const row of db
-    .query<{ kind: string; label: string; resets_ms: number; window_ms: number | null }, [Provider]>(
-      "SELECT DISTINCT kind, label, ((resets_ms + 30000) / 60000) * 60000 AS resets_ms, window_ms FROM limit_samples WHERE provider = ? AND resets_ms IS NOT NULL ORDER BY resets_ms",
+    .query<{ provider: Provider; kind: string; label: string; resets_ms: number; window_ms: number | null }, Provider[]>(
+      `SELECT provider, kind, MIN(label) AS label, ((resets_ms + 30000) / 60000) * 60000 AS resets_ms, MAX(window_ms) AS window_ms
+       FROM limit_samples WHERE resets_ms IS NOT NULL AND provider IN (${marks})
+       GROUP BY provider, kind, ((resets_ms + 30000) / 60000) * 60000 ORDER BY resets_ms`,
     )
-    .all(provider)) {
+    .all(...list)) {
     const length = row.window_ms ?? (row.kind === "five_hour" ? 5 * 3_600_000 : 7 * 86_400_000);
     const start = row.resets_ms - length;
     if (row.resets_ms <= fromMs || start >= toMs) continue;
-    windows.push({ kind: row.kind, label: row.label, start_ms: start, end_ms: row.resets_ms, current: start <= now && now < row.resets_ms });
+    windows.push({ provider: row.provider, kind: row.kind, label: row.label, start_ms: start, end_ms: row.resets_ms, current: start <= now && now < row.resets_ms });
   }
-  return { status: statusRow ? (JSON.parse(statusRow.value) as PollStatus) : null, latest, samples, windows };
+  return { status, latest, samples, windows };
 }

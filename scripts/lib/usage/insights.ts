@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import { limitsView } from "./limits.ts";
-import { baseModel, type Provider, type UsageUnit, usageUnit, usageUsdEquivalent } from "./pricing.ts";
+import { baseModel, type Provider, type Scope, scopeProviders, scopeValue, type UsageUnit, usageUnit, usageUsdEquivalent } from "./pricing.ts";
+import { quotaView } from "./quota.ts";
 import { type Range, sessions, type SessionSummary } from "./query.ts";
 
 export interface Insight {
@@ -11,7 +11,7 @@ export interface Insight {
 }
 
 export interface InsightsView {
-  provider: Provider;
+  scope: Scope;
   unit: UsageUnit;
   total_value: number;
   total_usd_equivalent: number;
@@ -28,11 +28,16 @@ function amount(provider: Provider, value: number): string {
   return `$${usd.toFixed(usd >= 100 ? 0 : 2)}${provider === "codex" ? " API-equivalent" : ""}`;
 }
 
-export function insights(db: Database, range: Range, now = Date.now(), provider: Provider = "claude"): InsightsView {
-  const rows = sessions(db, range, provider);
+export function insights(db: Database, range: Range, now = Date.now(), scope: Scope = "claude"): InsightsView {
+  const providerList = scopeProviders(scope);
+  const marks = providerList.map(() => "?").join(",");
+  // A combined view is priced in API-equivalent dollars, so amounts read the
+  // same whichever provider a session belongs to.
+  const provider: Provider = scope === "all" ? "claude" : scope;
+  const rows = sessions(db, range, scope);
   const total = rows.reduce((sum, row) => sum + row.value, 0);
   const list: Insight[] = [];
-  if (total === 0) return { provider, unit: usageUnit(provider), total_value: 0, total_usd_equivalent: 0, insights: list };
+  if (total === 0) return { scope, unit: usageUnit(scope), total_value: 0, total_usd_equivalent: 0, insights: list };
 
   const top = rows[0]!;
   const topShare = pct(top.value, total);
@@ -45,9 +50,15 @@ export function insights(db: Database, range: Range, now = Date.now(), provider:
     });
   }
 
-  const context = db
-    .query<{ big: number; n: number }, [Provider, number, number, number]>("SELECT COALESCE(SUM(value), 0) AS big, COUNT(*) AS n FROM requests WHERE provider = ? AND ts_ms >= ? AND ts_ms < ? AND context > ?")
-    .get(provider, range.fromMs, range.toMs, bigContext)!;
+  const contextRows = db
+    .query<{ provider: Provider; big: number; n: number }, [number, number, number, ...Provider[]]>(
+      `SELECT provider, COALESCE(SUM(value), 0) AS big, COUNT(*) AS n FROM requests WHERE ts_ms >= ? AND ts_ms < ? AND context > ? AND provider IN (${marks}) GROUP BY provider`,
+    )
+    .all(range.fromMs, range.toMs, bigContext, ...providerList);
+  const context = {
+    big: contextRows.reduce((sum, row) => sum + scopeValue(scope, row.provider, row.big), 0),
+    n: contextRows.reduce((sum, row) => sum + row.n, 0),
+  };
   const contextShare = pct(context.big, total);
   if (contextShare >= 30) {
     list.push({
@@ -60,7 +71,7 @@ export function insights(db: Database, range: Range, now = Date.now(), provider:
 
   const noCompaction = rows.filter((row) => row.peak_context > 250_000 && row.compactions === 0);
   if (noCompaction.length > 0) {
-    const action = provider === "claude" ? "Set autoCompactWindow to 200000 or use /autocompact 200k." : "Start a fresh thread when the previous context no longer helps the task.";
+    const action = noCompaction.every((row) => row.provider === "codex") ? "Start a fresh thread when the previous context no longer helps the task." : "Set autoCompactWindow to 200000 or use /autocompact 200k.";
     list.push({
       kind: "no_compaction",
       severity: "warn",
@@ -84,7 +95,7 @@ export function insights(db: Database, range: Range, now = Date.now(), provider:
     });
   }
 
-  for (const fanOut of fanOutSessions(db, rows, range, provider).slice(0, 3)) {
+  for (const fanOut of fanOutSessions(db, rows, range, scope).slice(0, 3)) {
     list.push({
       kind: "fan_out",
       severity: "warn",
@@ -93,7 +104,7 @@ export function insights(db: Database, range: Range, now = Date.now(), provider:
     });
   }
 
-  if (provider === "claude") {
+  if (providerList.includes("claude")) {
     const inherited = db
       .query<{ n: number; cost: number }, [number, number]>(
         `SELECT COUNT(DISTINCT a.id) AS n, COALESCE(SUM(r.value), 0) AS cost FROM agents a JOIN requests r ON r.provider = a.provider AND r.agent_id = a.id
@@ -113,10 +124,12 @@ export function insights(db: Database, range: Range, now = Date.now(), provider:
 
   const byModel = new Map<string, number>();
   for (const row of db
-    .query<{ model: string; cost: number }, [Provider, number, number]>("SELECT model, COALESCE(SUM(value), 0) AS cost FROM requests WHERE provider = ? AND ts_ms >= ? AND ts_ms < ? GROUP BY model")
-    .all(provider, range.fromMs, range.toMs)) {
+    .query<{ provider: Provider; model: string; cost: number }, [number, number, ...Provider[]]>(
+      `SELECT provider, model, COALESCE(SUM(value), 0) AS cost FROM requests WHERE ts_ms >= ? AND ts_ms < ? AND provider IN (${marks}) GROUP BY provider, model`,
+    )
+    .all(range.fromMs, range.toMs, ...providerList)) {
     const base = baseModel(row.model);
-    byModel.set(base, (byModel.get(base) ?? 0) + row.cost);
+    byModel.set(base, (byModel.get(base) ?? 0) + scopeValue(scope, row.provider, row.cost));
   }
   const mix = [...byModel.entries()].sort((a, b) => b[1] - a[1]);
   list.push({
@@ -126,46 +139,60 @@ export function insights(db: Database, range: Range, now = Date.now(), provider:
     data: { models: Object.fromEntries(mix) },
   });
 
-  if (provider === "codex") {
+  if (providerList.includes("codex")) {
     const effort = db
       .query<{ effort: string; value: number }, [number, number]>("SELECT effort, COALESCE(SUM(value), 0) AS value FROM requests WHERE provider = 'codex' AND ts_ms >= ? AND ts_ms < ? AND effort IS NOT NULL GROUP BY effort ORDER BY value DESC")
-      .all(range.fromMs, range.toMs);
+      .all(range.fromMs, range.toMs)
+      .map((row) => ({ effort: row.effort, value: scopeValue(scope, "codex", row.value) }));
+    const effortTotal = effort.reduce((sum, row) => sum + row.value, 0);
     if (effort.length > 0) {
       list.push({
         kind: "effort_mix",
-        severity: effort.some((row) => ["high", "xhigh", "max", "ultra"].includes(row.effort) && pct(row.value, total) >= 40) ? "warn" : "info",
-        text: `Usage by reasoning effort: ${effort.map((row) => `${row.effort} ${pct(row.value, total)}%`).join(", ")}.`,
+        severity: effort.some((row) => ["high", "xhigh", "max", "ultra"].includes(row.effort) && pct(row.value, effortTotal) >= 40) ? "warn" : "info",
+        text: `${scope === "all" ? "Codex usage" : "Usage"} by reasoning effort: ${effort.map((row) => `${row.effort} ${pct(row.value, effortTotal)}%`).join(", ")}.`,
         data: { efforts: Object.fromEntries(effort.map((row) => [row.effort, row.value])) },
       });
     }
   }
 
-  const limits = limitsView(db, range.fromMs, range.toMs, now, provider);
-  for (const sample of limits.latest) {
-    const window = limits.windows.find((entry) => entry.kind === sample.kind && entry.current);
-    if (!window || sample.percent <= 0) continue;
-    const local = db
-      .query<{ total: number }, [Provider, number, number]>("SELECT COALESCE(SUM(value), 0) AS total FROM requests WHERE provider = ? AND ts_ms >= ? AND ts_ms < ?")
-      .get(provider, window.start_ms, window.end_ms)!.total;
-    if (provider === "claude" && sample.kind === "five_hour") {
-      const perPercent = local / sample.percent;
+  for (const window of quotaView(db, now, scope).windows) {
+    const share = window.sessions.slice(0, 3);
+    const named = share.map((session) => `"${session.title}" ${session.percent_points.toFixed(1)}`).join(", ");
+    const explained = share.reduce((sum, session) => sum + session.percent_points, 0);
+    list.push({
+      kind: "quota_share",
+      severity: window.percent >= 80 ? "warn" : "info",
+      text:
+        `${providerLabel(window.provider)} ${window.label.toLowerCase()} usage is at ${Math.round(window.percent)}%, ` +
+        `and ${amount(window.provider, window.local_value)}${window.provider === "codex" ? ` (${window.local_value.toFixed(window.local_value >= 100 ? 0 : 1)} credits)` : ""} of local threads ran in that window. ` +
+        `Splitting those points by local spend puts ${explained.toFixed(1)} of them in ${named}. ` +
+        `It resets ${new Date(window.end_ms).toISOString().slice(0, 16).replace("T", " ")} UTC. ` +
+        `The split assumes local transcripts are the whole window; anything else on the same allowance inflates every share.`,
+      data: {
+        provider: window.provider,
+        kind: window.kind,
+        percent: window.percent,
+        local_value: window.local_value,
+        local_usd_equivalent: window.local_usd_equivalent,
+        resets_ms: window.end_ms,
+        sessions: share.map((session) => ({ session_id: session.session_id, provider: session.provider, percent_points: session.percent_points, value: session.value })),
+      },
+    });
+    if (window.kind === "five_hour" && window.provider === "claude") {
       list.push({
         kind: "window_rate",
-        severity: sample.percent >= 80 ? "warn" : "info",
-        text: `The current 5-hour window is at ${Math.round(sample.percent)}% with ${amount(provider, local)} of API-equivalent usage, so a full window is worth about ${amount(provider, perPercent * 100)}. It resets at ${new Date(window.end_ms).toISOString().slice(11, 16)} UTC.`,
-        data: { percent: sample.percent, value: local, window_value: perPercent * 100, resets_ms: window.end_ms },
-      });
-    } else if (provider === "codex") {
-      list.push({
-        kind: "shared_window",
-        severity: sample.percent >= 80 ? "warn" : "info",
-        text: `${sample.label} usage is at ${Math.round(sample.percent)}%; ${amount(provider, local)} (${local.toFixed(local >= 100 ? 0 : 1)} credits) is attributable to local Codex threads in that window. ChatGPT Work and other shared agentic features may account for the rest.`,
-        data: { kind: sample.kind, percent: sample.percent, local_value: local, local_usd_equivalent: usageUsdEquivalent(provider, local), resets_ms: window.end_ms },
+        severity: window.percent >= 80 ? "warn" : "info",
+        text: `A full 5-hour window is worth about ${amount("claude", (window.local_value / window.percent) * 100)} at API list prices, going by what this one has cost so far.`,
+        data: { percent: window.percent, value: window.local_value, window_value: (window.local_value / window.percent) * 100, resets_ms: window.end_ms },
       });
     }
   }
 
-  return { provider, unit: usageUnit(provider), total_value: total, total_usd_equivalent: usageUsdEquivalent(provider, total), insights: list };
+  return { scope, unit: usageUnit(scope), total_value: total, total_usd_equivalent: scope === "all" ? total : usageUsdEquivalent(provider, total), insights: list };
+}
+
+function providerLabel(provider: Provider): string {
+  return provider === "claude" ? "Claude" : "Codex";
 }
 
 interface FanOut {
@@ -175,13 +202,13 @@ interface FanOut {
   value: number;
 }
 
-function fanOutSessions(db: Database, rows: SessionSummary[], range: Range, provider: Provider): FanOut[] {
+function fanOutSessions(db: Database, rows: SessionSummary[], range: Range, scope: Scope): FanOut[] {
   const result: FanOut[] = [];
   const starts = db.query<{ id: string; started_ms: number }, [Provider, string, number, number]>("SELECT id, started_ms FROM agents WHERE provider = ? AND session_id = ? AND started_ms >= ? AND started_ms < ? ORDER BY started_ms");
   const valueOf = db.query<{ value: number }, [Provider, string]>("SELECT COALESCE(SUM(value), 0) AS value FROM requests WHERE provider = ? AND agent_id = ?");
   for (const session of rows) {
     if (session.agents < fanOutAgents) continue;
-    const agents = starts.all(provider, session.id, range.fromMs, range.toMs);
+    const agents = starts.all(session.provider, session.id, range.fromMs, range.toMs);
     let best: { count: number; span: number; ids: string[] } | undefined;
     for (let index = 0; index < agents.length; index += 1) {
       let end = index;
@@ -190,7 +217,8 @@ function fanOutSessions(db: Database, rows: SessionSummary[], range: Range, prov
       if (count >= fanOutAgents && (!best || count > best.count)) best = { count, span: agents[end]!.started_ms - agents[index]!.started_ms, ids: agents.slice(index, end + 1).map((agent) => agent.id) };
     }
     if (!best) continue;
-    result.push({ session, count: best.count, span_ms: best.span, value: best.ids.reduce((sum, id) => sum + valueOf.get(provider, id)!.value, 0) });
+    const raw = best.ids.reduce((sum, id) => sum + valueOf.get(session.provider, id)!.value, 0);
+    result.push({ session, count: best.count, span_ms: best.span, value: scopeValue(scope, session.provider, raw) });
   }
   return result.sort((a, b) => b.value - a.value);
 }
