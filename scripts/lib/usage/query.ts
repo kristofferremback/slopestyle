@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { unpricedModels } from "./ingest.ts";
-import { type Provider, type UsageUnit, usageUnit, usageUsdEquivalent } from "./pricing.ts";
+import { type Provider, type Scope, scopeProviders, scopeValue, type UsageUnit, usageUnit, usageUsdEquivalent } from "./pricing.ts";
 
 export interface Range {
   fromMs: number;
@@ -13,6 +13,7 @@ export const bucketMs: Record<Bucket, number> = { "15m": 15 * 60_000, hour: 3_60
 
 export interface SessionSummary {
   id: string;
+  provider: Provider;
   host: string;
   title: string;
   project: string;
@@ -39,9 +40,9 @@ export interface SessionSummary {
 export interface Timeline {
   bucket: Bucket;
   buckets: number[];
-  series: { session_id: string; title: string; values: number[] }[];
+  series: { session_id: string; provider: Provider; title: string; values: number[] }[];
   other: number[];
-  provider: Provider;
+  scope: Scope;
   unit: UsageUnit;
   total_value: number;
   total_usd_equivalent: number;
@@ -52,6 +53,16 @@ export interface Timeline {
 
 // Eight categorical colors exist; everything past them folds into "other".
 const topSeries = 8;
+
+// A session id is only unique within its provider, so anything that keys
+// sessions across providers keys them by both.
+export function sessionKey(provider: Provider, id: string): string {
+  return `${provider}:${id}`;
+}
+
+function placeholders(values: unknown[]): string {
+  return values.map(() => "?").join(",");
+}
 
 function displayTitle(row: { id: string; title: string | null; first_prompt: string | null }): string {
   return row.title ?? row.first_prompt?.replace(/\s+/g, " ").slice(0, 80) ?? row.id.slice(0, 8);
@@ -68,14 +79,16 @@ export function bucketStarts(range: Range, bucket: Bucket, offsetMinutes: number
   return starts;
 }
 
-export function timeline(db: Database, range: Range, bucket: Bucket, offsetMinutes: number, provider: Provider = "claude"): Timeline {
+export function timeline(db: Database, range: Range, bucket: Bucket, offsetMinutes: number, scope: Scope = "claude"): Timeline {
+  const list = scopeProviders(scope);
   const starts = bucketStarts(range, bucket, offsetMinutes);
   const size = bucketMs[bucket];
   const rows = db
-    .query<{ session_id: string; ts_ms: number; cost: number; input_tokens: number; output: number }, [Provider, number, number]>(
-      "SELECT session_id, ts_ms, COALESCE(value, 0) AS cost, input + cache_5m + cache_1h + cache_read AS input_tokens, output FROM requests WHERE provider = ? AND ts_ms >= ? AND ts_ms < ?",
+    .query<{ provider: Provider; session_id: string; ts_ms: number; cost: number; input_tokens: number; output: number }, [number, number, ...Provider[]]>(
+      `SELECT provider, session_id, ts_ms, COALESCE(value, 0) AS cost, input + cache_5m + cache_1h + cache_read AS input_tokens, output
+       FROM requests WHERE ts_ms >= ? AND ts_ms < ? AND provider IN (${placeholders(list)})`,
     )
-    .all(provider, range.fromMs, range.toMs);
+    .all(range.fromMs, range.toMs, ...list);
   const perSession = new Map<string, number[]>();
   const totals = new Map<string, number>();
   const firstStart = starts[0] ?? range.fromMs;
@@ -86,49 +99,60 @@ export function timeline(db: Database, range: Range, bucket: Bucket, offsetMinut
     if (index < 0 || index >= starts.length) continue;
     inputTokens += row.input_tokens;
     outputTokens += row.output;
-    let values = perSession.get(row.session_id);
+    const key = sessionKey(row.provider, row.session_id);
+    let values = perSession.get(key);
     if (!values) {
       values = new Array<number>(starts.length).fill(0);
-      perSession.set(row.session_id, values);
+      perSession.set(key, values);
     }
-    values[index] += row.cost;
-    totals.set(row.session_id, (totals.get(row.session_id) ?? 0) + row.cost);
+    const value = scopeValue(scope, row.provider, row.cost);
+    values[index] += value;
+    totals.set(key, (totals.get(key) ?? 0) + value);
   }
   const ranked = [...totals.entries()].sort((a, b) => b[1] - a[1]);
-  const top = ranked.slice(0, topSeries).map(([id]) => id);
+  const top = ranked.slice(0, topSeries).map(([key]) => key);
   const other = new Array<number>(starts.length).fill(0);
-  for (const [id, values] of perSession) {
-    if (top.includes(id)) continue;
+  for (const [key, values] of perSession) {
+    if (top.includes(key)) continue;
     for (let index = 0; index < values.length; index += 1) other[index] += values[index];
   }
   const titles = new Map<string, string>();
-  if (top.length > 0) {
-    const placeholders = top.map(() => "?").join(",");
+  for (const provider of list) {
+    const ids = top.filter((key) => key.startsWith(`${provider}:`)).map((key) => key.slice(provider.length + 1));
+    if (ids.length === 0) continue;
     for (const row of db
-      .query<{ id: string; title: string | null; first_prompt: string | null }, [Provider, ...string[]]>(`SELECT id, title, first_prompt FROM sessions WHERE provider = ? AND id IN (${placeholders})`)
-      .all(provider, ...top)) {
-      titles.set(row.id, displayTitle(row));
+      .query<{ id: string; title: string | null; first_prompt: string | null }, [Provider, ...string[]]>(`SELECT id, title, first_prompt FROM sessions WHERE provider = ? AND id IN (${placeholders(ids)})`)
+      .all(provider, ...ids)) {
+      titles.set(sessionKey(provider, row.id), displayTitle(row));
     }
   }
   let total = 0;
   for (const value of totals.values()) total += value;
+  const unpriced = new Set<string>();
+  for (const provider of list) for (const model of unpricedModels(db, provider)) unpriced.add(model);
   return {
-    provider,
-    unit: usageUnit(provider),
+    scope,
+    unit: usageUnit(scope),
     bucket,
     buckets: starts,
-    series: top.map((id) => ({ session_id: id, title: titles.get(id) ?? id.slice(0, 8), values: perSession.get(id)! })),
+    series: top.map((key) => {
+      const split = key.indexOf(":");
+      const provider = key.slice(0, split) as Provider;
+      const id = key.slice(split + 1);
+      return { session_id: id, provider, title: titles.get(key) ?? id.slice(0, 8), values: perSession.get(key)! };
+    }),
     other,
     total_value: total,
-    total_usd_equivalent: usageUsdEquivalent(provider, total),
+    total_usd_equivalent: scope === "all" ? total : usageUsdEquivalent(list[0]!, total),
     total_input_tokens: inputTokens,
     total_output_tokens: outputTokens,
-    unpriced_models: unpricedModels(db, provider),
+    unpriced_models: [...unpriced],
   };
 }
 
 interface SessionRow {
   id: string;
+  provider: Provider;
   host: string;
   title: string | null;
   first_prompt: string | null;
@@ -139,21 +163,25 @@ interface SessionRow {
   ended_ms: number | null;
 }
 
-export function sessions(db: Database, range: Range, provider: Provider = "claude"): SessionSummary[] {
+export function sessions(db: Database, range: Range, scope: Scope = "claude"): SessionSummary[] {
+  const list = scopeProviders(scope);
   const requestRows = db
-    .query<{ session_id: string; agent_id: string; model: string; effort: string | null; n: number; cost: number; peak: number; input_tokens: number; cache_read: number; output: number }, [Provider, number, number]>(
-      `SELECT session_id, agent_id, model, effort, COUNT(*) AS n, COALESCE(SUM(value), 0) AS cost, MAX(context) AS peak,
+    .query<{ provider: Provider; session_id: string; agent_id: string; model: string; effort: string | null; n: number; cost: number; peak: number; input_tokens: number; cache_read: number; output: number }, [number, number, ...Provider[]]>(
+      `SELECT provider, session_id, agent_id, model, effort, COUNT(*) AS n, COALESCE(SUM(value), 0) AS cost, MAX(context) AS peak,
               SUM(input + cache_5m + cache_1h + cache_read) AS input_tokens, SUM(cache_read) AS cache_read, SUM(output) AS output
-       FROM requests WHERE provider = ? AND ts_ms >= ? AND ts_ms < ? GROUP BY session_id, agent_id, model, effort`,
+       FROM requests WHERE ts_ms >= ? AND ts_ms < ? AND provider IN (${placeholders(list)})
+       GROUP BY provider, session_id, agent_id, model, effort`,
     )
-    .all(provider, range.fromMs, range.toMs);
-  const byId = new Map<string, SessionSummary>();
+    .all(range.fromMs, range.toMs, ...list);
+  const byKey = new Map<string, SessionSummary>();
   const agentIds = new Map<string, Set<string>>();
   for (const row of requestRows) {
-    let summary = byId.get(row.session_id);
+    const key = sessionKey(row.provider, row.session_id);
+    let summary = byKey.get(key);
     if (!summary) {
       summary = {
         id: row.session_id,
+        provider: row.provider,
         host: "",
         title: "",
         project: "",
@@ -175,47 +203,50 @@ export function sessions(db: Database, range: Range, provider: Provider = "claud
         agents: 0,
         compactions: 0,
       };
-      byId.set(row.session_id, summary);
-      agentIds.set(row.session_id, new Set());
+      byKey.set(key, summary);
+      agentIds.set(key, new Set());
     }
-    summary.value += row.cost;
-    summary.usd_equivalent += usageUsdEquivalent(provider, row.cost);
+    const value = scopeValue(scope, row.provider, row.cost);
+    summary.value += value;
+    summary.usd_equivalent += usageUsdEquivalent(row.provider, row.cost);
     summary.input_tokens += row.input_tokens;
     summary.cache_read_tokens += row.cache_read;
     summary.output_tokens += row.output;
     summary.requests += row.n;
     if (row.agent_id !== "") {
-      summary.sub_value += row.cost;
+      summary.sub_value += value;
       summary.requests_sub += row.n;
-      agentIds.get(row.session_id)!.add(row.agent_id);
+      agentIds.get(key)!.add(row.agent_id);
     } else {
       summary.peak_context = Math.max(summary.peak_context, row.peak);
     }
     summary.models[row.model] = (summary.models[row.model] ?? 0) + row.n;
     if (row.effort) summary.efforts[row.effort] = (summary.efforts[row.effort] ?? 0) + row.n;
   }
-  if (byId.size === 0) return [];
-  const ids = [...byId.keys()];
-  const placeholders = ids.map(() => "?").join(",");
-  for (const row of db.query<SessionRow, [Provider, ...string[]]>(`SELECT * FROM sessions WHERE provider = ? AND id IN (${placeholders})`).all(provider, ...ids)) {
-    const summary = byId.get(row.id)!;
-    summary.host = row.host;
-    summary.title = displayTitle(row);
-    summary.project = row.project;
-    summary.cwd = row.cwd;
-    summary.git_branch = row.git_branch;
-    summary.started_ms = row.started_ms;
-    summary.ended_ms = row.ended_ms;
+  if (byKey.size === 0) return [];
+  for (const provider of list) {
+    const ids = [...byKey.values()].filter((summary) => summary.provider === provider).map((summary) => summary.id);
+    if (ids.length === 0) continue;
+    for (const row of db.query<SessionRow, [Provider, ...string[]]>(`SELECT * FROM sessions WHERE provider = ? AND id IN (${placeholders(ids)})`).all(provider, ...ids)) {
+      const summary = byKey.get(sessionKey(provider, row.id))!;
+      summary.host = row.host;
+      summary.title = displayTitle(row);
+      summary.project = row.project;
+      summary.cwd = row.cwd;
+      summary.git_branch = row.git_branch;
+      summary.started_ms = row.started_ms;
+      summary.ended_ms = row.ended_ms;
+    }
+    for (const row of db
+      .query<{ session_id: string; n: number }, [Provider, number, number, ...string[]]>(
+        `SELECT session_id, COUNT(*) AS n FROM events WHERE provider = ? AND kind = 'compact' AND agent_id = '' AND ts_ms >= ? AND ts_ms < ? AND session_id IN (${placeholders(ids)}) GROUP BY session_id`,
+      )
+      .all(provider, range.fromMs, range.toMs, ...ids)) {
+      byKey.get(sessionKey(provider, row.session_id))!.compactions = row.n;
+    }
   }
-  for (const row of db
-    .query<{ session_id: string; n: number }, [Provider, number, number, ...string[]]>(
-      `SELECT session_id, COUNT(*) AS n FROM events WHERE provider = ? AND kind = 'compact' AND agent_id = '' AND ts_ms >= ? AND ts_ms < ? AND session_id IN (${placeholders}) GROUP BY session_id`,
-    )
-    .all(provider, range.fromMs, range.toMs, ...ids)) {
-    byId.get(row.session_id)!.compactions = row.n;
-  }
-  for (const [id, set] of agentIds) byId.get(id)!.agents = set.size;
-  return [...byId.values()].sort((a, b) => b.value - a.value);
+  for (const [key, set] of agentIds) byKey.get(key)!.agents = set.size;
+  return [...byKey.values()].sort((a, b) => b.value - a.value);
 }
 
 export interface RequestPoint {
@@ -260,22 +291,23 @@ export interface SessionDetail {
   events: { ts_ms: number; agent_id: string; kind: string; data: Record<string, unknown> }[];
 }
 
-export function sessionDetail(db: Database, id: string, range: Range, provider: Provider = "claude"): SessionDetail | undefined {
-  const summary = sessions(db, range, provider).find((row) => row.id === id);
+export function sessionDetail(db: Database, id: string, range: Range, scope: Scope = "claude", provider?: Provider): SessionDetail | undefined {
+  const summary = sessions(db, range, scope).find((row) => row.id === id && (provider === undefined || row.provider === provider));
   if (!summary) return undefined;
+  const own = summary.provider;
   const requests = db
     .query<Omit<RequestPoint, "usd_equivalent">, [Provider, string, number, number]>(
       `SELECT ts_ms, agent_id, model, effort, context, input, cache_5m, cache_1h, cache_read, output, thinking, value
        FROM requests WHERE provider = ? AND session_id = ? AND ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms, agent_id, request_id`,
     )
-    .all(provider, id, range.fromMs, range.toMs)
-    .map((request) => ({ ...request, usd_equivalent: usageUsdEquivalent(provider, request.value ?? 0) }));
+    .all(own, id, range.fromMs, range.toMs)
+    .map((request) => ({ ...request, value: scopeValue(scope, own, request.value ?? 0), usd_equivalent: usageUsdEquivalent(own, request.value ?? 0) }));
   const agents = new Map<string, AgentSummary>();
   for (const row of db
     .query<Omit<AgentSummary, "requests" | "value" | "usd_equivalent" | "input_tokens" | "cache_read_tokens" | "output_tokens" | "peak_context" | "models" | "efforts">, [Provider, string]>(
       "SELECT id, subagent_type, model_requested, description, prompt_head, started_ms, ended_ms FROM agents WHERE provider = ? AND session_id = ?",
     )
-    .all(provider, id)) {
+    .all(own, id)) {
     agents.set(row.id, { ...row, requests: 0, value: 0, usd_equivalent: 0, input_tokens: 0, cache_read_tokens: 0, output_tokens: 0, peak_context: 0, models: {}, efforts: {} });
   }
   for (const request of requests) {
@@ -296,7 +328,7 @@ export function sessionDetail(db: Database, id: string, range: Range, provider: 
     .query<{ ts_ms: number; agent_id: string; kind: string; data: string }, [Provider, string, number, number]>(
       "SELECT ts_ms, agent_id, kind, data FROM events WHERE provider = ? AND session_id = ? AND ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms",
     )
-    .all(provider, id, range.fromMs, range.toMs)
+    .all(own, id, range.fromMs, range.toMs)
     .map((row) => ({ ...row, data: JSON.parse(row.data) as Record<string, unknown> }));
   return {
     session: summary,

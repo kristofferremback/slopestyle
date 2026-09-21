@@ -1,5 +1,14 @@
 export type Provider = "claude" | "codex";
+// A view covers one provider or both. Two providers cannot share an axis in
+// credits, so a combined view is priced in API-equivalent dollars.
+export type Scope = Provider | "all";
 export type UsageUnit = "usd" | "credits";
+
+export const providers: readonly Provider[] = ["claude", "codex"];
+
+export function scopeProviders(scope: Scope): Provider[] {
+  return scope === "all" ? [...providers] : [scope];
+}
 
 // OpenAI's current Codex credit rates are 25 times its standard API dollar
 // rates for every supported model. This is an API-price comparison, not the
@@ -79,10 +88,17 @@ export function costUsd(model: string, tokens: TokenCounts): number | undefined 
   return usageValue("claude", model, tokens);
 }
 
-export function usageUnit(provider: Provider): UsageUnit {
-  return provider === "claude" ? "usd" : "credits";
+export function usageUnit(scope: Scope): UsageUnit {
+  return scope === "codex" ? "credits" : "usd";
 }
 
 export function usageUsdEquivalent(provider: Provider, value: number): number {
   return provider === "claude" ? value : value / codexCreditsPerUsdEquivalent;
+}
+
+// The value a scope displays. A single provider keeps its own unit, so Codex
+// stays in credits and Claude in dollars. A combined view converts both to
+// API-equivalent dollars, the only unit they share.
+export function scopeValue(scope: Scope, provider: Provider, value: number): number {
+  return scope === "all" ? usageUsdEquivalent(provider, value) : value;
 }

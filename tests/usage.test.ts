@@ -8,6 +8,7 @@ import { ingest, openUsageDb } from "../scripts/lib/usage/ingest.ts";
 import { insights } from "../scripts/lib/usage/insights.ts";
 import { credentialsToken, ensureLimitTables, limitsView, parseLimits, pollLimits } from "../scripts/lib/usage/limits.ts";
 import { cachedShare, tokenCount } from "../scripts/lib/usage/format.ts";
+import { quotaView } from "../scripts/lib/usage/quota.ts";
 import { groupResets, placeResetLabels } from "../scripts/lib/usage/resets.ts";
 import { baseModel, costUsd, usageUsdEquivalent, usageValue } from "../scripts/lib/usage/pricing.ts";
 import { sessionDetail, sessions, timeline } from "../scripts/lib/usage/query.ts";
@@ -418,8 +419,8 @@ test("should select Codex independently through the HTTP API", async () => {
     const list = (await (await fetch(`${base}/api/sessions?${query}`)).json()) as { id: string; efforts: Record<string, number> }[];
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ id: codexFixture.rootId, efforts: { high: 2, low: 1, medium: 1 } });
-    const timeline = (await (await fetch(`${base}/api/timeline?${query}`)).json()) as { provider: string; unit: string; total_value: number; total_usd_equivalent: number };
-    expect(timeline.provider).toBe("codex");
+    const timeline = (await (await fetch(`${base}/api/timeline?${query}`)).json()) as { scope: string; unit: string; total_value: number; total_usd_equivalent: number };
+    expect(timeline.scope).toBe("codex");
     expect(timeline.unit).toBe("credits");
     expect(timeline.total_value).toBeGreaterThan(3.7);
     expect(timeline.total_usd_equivalent).toBeCloseTo(timeline.total_value / 25, 9);
@@ -501,6 +502,7 @@ test("should store limit samples and derive windows with their spend", async () 
     ["seven_day_fable", 20],
   ]);
   expect(view.windows.find((window) => window.kind === "five_hour")).toEqual({
+    provider: "claude",
     kind: "five_hour",
     label: "5-hour",
     start_ms: Date.parse("2026-09-02T09:00:00Z"),
@@ -529,8 +531,8 @@ test("should serve limits with window spend over HTTP", async () => {
   const server = createServer({ db, ingest: { projectsDir, host }, port: 0, tokenSource: () => ({ accessToken: "token" }), fetcher: async () => usagePayload, pollIntervalMs: 60_000 });
   try {
     const base = `http://127.0.0.1:${server.port}`;
-    const body = (await (await fetch(`${base}/api/limits?from=${day.fromMs}&to=${day.toMs}`)).json()) as { polling: boolean; windows: { kind: string; value: number }[]; latest: unknown[] };
-    expect(body.polling).toBe(true);
+    const body = (await (await fetch(`${base}/api/limits?from=${day.fromMs}&to=${day.toMs}`)).json()) as { polling: { claude?: boolean; codex?: boolean }; windows: { kind: string; value: number }[]; latest: unknown[] };
+    expect(body.polling).toEqual({ claude: true });
     expect(body.latest).toHaveLength(0);
     const window = body.windows.find((entry) => entry.kind === "five_hour")!;
     // The 5-hour window 09:00-14:00Z covers the fixture's 09:15 and 09:20 requests.
@@ -552,8 +554,11 @@ test("should explain the range with insights that name the numbers", () => {
   expect(top.text).toContain("Labels feature build");
   const rate = view.insights.find((insight) => insight.kind === "window_rate")!;
   expect(rate.data.percent).toBe(36);
-  expect(rate.text).toContain("14:00 UTC");
-  expect(insights(db, { fromMs: 0, toMs: 1 })).toEqual({ provider: "claude", unit: "usd", total_value: 0, total_usd_equivalent: 0, insights: [] });
+  const quota = view.insights.find((insight) => insight.kind === "quota_share" && insight.data.kind === "five_hour")!;
+  expect(quota.text).toContain("14:00 UTC");
+  expect(quota.text).toContain("Labels feature build");
+  expect(quota.text).toContain("assumes local transcripts are the whole window");
+  expect(insights(db, { fromMs: 0, toMs: 1 })).toEqual({ scope: "claude", unit: "usd", total_value: 0, total_usd_equivalent: 0, insights: [] });
 });
 
 test("should group resets that would overprint their labels", () => {
@@ -614,4 +619,99 @@ test("should print a report for a range from the CLI", async () => {
   expect(codexReport.total_usd_equivalent).toBeCloseTo(codexReport.total_value / 25, 9);
   expect(codexReport.sessions[0]!.usd_equivalent).toBeCloseTo(codexReport.sessions[0]!.value / 25, 9);
   expect(codexReport.sessions[0]!.title).toBe("Investigate the quota drain");
+
+  const bothArgs = ["report", "--provider", "all", "--projects", projectsDir, "--codex-dir", codexDir, "--db", resolve(root, "both-cli.sqlite"), "--host", host, "--from", String(day.fromMs), "--to", String(day.toMs)];
+  const both = Bun.spawnSync([process.execPath, cli, ...bothArgs, "--json"], { stdout: "pipe", stderr: "pipe" });
+  expect(both.exitCode).toBe(0);
+  const bothReport = JSON.parse(both.stdout.toString()) as { provider: string; unit: string; pricing: string; total_value: number; total_usd_equivalent: number; sessions: { provider: string }[] };
+  expect(bothReport).toMatchObject({ provider: "all", unit: "usd", pricing: "API-equivalent dollars across both providers" });
+  expect(bothReport.total_value).toBeCloseTo(bothReport.total_usd_equivalent, 9);
+  expect(bothReport.sessions.map((session) => session.provider).sort()).toEqual(["claude", "claude", "codex"]);
+  expect(Bun.spawnSync([process.execPath, cli, ...bothArgs], { stdout: "pipe", stderr: "pipe" }).stdout.toString()).toContain("API-equivalent");
+});
+
+test("should keep one window per reset when writers disagree on its length", () => {
+  const mixed = new Database(resolve(root, "mixed-windows.sqlite"), { create: true });
+  ensureLimitTables(mixed);
+  const resets = Date.parse("2026-09-02T14:00:00.000Z");
+  const insert = mixed.query("INSERT OR REPLACE INTO limit_samples (provider, ts_ms, kind, label, percent, resets_ms, window_ms) VALUES ('claude', ?, 'five_hour', '5-hour', ?, ?, ?)");
+  // The release before window_ms wrote it as NULL, and polls jitter the reset
+  // by seconds. Neither may open a second window for the same reset.
+  insert.run(resets - 3 * 3_600_000, 10, resets, null);
+  insert.run(resets - 2 * 3_600_000, 20, resets, 5 * 3_600_000);
+  insert.run(resets - 3_600_000, 30, resets + 20_000, 5 * 3_600_000);
+  const view = limitsView(mixed, resets - 5 * 3_600_000, resets + 1, resets - 60_000);
+  expect(view.windows).toHaveLength(1);
+  expect(view.windows[0]).toMatchObject({ provider: "claude", kind: "five_hour", label: "5-hour", current: true, end_ms: resets });
+  expect(view.windows[0]!.end_ms - view.windows[0]!.start_ms).toBe(5 * 3_600_000);
+  expect(view.latest.map((sample) => sample.percent)).toEqual([30]);
+  mixed.close();
+});
+
+test("should split a reported limit window across the sessions that spent in it", () => {
+  const now = Date.parse("2026-09-02T11:30:00.000Z");
+  const view = quotaView(db, now, "claude");
+  const week = view.windows.find((window) => window.kind === "seven_day")!;
+  expect(week).toMatchObject({ provider: "claude", label: "Weekly", percent: 14 });
+  expect(week.end_ms - week.start_ms).toBe(7 * 86_400_000);
+  expect(week.sessions.map((session) => session.session_id)).toEqual([sessionId, "22222222-2222-3333-4444-555555555555"]);
+  // The window's points are shared out, never invented: they add back up to
+  // what the plan reported.
+  expect(week.sessions.reduce((sum, session) => sum + session.percent_points, 0)).toBeCloseTo(14, 9);
+  const top = week.sessions[0]!;
+  expect(top.key).toBe(`claude:${sessionId}`);
+  expect(top.title).toBe("Labels feature build");
+  expect(top.percent_points).toBeCloseTo((top.value / week.local_value) * 14, 9);
+  expect(top.usd_equivalent).toBe(top.value);
+  // Model-scoped weekly limits only count some models, so they are not split.
+  expect(view.windows.some((window) => window.kind.startsWith("seven_day_"))).toBe(false);
+  expect(quotaView(db, now + 30 * 86_400_000, "claude").windows).toEqual([]);
+});
+
+test("should price both providers in one view when the scope is all", () => {
+  const both = openUsageDb(resolve(root, "both.sqlite"));
+  ingest(both, { projectsDir, host });
+  ingestCodex(both, { codexDir, host });
+  const rows = sessions(both, day, "all");
+  expect(rows.map((row) => row.provider).sort()).toEqual(["claude", "claude", "codex"]);
+  const claudeOnly = sessions(both, day, "claude");
+  const codexOnly = sessions(both, day, "codex");
+  const codexRow = rows.find((row) => row.provider === "codex")!;
+  // Two providers cannot share an axis in credits, so a combined view is
+  // priced in API-equivalent dollars.
+  expect(codexRow.value).toBeCloseTo(codexOnly[0]!.value / 25, 9);
+  expect(rows.reduce((sum, row) => sum + row.value, 0)).toBeCloseTo(claudeOnly.reduce((sum, row) => sum + row.value, 0) + codexOnly[0]!.value / 25, 9);
+  const view = timeline(both, day, "hour", 0, "all");
+  expect(view.scope).toBe("all");
+  expect(view.unit).toBe("usd");
+  expect(view.total_value).toBeCloseTo(view.total_usd_equivalent, 9);
+  expect(new Set(view.series.map((series) => series.provider))).toEqual(new Set(["claude", "codex"]));
+  // A session id is only unique within its provider, so the detail lookup
+  // takes the provider too.
+  expect(sessionDetail(both, codexFixture.rootId, day, "all", "codex")!.session.provider).toBe("codex");
+  expect(sessionDetail(both, codexFixture.rootId, day, "all", "claude")).toBeUndefined();
+  both.close();
+});
+
+test("should serve both providers in one view over HTTP", async () => {
+  const server = createServer({ db: openUsageDb(resolve(root, "both-http.sqlite")), ingest: { projectsDir, host }, codex: { codexDir, host }, port: 0 });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const query = `provider=all&from=${day.fromMs}&to=${day.toMs}`;
+    const rows = (await (await fetch(`${base}/api/sessions?${query}`)).json()) as { id: string; provider: string }[];
+    expect(rows.map((row) => row.provider).sort()).toEqual(["claude", "claude", "codex"]);
+    const detail = (await (await fetch(`${base}/api/sessions/${codexFixture.rootId}?${query}&session_provider=codex`)).json()) as { session: { provider: string } };
+    expect(detail.session.provider).toBe("codex");
+    expect((await fetch(`${base}/api/sessions/${codexFixture.rootId}?${query}&session_provider=openai`)).status).toBe(400);
+    // Without the hint the id still resolves, so older links keep working.
+    expect((await (await fetch(`${base}/api/sessions/${codexFixture.rootId}?${query}`)).json()) as { session: { provider: string } }).toMatchObject({ session: { provider: "codex" } });
+    expect((await fetch(`${base}/api/sessions/nope?${query}`)).status).toBe(404);
+    const quota = (await (await fetch(`${base}/api/quota?${query}`)).json()) as { scope: string; windows: unknown[] };
+    expect(quota.scope).toBe("all");
+    expect(Array.isArray(quota.windows)).toBe(true);
+    const limits = (await (await fetch(`${base}/api/limits?${query}`)).json()) as { polling: Record<string, boolean> };
+    expect(limits.polling).toEqual({ claude: false, codex: true });
+  } finally {
+    server.stop(true);
+  }
 });

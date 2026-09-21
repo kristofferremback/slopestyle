@@ -8,9 +8,10 @@ import { ingest, openUsageDb } from "./lib/usage/ingest.ts";
 import { insights } from "./lib/usage/insights.ts";
 import { credentialsToken, limitsView } from "./lib/usage/limits.ts";
 import { usagePort } from "./lib/usage/port.ts";
+import { quotaView } from "./lib/usage/quota.ts";
 import { sessions } from "./lib/usage/query.ts";
 import { createServer, parseRange } from "./lib/usage/server.ts";
-import { type Provider, usageUnit, usageUsdEquivalent } from "./lib/usage/pricing.ts";
+import { type Scope, scopeProviders, usageUnit, usageUsdEquivalent } from "./lib/usage/pricing.ts";
 import { manageService, type ServiceAction, serviceActions } from "./lib/usage/service.ts";
 import homepage from "./usage/index.html";
 
@@ -24,12 +25,13 @@ Commands:
       Without --port the port comes from "slopestyle-ports claim usage".
       Polls the plan's 5-hour and weekly limits every two minutes with the
       OAuth token Claude Code keeps in its credentials (--no-limits to skip).
-  index [--provider claude|codex] [--projects DIR] [--codex-dir DIR] [--db PATH] [--host NAME]
-      Index one provider's transcripts without serving.
-  report [--provider claude|codex] [--from WHEN] [--to WHEN] [--since WHEN] [--json] [--limit N]
-      Index, then print spend by session, current limits, and insights for a
-      range. WHEN is ISO 8601, unix milliseconds, or a local HH:MM today.
-      Defaults to today. --since sets --from and leaves --to at now.
+  index [--provider claude|codex|all] [--projects DIR] [--codex-dir DIR] [--db PATH] [--host NAME]
+      Index transcripts without serving.
+  report [--provider claude|codex|all] [--from WHEN] [--to WHEN] [--since WHEN] [--json] [--limit N]
+      Index, then print spend by session, current limits, quota shares, and
+      insights for a range. WHEN is ISO 8601, unix milliseconds, or a local
+      HH:MM today. Defaults to today and to Claude. --provider all covers both
+      in API-equivalent dollars. --since sets --from and leaves --to at now.
   service install|refresh|status|uninstall
       Keep "serve" running in the login session as a macOS LaunchAgent or a
       systemd user service. The installer refreshes it after every sync.
@@ -60,7 +62,7 @@ const options = {
   port: undefined as number | undefined,
   projects: resolve(home, ".claude/projects"),
   codexDir: resolve(home, ".codex"),
-  provider: "claude" as Provider,
+  provider: "claude" as Scope,
   db: resolve(stateRoot(home), "usage.sqlite"),
   host: undefined as string | undefined,
   limits: true,
@@ -88,7 +90,7 @@ for (let index = 0; index < args.length; index += 1) {
       break;
     case "--provider": {
       const provider = value();
-      if (provider !== "claude" && provider !== "codex") usage(2, "--provider must be claude or codex");
+      if (provider !== "claude" && provider !== "codex" && provider !== "all") usage(2, "--provider must be claude, codex, or all");
       options.provider = provider;
       break;
     }
@@ -137,10 +139,21 @@ function whenToMs(when: string | undefined): string | undefined {
   return String(date.getTime());
 }
 
+function indexFor(db: ReturnType<typeof openUsageDb>): { filesScanned: number; filesChanged: number; requestsAdded: number } {
+  const list = scopeProviders(options.provider);
+  const stats = { filesScanned: 0, filesChanged: 0, requestsAdded: 0 };
+  for (const provider of list) {
+    const run = provider === "claude" ? ingest(db, { projectsDir: options.projects, host: options.host }) : ingestCodex(db, { codexDir: options.codexDir, host: options.host });
+    stats.filesScanned += run.filesScanned;
+    stats.filesChanged += run.filesChanged;
+    stats.requestsAdded += run.requestsAdded;
+  }
+  return stats;
+}
+
 function report(): void {
   const db = openUsageDb(options.db);
-  if (options.provider === "claude") ingest(db, { projectsDir: options.projects, host: options.host });
-  else ingestCodex(db, { codexDir: options.codexDir, host: options.host });
+  indexFor(db);
   const params = new URLSearchParams({ tz: String(-new Date().getTimezoneOffset()) });
   const from = whenToMs(options.from);
   const to = whenToMs(options.to);
@@ -152,32 +165,63 @@ function report(): void {
   const view = insights(db, range, Date.now(), options.provider);
   const totalInput = rows.reduce((sum, row) => sum + row.input_tokens, 0);
   const totalOutput = rows.reduce((sum, row) => sum + row.output_tokens, 0);
+  const quota = quotaView(db, Date.now(), options.provider);
   if (options.json) {
-    console.log(JSON.stringify({ provider: options.provider, range, unit: usageUnit(options.provider), pricing: options.provider === "claude" ? "API list prices" : "OpenAI credit rate card", total_value: view.total_value, total_usd_equivalent: view.total_usd_equivalent, total_input_tokens: totalInput, total_output_tokens: totalOutput, sessions: rows.slice(0, options.limit), limits, insights: view.insights }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          provider: options.provider,
+          range,
+          unit: usageUnit(options.provider),
+          pricing: options.provider === "codex" ? "OpenAI credit rate card" : options.provider === "claude" ? "API list prices" : "API-equivalent dollars across both providers",
+          total_value: view.total_value,
+          total_usd_equivalent: view.total_usd_equivalent,
+          total_input_tokens: totalInput,
+          total_output_tokens: totalOutput,
+          sessions: rows.slice(0, options.limit),
+          limits,
+          quota,
+          insights: view.insights,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
   const money = (value: number) => `$${value.toFixed(2)}`;
-  const amount = (value: number) => money(usageUsdEquivalent(options.provider, value));
+  // A single provider reports in its own unit; both together only share
+  // API-equivalent dollars, which sessions() has already converted to.
+  const amount = (value: number) => money(options.provider === "all" ? value : usageUsdEquivalent(options.provider, value));
   const time = (ms: number) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const credits = options.provider === "codex" ? ` (${view.total_value.toFixed(view.total_value >= 100 ? 0 : 1)} credits)` : "";
-  console.log(`${time(range.fromMs)} to ${time(range.toMs)}: ${amount(view.total_value)} ${options.provider === "claude" ? "at API list prices" : `API-equivalent${credits}`}, ${tokenCount(totalInput)} in and ${tokenCount(totalOutput)} out, across ${rows.length} sessions`);
+  const basis = options.provider === "claude" ? "at API list prices" : `API-equivalent${credits}`;
+  console.log(`${time(range.fromMs)} to ${time(range.toMs)}: ${amount(view.total_value)} ${basis}, ${tokenCount(totalInput)} in and ${tokenCount(totalOutput)} out, across ${rows.length} sessions`);
   console.log("");
   for (const row of rows.slice(0, options.limit)) {
     const models = Object.entries(row.models)
       .sort((a, b) => b[1] - a[1])
       .map(([model, n]) => `${model.replace(/^claude-/, "")}×${n}`)
       .join(" ");
+    const share = quota.windows
+      .filter((window) => window.provider === row.provider)
+      .map((window) => {
+        const points = window.sessions.find((session) => session.session_id === row.id)?.percent_points ?? 0;
+        return points >= 0.05 ? `${points.toFixed(1)} of ${Math.round(window.percent)}% ${window.label.toLowerCase()}` : "";
+      })
+      .filter(Boolean)
+      .join(", ");
     console.log(`${amount(row.value).padStart(8)}  ${row.sub_value > 0 ? `${amount(row.sub_value)} in ${row.agents} agents`.padEnd(22) : "".padEnd(22)}  ${String(row.requests).padStart(4)} req  ${tokenCount(row.input_tokens).padStart(5)} in  ${tokenCount(row.output_tokens).padStart(5)} out  peak ${String(Math.round(row.peak_context / 1000)).padStart(4)}k  ${row.title}`);
-    console.log(`${"".padStart(8)}  ${row.id}  ${row.project}  ${models}`);
+    console.log(`${"".padStart(8)}  ${options.provider === "all" ? `${row.provider}  ` : ""}${row.id}  ${row.project}${share ? `  quota ${share}` : ""}  ${models}`);
   }
   console.log("");
   if (limits.latest.length > 0) {
     for (const sample of limits.latest) {
-      const window = limits.windows.find((entry) => entry.kind === sample.kind && entry.current);
-      console.log(`${sample.label}: ${Math.round(sample.percent)}%${sample.resets_ms ? `, resets ${time(sample.resets_ms)}` : ""}${window ? ` (window opened ${time(window.start_ms)})` : ""}`);
+      const window = limits.windows.find((entry) => entry.provider === sample.provider && entry.kind === sample.kind && entry.current);
+      console.log(`${options.provider === "all" ? `${sample.provider} ` : ""}${sample.label}: ${Math.round(sample.percent)}%${sample.resets_ms ? `, resets ${time(sample.resets_ms)}` : ""}${window ? ` (window opened ${time(window.start_ms)})` : ""}`);
     }
-  } else if (limits.status?.error) {
-    console.log(`Limits: ${limits.status.error}`);
+  } else if (limits.status.some((entry) => entry.status.error)) {
+    for (const entry of limits.status.filter((row) => row.status.error)) console.log(`Limits (${entry.provider}): ${entry.status.error}`);
   } else {
     console.log("Limits: no samples yet; run \`slopestyle-usage serve\` to poll them.");
   }
@@ -191,7 +235,7 @@ switch (command) {
     break;
   case "index": {
     const db = openUsageDb(options.db);
-    const stats = options.provider === "claude" ? ingest(db, { projectsDir: options.projects, host: options.host }) : ingestCodex(db, { codexDir: options.codexDir, host: options.host });
+    const stats = indexFor(db);
     console.log(`Indexed ${stats.filesChanged} changed of ${stats.filesScanned} transcripts, ${stats.requestsAdded} new requests, into ${options.db}`);
     break;
   }
