@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { run } from "../core.ts";
+import type { Provider } from "./pricing.ts";
 
 // Claude Code's own /usage reads GET /api/oauth/usage with the OAuth token it
 // keeps in ~/.claude/.credentials.json (Linux) or the login Keychain (macOS).
@@ -62,6 +63,7 @@ export interface LimitSample {
   label: string;
   percent: number;
   resets_ms: number | null;
+  window_ms?: number | null;
 }
 
 // Flattens the payload into one sample per limit. Model-scoped weekly limits
@@ -73,7 +75,8 @@ export function parseLimits(payload: UsagePayload): LimitSample[] {
     const resets = resetsAt ? Date.parse(resetsAt) : Number.NaN;
     // The API jitters resets_at by milliseconds between polls; windows end on
     // the minute, so rounding keeps one window per reset.
-    samples.push({ kind, label, percent, resets_ms: Number.isFinite(resets) ? Math.round(resets / 60_000) * 60_000 : null });
+    const window_ms = kind === "five_hour" ? 5 * 3_600_000 : kind.startsWith("seven_day") ? 7 * 86_400_000 : null;
+    samples.push({ kind, label, percent, resets_ms: Number.isFinite(resets) ? Math.round(resets / 60_000) * 60_000 : null, window_ms });
   };
   push("five_hour", "5-hour", payload.five_hour?.utilization, payload.five_hour?.resets_at);
   push("seven_day", "Weekly", payload.seven_day?.utilization, payload.seven_day?.resets_at);
@@ -88,12 +91,49 @@ export function parseLimits(payload: UsagePayload): LimitSample[] {
 export function ensureLimitTables(db: Database): void {
   // Samples are not derivable from transcripts, so this table lives outside
   // the rebuildable schema.
+  const columns = db.query<{ name: string }, []>("PRAGMA table_info(limit_samples)").all();
+  if (columns.length > 0 && !columns.some((column) => column.name === "provider")) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const lockedColumns = db.query<{ name: string }, []>("PRAGMA table_info(limit_samples)").all();
+      if (!lockedColumns.some((column) => column.name === "provider")) {
+        db.exec(`
+          ALTER TABLE limit_samples RENAME TO limit_samples_v1;
+          ALTER TABLE limit_status RENAME TO limit_status_v1;
+          CREATE TABLE limit_samples (
+            provider TEXT NOT NULL, ts_ms INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL,
+            percent REAL NOT NULL, resets_ms INTEGER, window_ms INTEGER,
+            PRIMARY KEY (provider, ts_ms, kind)
+          );
+          INSERT INTO limit_samples (provider, ts_ms, kind, label, percent, resets_ms, window_ms)
+            SELECT 'claude', ts_ms, kind, label, percent, resets_ms,
+              CASE WHEN kind = 'five_hour' THEN ${5 * 3_600_000} ELSE ${7 * 86_400_000} END
+            FROM limit_samples_v1;
+          CREATE TABLE limit_status (
+            provider TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+            PRIMARY KEY (provider, key)
+          );
+          INSERT INTO limit_status (provider, key, value) SELECT 'claude', key, value FROM limit_status_v1;
+          DROP TABLE limit_samples_v1;
+          DROP TABLE limit_status_v1;
+        `);
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS limit_samples (
-      ts_ms INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL, percent REAL NOT NULL, resets_ms INTEGER,
-      PRIMARY KEY (ts_ms, kind)
+      provider TEXT NOT NULL, ts_ms INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL,
+      percent REAL NOT NULL, resets_ms INTEGER, window_ms INTEGER,
+      PRIMARY KEY (provider, ts_ms, kind)
     );
-    CREATE TABLE IF NOT EXISTS limit_status (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS limit_status (
+      provider TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+      PRIMARY KEY (provider, key)
+    );
   `);
 }
 
@@ -114,7 +154,7 @@ export async function fetchUsage(token: string): Promise<UsagePayload> {
 export async function pollLimits(db: Database, tokenSource: TokenSource, fetcher: Fetcher = fetchUsage, now = Date.now()): Promise<PollStatus> {
   ensureLimitTables(db);
   const record = (status: PollStatus) => {
-    db.query("INSERT OR REPLACE INTO limit_status (key, value) VALUES ('last_poll', ?)").run(JSON.stringify(status));
+    db.query("INSERT OR REPLACE INTO limit_status (provider, key, value) VALUES ('claude', 'last_poll', ?)").run(JSON.stringify(status));
     return status;
   };
   try {
@@ -124,9 +164,9 @@ export async function pollLimits(db: Database, tokenSource: TokenSource, fetcher
       return record({ polled_ms: now, ok: false, error: "Claude Code's OAuth token has expired; it refreshes the next time Claude Code talks to the API" });
     }
     const samples = parseLimits(await fetcher(token.accessToken));
-    const insert = db.query("INSERT OR REPLACE INTO limit_samples (ts_ms, kind, label, percent, resets_ms) VALUES (?, ?, ?, ?, ?)");
+    const insert = db.query("INSERT OR REPLACE INTO limit_samples (provider, ts_ms, kind, label, percent, resets_ms, window_ms) VALUES ('claude', ?, ?, ?, ?, ?, ?)");
     db.transaction(() => {
-      for (const sample of samples) insert.run(now, sample.kind, sample.label, sample.percent, sample.resets_ms);
+      for (const sample of samples) insert.run(now, sample.kind, sample.label, sample.percent, sample.resets_ms, sample.window_ms ?? null);
     })();
     return record({ polled_ms: now, ok: true });
   } catch (error) {
@@ -149,29 +189,27 @@ export interface LimitsView {
   windows: LimitWindow[];
 }
 
-const windowLength: Record<string, number> = { five_hour: 5 * 3_600_000 };
-const weekMs = 7 * 86_400_000;
-
 // Each distinct reset time seen for a limit marks the end of one window. The
 // 5-hour window opens 5 hours before it resets; the weekly ones a week before.
-export function limitsView(db: Database, fromMs: number, toMs: number, now = Date.now()): LimitsView {
+export function limitsView(db: Database, fromMs: number, toMs: number, now = Date.now(), provider: Provider = "claude"): LimitsView {
   ensureLimitTables(db);
-  const statusRow = db.query<{ value: string }, []>("SELECT value FROM limit_status WHERE key = 'last_poll'").get();
+  const statusRow = db.query<{ value: string }, [Provider]>("SELECT value FROM limit_status WHERE provider = ? AND key = 'last_poll'").get(provider);
   const latest = db
-    .query<LimitSample & { ts_ms: number }, []>(
-      "SELECT s.ts_ms, s.kind, s.label, s.percent, s.resets_ms FROM limit_samples s WHERE s.ts_ms = (SELECT MAX(ts_ms) FROM limit_samples WHERE kind = s.kind) ORDER BY s.kind",
+    .query<LimitSample & { ts_ms: number }, [Provider]>(
+      "SELECT s.ts_ms, s.kind, s.label, s.percent, s.resets_ms, s.window_ms FROM limit_samples s WHERE s.provider = ? AND s.ts_ms = (SELECT MAX(ts_ms) FROM limit_samples WHERE provider = s.provider AND kind = s.kind) ORDER BY s.kind",
     )
-    .all();
+    .all(provider)
+    .filter((sample) => sample.resets_ms === null || sample.resets_ms > now);
   const samples = db
-    .query<{ ts_ms: number; kind: string; percent: number }, [number, number]>("SELECT ts_ms, kind, percent FROM limit_samples WHERE ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms")
-    .all(fromMs, toMs);
+    .query<{ ts_ms: number; kind: string; percent: number }, [Provider, number, number]>("SELECT ts_ms, kind, percent FROM limit_samples WHERE provider = ? AND ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms")
+    .all(provider, fromMs, toMs);
   const windows: LimitWindow[] = [];
   for (const row of db
-    .query<{ kind: string; label: string; resets_ms: number }, []>(
-      "SELECT DISTINCT kind, label, ((resets_ms + 30000) / 60000) * 60000 AS resets_ms FROM limit_samples WHERE resets_ms IS NOT NULL ORDER BY resets_ms",
+    .query<{ kind: string; label: string; resets_ms: number; window_ms: number | null }, [Provider]>(
+      "SELECT DISTINCT kind, label, ((resets_ms + 30000) / 60000) * 60000 AS resets_ms, window_ms FROM limit_samples WHERE provider = ? AND resets_ms IS NOT NULL ORDER BY resets_ms",
     )
-    .all()) {
-    const length = windowLength[row.kind] ?? weekMs;
+    .all(provider)) {
+    const length = row.window_ms ?? 7 * 86_400_000;
     const start = row.resets_ms - length;
     if (row.resets_ms <= fromMs || start >= toMs) continue;
     windows.push({ kind: row.kind, label: row.label, start_ms: start, end_ms: row.resets_ms, current: start <= now && now < row.resets_ms });

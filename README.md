@@ -106,14 +106,15 @@ Datadog includes a one-time migration for the original `~/.codex/skills/datadog`
 
 ## Usage dashboard
 
-`scripts/usage.ts` installs as `~/.local/bin/slopestyle-usage`. It indexes every Claude Code transcript under `~/.claude/projects` into `~/.local/state/slopestyle/usage.sqlite`, prices each request at API list prices as a proxy for subscription usage, and polls the plan's 5-hour and weekly limits with the OAuth token Claude Code keeps in its credentials.
+`scripts/usage.ts` installs as `~/.local/bin/slopestyle-usage`. It indexes Claude Code transcripts under `~/.claude/projects` and active and archived Codex transcripts under `~/.codex` into `~/.local/state/slopestyle/usage.sqlite`. Claude requests use API list prices as a subscription proxy. Codex requests use the [OpenAI pricing documentation](https://learn.chatgpt.com/docs/pricing) credit rate card, while limit events in the Codex transcripts supply the real shared allowance percentage and reset time.
 
 ```bash
 slopestyle-usage serve                 # page on a slopestyle-ports port, bound to 127.0.0.1
-slopestyle-usage report --since 13:00  # spend by session, limits, and insights in the terminal
+slopestyle-usage report --provider claude --since 13:00
+slopestyle-usage report --provider codex --since 13:00
 ```
 
-The page shows spend and input and output tokens per session over a range, defaulting to today, with subagents rolled into their parent and the share of input read from cache, drilldown into a session's context growth and compactions, the current limit percentages with their windows, and rule-based insights. It reloads every 10 seconds while the tab is visible, and Refresh re-indexes transcripts and polls the limits right away. Drag across any chart to zoom into that span; the arrow above the chart steps back out. `slopestyle-ports serve usage` exposes it over Tailscale. The `quota` skill points agents at the same `report --json` output and the `/api` routes.
+The page switches between Claude Code and Codex. It shows attributed usage and input and output tokens per session over a range, defaulting to today, with subagents rolled into their parent, cache share, session context growth, compactions, current plan limits, and rule-based insights. Codex also breaks usage down by reasoning effort. The page reloads every 10 seconds while visible, and Refresh re-indexes both providers and polls Claude limits right away. Drag across any chart to zoom into that span; the arrow above the chart steps back out. `slopestyle-ports serve usage` exposes it over Tailscale. The `quota` skill points agents at the same `report --json` output and `/api` routes.
 
 Keep the server running in the background:
 

@@ -1,13 +1,15 @@
 import { afterAll, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { ingestCodex, parseCodexLimits } from "../scripts/lib/usage/codex.ts";
 import { ingest, openUsageDb } from "../scripts/lib/usage/ingest.ts";
 import { insights } from "../scripts/lib/usage/insights.ts";
-import { credentialsToken, limitsView, parseLimits, pollLimits } from "../scripts/lib/usage/limits.ts";
+import { credentialsToken, ensureLimitTables, limitsView, parseLimits, pollLimits } from "../scripts/lib/usage/limits.ts";
 import { cachedShare, tokenCount } from "../scripts/lib/usage/format.ts";
 import { groupResets, placeResetLabels } from "../scripts/lib/usage/resets.ts";
-import { baseModel, costUsd } from "../scripts/lib/usage/pricing.ts";
+import { baseModel, costUsd, usageValue } from "../scripts/lib/usage/pricing.ts";
 import { sessionDetail, sessions, timeline } from "../scripts/lib/usage/query.ts";
 import { createServer, parseRange } from "../scripts/lib/usage/server.ts";
 
@@ -145,11 +147,129 @@ const fixture = writeFixture(projectsDir);
 const db = openUsageDb(resolve(root, "usage.sqlite"));
 const day = { fromMs: t0 - 8 * 3_600_000, toMs: t0 + 16 * 3_600_000 };
 
+function writeCodexFixture(codexDir: string): { rootFile: string; rootId: string } {
+  const dir = resolve(codexDir, "sessions/2026/09/02");
+  mkdirSync(dir, { recursive: true });
+  const rootId = "codex-root-1111";
+  const childId = "codex-child-2222";
+  const grandchildId = "codex-grandchild-3333";
+  const line = (minutes: number, type: string, payload: Record<string, unknown>) => JSON.stringify({ timestamp: new Date(t0 + minutes * 60_000).toISOString(), type, payload });
+  const meta = (id: string, parent: string | null, extra: Record<string, unknown> = {}) =>
+    line(0, "session_meta", { id, parent_thread_id: parent, cwd: "/home/kris/dev/app", cli_version: "0.155.1", git: { branch: "main" }, ...extra });
+  const usage = (minutes: number, turnId: string, responseId: string, input: number, cached: number, output: number, reasoning: number) =>
+    line(minutes, "token_usage_record", {
+      thread_id: rootId,
+      turn_id: turnId,
+      response_id: responseId,
+      usage: { input_tokens: input, cached_input_tokens: cached, cache_write_input_tokens: 0, output_tokens: output, reasoning_output_tokens: reasoning, total_tokens: input + output },
+    });
+  const rootFile = resolve(dir, `rollout-${rootId}.jsonl`);
+  writeFileSync(
+    rootFile,
+    [
+      meta(rootId, null),
+      line(0, "response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "<recommended_plugins>generated context</recommended_plugins>" }] }),
+      line(1, "response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "Investigate the quota drain" }] }),
+      line(2, "turn_context", { turn_id: "turn-root", model: "gpt-5.6-sol", effort: "high" }),
+      usage(3, "turn-root", "resp-root", 100_000, 80_000, 1_000, 400),
+      usage(3, "turn-root", "resp-root", 999_999, 0, 999_999, 0),
+      line(4, "compacted", { message: "", replacement_history: [] }),
+      line(5, "event_msg", {
+        type: "token_count",
+        rate_limits: { limit_id: "codex", primary: { used_percent: 20, window_minutes: 10_080, resets_at: (t0 + 7 * 86_400_000) / 1000 } },
+      }),
+    ].join("\n") + "\n",
+  );
+  writeFileSync(
+    resolve(dir, `rollout-${childId}.jsonl`),
+    [
+      meta(childId, rootId, { agent_nickname: "Scout", agent_path: "/root/explore" }),
+      line(1, "response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "Survey usage paths" }] }),
+      line(2, "turn_context", { turn_id: "turn-child", model: "gpt-5.6-luna", effort: "low" }),
+      usage(3, "turn-child", "resp-child", 10_000, 9_000, 100, 10),
+    ].join("\n") + "\n",
+  );
+  writeFileSync(
+    resolve(dir, `rollout-${grandchildId}.jsonl`),
+    [
+      meta(grandchildId, childId, { agent_nickname: "Verifier", agent_path: "/root/verify" }),
+      line(1, "response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "Verify the numbers" }] }),
+      line(2, "turn_context", { turn_id: "turn-grandchild", model: "gpt-5.6-terra", effort: "medium" }),
+      usage(3, "turn-grandchild", "resp-grandchild", 20_000, 15_000, 500, 50),
+    ].join("\n") + "\n",
+  );
+  return { rootFile, rootId };
+}
+
+const codexDir = resolve(root, "codex-home");
+const codexFixture = writeCodexFixture(codexDir);
+const codexDb = openUsageDb(resolve(root, "codex-usage.sqlite"));
+
 test("should price a request from its usage when the model is known", () => {
   expect(costUsd("claude-opus-5[1m]", { input: 1_000_000, cache5m: 0, cache1h: 0, cacheRead: 0, output: 0 })).toBe(5);
   expect(costUsd("claude-haiku-4-5-20251001", { input: 0, cache5m: 0, cache1h: 0, cacheRead: 1_000_000, output: 0 })).toBe(0.1);
   expect(costUsd("claude-mystery-9", { input: 1, cache5m: 0, cache1h: 0, cacheRead: 0, output: 0 })).toBeUndefined();
   expect(baseModel("claude-fable-5-1[1m]")).toBe("claude-fable-5-1");
+  expect(usageValue("codex", "gpt-5.6-sol", { input: 20_000, cache5m: 0, cache1h: 0, cacheRead: 80_000, output: 1_000 })).toBeCloseTo(3.3, 9);
+});
+
+test("should parse Codex limit windows from transcript events", () => {
+  expect(
+    parseCodexLimits({
+      limit_id: "codex",
+      primary: { used_percent: 20, window_minutes: 10_080, resets_at: (t0 + 7 * 86_400_000) / 1000 },
+      secondary: { used_percent: 5, window_minutes: 300, resets_at: (t0 + 5 * 3_600_000) / 1000 },
+    }),
+  ).toEqual([
+    { kind: "seven_day", label: "Weekly", percent: 20, resets_ms: t0 + 7 * 86_400_000, window_ms: 7 * 86_400_000 },
+    { kind: "five_hour", label: "5-hour", percent: 5, resets_ms: t0 + 5 * 3_600_000, window_ms: 5 * 3_600_000 },
+  ]);
+});
+
+test("should attribute Codex usage to root threads, nested agents, models, and efforts", () => {
+  expect(ingestCodex(codexDb, { codexDir, host })).toEqual({ filesScanned: 3, filesChanged: 3, requestsAdded: 3, failed: [] });
+  const [summary] = sessions(codexDb, day, "codex");
+  expect(summary).toMatchObject({
+    id: codexFixture.rootId,
+    title: "Investigate the quota drain",
+    project: "app",
+    requests: 3,
+    requests_sub: 2,
+    agents: 2,
+    compactions: 1,
+    input_tokens: 130_000,
+    cache_read_tokens: 104_000,
+    output_tokens: 1_600,
+    peak_context: 100_000,
+    models: { "gpt-5.6-sol": 1, "gpt-5.6-luna": 1, "gpt-5.6-terra": 1 },
+    efforts: { high: 1, low: 1, medium: 1 },
+  });
+  expect(summary!.value).toBeCloseTo(3.7875, 9);
+  expect(summary!.sub_value).toBeCloseTo(0.4875, 9);
+  const detail = sessionDetail(codexDb, codexFixture.rootId, day, "codex")!;
+  expect(detail.agents.map((agent) => [agent.description, agent.subagent_type, agent.requests])).toEqual([
+    ["Verifier", "verify", 1],
+    ["Scout", "explore", 1],
+  ]);
+  expect(detail.requests.map((request) => [request.model, request.effort, request.thinking])).toEqual([
+    ["gpt-5.6-sol", "high", 400],
+    ["gpt-5.6-luna", "low", 10],
+    ["gpt-5.6-terra", "medium", 50],
+  ]);
+  expect(limitsView(codexDb, day.fromMs, t0 + 8 * 86_400_000, t0 + 60_000, "codex").latest).toMatchObject([{ kind: "seven_day", percent: 20 }]);
+  expect(sessions(codexDb, day, "claude")).toEqual([]);
+});
+
+test("should keep Codex turn pricing state across incremental appends", () => {
+  const record = JSON.stringify({
+    timestamp: new Date(t0 + 6 * 60_000).toISOString(),
+    type: "token_usage_record",
+    payload: { turn_id: "turn-root", response_id: "resp-appended", usage: { input_tokens: 1_000, cached_input_tokens: 500, output_tokens: 100, reasoning_output_tokens: 10, total_tokens: 1_100 } },
+  });
+  appendFileSync(codexFixture.rootFile, `${record}\n`);
+  expect(ingestCodex(codexDb, { codexDir, host })).toEqual({ filesScanned: 3, filesChanged: 1, requestsAdded: 1, failed: [] });
+  expect(sessions(codexDb, day, "codex")[0]!.requests).toBe(4);
+  expect(ingestCodex(codexDb, { codexDir, host })).toEqual({ filesScanned: 3, filesChanged: 0, requestsAdded: 0, failed: [] });
 });
 
 test("should count a streamed request once when assistant records repeat the requestId", () => {
@@ -192,12 +312,12 @@ test("should roll subagent cost into the parent session in the timeline", () => 
   const sub2 = costUsd("claude-sonnet-5", { input: 0, cache5m: 0, cache1h: 0, cacheRead: 30_000, output: 500 })!;
   expect(firstHour).toBeCloseTo(main1 + main2 + call + sub1 + sub2, 9);
   expect(secondHour).toBeCloseTo(costUsd("claude-fable-5-1", { input: 0, cache5m: 0, cache1h: 20_000, cacheRead: 150_000, output: 1000 })!, 9);
-  expect(view.total_usd).toBeCloseTo(firstHour + secondHour + view.series[1]!.values[8]!, 9);
+  expect(view.total_value).toBeCloseTo(firstHour + secondHour + view.series[1]!.values[8]!, 9);
   expect(view.total_input_tokens).toBe(303_611);
   expect(view.total_output_tokens).toBe(2611);
   expect(view.unpriced_models).toEqual(["claude-mystery-9"]);
   const [summary] = sessions(db, day);
-  expect(summary!.cost_sub_usd).toBeCloseTo(sub1 + sub2, 9);
+  expect(summary!.sub_value).toBeCloseTo(sub1 + sub2, 9);
 });
 
 test("should link a subagent to the Agent call that spawned it", () => {
@@ -288,6 +408,24 @@ test("should serve sessions and a session detail over HTTP", async () => {
   }
 });
 
+test("should select Codex independently through the HTTP API", async () => {
+  const server = createServer({ db: codexDb, ingest: { projectsDir, host }, codex: { codexDir, host }, port: 0 });
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const query = `provider=codex&from=${day.fromMs}&to=${day.toMs}`;
+    const list = (await (await fetch(`${base}/api/sessions?${query}`)).json()) as { id: string; efforts: Record<string, number> }[];
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: codexFixture.rootId, efforts: { high: 2, low: 1, medium: 1 } });
+    const timeline = (await (await fetch(`${base}/api/timeline?${query}`)).json()) as { provider: string; unit: string; total_value: number };
+    expect(timeline.provider).toBe("codex");
+    expect(timeline.unit).toBe("credits");
+    expect(timeline.total_value).toBeGreaterThan(3.7);
+    expect((await fetch(`${base}/api/timeline?provider=openai`)).status).toBe(400);
+  } finally {
+    server.stop(true);
+  }
+});
+
 const usagePayload = {
   five_hour: { utilization: 36, resets_at: "2026-09-02T14:00:00.377944+00:00" },
   seven_day: { utilization: 14, resets_at: "2026-09-06T00:00:00.377969+00:00" },
@@ -298,11 +436,26 @@ const usagePayload = {
   ],
 };
 
+test("should preserve historical Claude limit samples while adding provider identity", () => {
+  const legacy = new Database(resolve(root, "legacy-limits.sqlite"), { create: true });
+  legacy.exec(`
+    CREATE TABLE limit_samples (ts_ms INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL, percent REAL NOT NULL, resets_ms INTEGER, PRIMARY KEY (ts_ms, kind));
+    CREATE TABLE limit_status (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    INSERT INTO limit_samples VALUES (1000, 'five_hour', '5-hour', 42, 2000);
+    INSERT INTO limit_status VALUES ('last_poll', '{"polled_ms":1000,"ok":true}');
+  `);
+  ensureLimitTables(legacy);
+  ensureLimitTables(legacy);
+  expect(legacy.query("SELECT provider, ts_ms, kind, percent, window_ms FROM limit_samples").all()).toEqual([{ provider: "claude", ts_ms: 1000, kind: "five_hour", percent: 42, window_ms: 5 * 3_600_000 }]);
+  expect(legacy.query("SELECT provider, key FROM limit_status").all()).toEqual([{ provider: "claude", key: "last_poll" }]);
+  legacy.close();
+});
+
 test("should turn the usage payload into one sample per limit with resets on the minute", () => {
   expect(parseLimits(usagePayload)).toEqual([
-    { kind: "five_hour", label: "5-hour", percent: 36, resets_ms: Date.parse("2026-09-02T14:00:00Z") },
-    { kind: "seven_day", label: "Weekly", percent: 14, resets_ms: Date.parse("2026-09-06T00:00:00Z") },
-    { kind: "seven_day_fable", label: "Weekly Fable", percent: 20, resets_ms: Date.parse("2026-09-06T00:00:00Z") },
+    { kind: "five_hour", label: "5-hour", percent: 36, resets_ms: Date.parse("2026-09-02T14:00:00Z"), window_ms: 5 * 3_600_000 },
+    { kind: "seven_day", label: "Weekly", percent: 14, resets_ms: Date.parse("2026-09-06T00:00:00Z"), window_ms: 7 * 86_400_000 },
+    { kind: "seven_day_fable", label: "Weekly Fable", percent: 20, resets_ms: Date.parse("2026-09-06T00:00:00Z"), window_ms: 7 * 86_400_000 },
   ]);
   expect(parseLimits({ five_hour: { utilization: 1, resets_at: "2026-09-02T13:59:59.604Z" } })[0]!.resets_ms).toBe(Date.parse("2026-09-02T14:00:00Z"));
   expect(parseLimits({ five_hour: null, seven_day: { utilization: null, resets_at: null } })).toEqual([]);
@@ -331,6 +484,7 @@ test("should store limit samples and derive windows with their spend", async () 
   const again = limitsView(db, t0 - 8 * 3_600_000, t0 + 16 * 3_600_000, polledAt + 120_000);
   expect(again.windows.filter((window) => window.kind === "five_hour")).toHaveLength(1);
   expect(again.samples.filter((sample) => sample.kind === "five_hour")).toHaveLength(2);
+  expect(limitsView(db, day.fromMs, day.toMs, Date.parse("2026-09-02T15:00:00Z")).latest.some((sample) => sample.kind === "five_hour")).toBe(false);
 });
 
 test("should report a missing or expired token instead of polling", async () => {
@@ -346,12 +500,12 @@ test("should serve limits with window spend over HTTP", async () => {
   const server = createServer({ db, ingest: { projectsDir, host }, port: 0, tokenSource: () => ({ accessToken: "token" }), fetcher: async () => usagePayload, pollIntervalMs: 60_000 });
   try {
     const base = `http://127.0.0.1:${server.port}`;
-    const body = (await (await fetch(`${base}/api/limits?from=${day.fromMs}&to=${day.toMs}`)).json()) as { polling: boolean; windows: { kind: string; spend_usd: number }[]; latest: unknown[] };
+    const body = (await (await fetch(`${base}/api/limits?from=${day.fromMs}&to=${day.toMs}`)).json()) as { polling: boolean; windows: { kind: string; value: number }[]; latest: unknown[] };
     expect(body.polling).toBe(true);
-    expect(body.latest).toHaveLength(3);
+    expect(body.latest).toHaveLength(0);
     const window = body.windows.find((entry) => entry.kind === "five_hour")!;
     // The 5-hour window 09:00-14:00Z covers the fixture's 09:15 and 09:20 requests.
-    expect(window.spend_usd).toBeCloseTo(costUsd("claude-fable-5-1", { input: 0, cache5m: 0, cache1h: 20_000, cacheRead: 150_000, output: 1000 })! + costUsd("claude-opus-5", { input: 10, cache5m: 0, cache1h: 0, cacheRead: 0, output: 10 })! * 2, 9);
+    expect(window.value).toBeCloseTo(costUsd("claude-fable-5-1", { input: 0, cache5m: 0, cache1h: 20_000, cacheRead: 150_000, output: 1000 })! + costUsd("claude-opus-5", { input: 10, cache5m: 0, cache1h: 0, cacheRead: 0, output: 10 })! * 2, 9);
   } finally {
     server.stop(true);
   }
@@ -370,7 +524,7 @@ test("should explain the range with insights that name the numbers", () => {
   const rate = view.insights.find((insight) => insight.kind === "window_rate")!;
   expect(rate.data.percent).toBe(36);
   expect(rate.text).toContain("14:00 UTC");
-  expect(insights(db, { fromMs: 0, toMs: 1 })).toEqual({ total_usd: 0, insights: [] });
+  expect(insights(db, { fromMs: 0, toMs: 1 })).toEqual({ provider: "claude", unit: "usd", total_value: 0, insights: [] });
 });
 
 test("should group resets that would overprint their labels", () => {
@@ -415,12 +569,18 @@ test("should print a report for a range from the CLI", async () => {
   // Earlier tests shrank the subagent transcript, so this is the range as it stands now.
   expect(out).toContain("272k in and 2k out");
   expect(out).toContain("272k in     2k out  peak  170k");
-  expect(out).toContain("5-hour: 36%");
+  expect(out).toContain("Limits: no samples yet");
   const json = Bun.spawnSync([process.execPath, cli, ...args, "--json"], { stdout: "pipe", stderr: "pipe" });
   expect(json.exitCode).toBe(0);
   const parsed = JSON.parse(json.stdout.toString()) as { pricing: string; sessions: { id: string }[]; insights: unknown[]; limits: { latest: unknown[] } };
   expect(parsed.pricing).toBe("API list prices");
   expect(parsed.sessions[0]!.id).toBe(sessionId);
-  expect(parsed.limits.latest).toHaveLength(3);
+  expect(parsed.limits.latest).toHaveLength(0);
   expect(parsed.insights.length).toBeGreaterThan(0);
+
+  const codex = Bun.spawnSync([process.execPath, cli, "report", "--provider", "codex", "--codex-dir", codexDir, "--db", resolve(root, "codex-usage.sqlite"), "--host", host, "--from", String(day.fromMs), "--to", String(day.toMs), "--json"], { stdout: "pipe", stderr: "pipe" });
+  expect(codex.exitCode).toBe(0);
+  const codexReport = JSON.parse(codex.stdout.toString()) as { provider: string; unit: string; pricing: string; sessions: { title: string }[] };
+  expect(codexReport).toMatchObject({ provider: "codex", unit: "credits", pricing: "OpenAI credit rate card" });
+  expect(codexReport.sessions[0]!.title).toBe("Investigate the quota drain");
 });

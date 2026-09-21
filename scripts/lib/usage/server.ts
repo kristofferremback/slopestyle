@@ -1,12 +1,15 @@
 import type { Database } from "bun:sqlite";
+import { ingestCodex, type CodexIngestOptions } from "./codex.ts";
 import { ingest, type IngestOptions } from "./ingest.ts";
 import { insights } from "./insights.ts";
 import { type Fetcher, fetchUsage, limitsView, pollLimits, type TokenSource } from "./limits.ts";
 import { type Bucket, bucketMs, type Range, sessionDetail, sessions, timeline } from "./query.ts";
+import type { Provider } from "./pricing.ts";
 
 export interface ServerOptions {
   db: Database;
   ingest: IngestOptions;
+  codex?: CodexIngestOptions;
   port: number;
   homepage?: Response | Bun.HTMLBundle;
   // How long a completed ingest stays fresh before a read triggers another one.
@@ -59,13 +62,27 @@ export function parseBucket(params: URLSearchParams, range: Range): Bucket {
   throw new HttpError(400, "bucket must be 15m, hour, or day");
 }
 
+export function parseProvider(params: URLSearchParams): Provider {
+  const value = params.get("provider") ?? "claude";
+  if (value === "claude" || value === "codex") return value;
+  throw new HttpError(400, "provider must be claude or codex");
+}
+
 export function createServer(options: ServerOptions) {
   const refreshAfterMs = options.refreshAfterMs ?? 10_000;
   let lastIngest = 0;
   const refresh = (force = false) => {
     if (!force && Date.now() - lastIngest < refreshAfterMs) return undefined;
     try {
-      return ingest(options.db, options.ingest);
+      const claude = ingest(options.db, options.ingest);
+      const codex = options.codex ? ingestCodex(options.db, options.codex) : undefined;
+      return {
+        filesScanned: claude.filesScanned + (codex?.filesScanned ?? 0),
+        filesChanged: claude.filesChanged + (codex?.filesChanged ?? 0),
+        requestsAdded: claude.requestsAdded + (codex?.requestsAdded ?? 0),
+        failed: [...claude.failed, ...(codex?.failed ?? [])],
+        providers: { claude, codex },
+      };
     } finally {
       lastIngest = Date.now();
     }
@@ -75,7 +92,7 @@ export function createServer(options: ServerOptions) {
     if (!options.tokenSource) return null;
     return pollLimits(options.db, options.tokenSource, options.fetcher ?? fetchUsage);
   };
-  const windowSpend = options.db.query<{ total: number }, [number, number]>("SELECT COALESCE(SUM(cost_usd), 0) AS total FROM requests WHERE ts_ms >= ? AND ts_ms < ?");
+  const windowSpend = options.db.query<{ total: number }, [Provider, number, number]>("SELECT COALESCE(SUM(value), 0) AS total FROM requests WHERE provider = ? AND ts_ms >= ? AND ts_ms < ?");
   const handle = (fn: (url: URL) => unknown) => (request: Request) => {
     try {
       refresh();
@@ -88,14 +105,14 @@ export function createServer(options: ServerOptions) {
   const routes: Record<string, (request: Request & { params?: Record<string, string> }) => Response | Promise<Response>> = {
     "/api/timeline": handle((url) => {
       const { range, offsetMinutes } = parseRange(url.searchParams);
-      return timeline(options.db, range, parseBucket(url.searchParams, range), offsetMinutes);
+      return timeline(options.db, range, parseBucket(url.searchParams, range), offsetMinutes, parseProvider(url.searchParams));
     }),
-    "/api/sessions": handle((url) => sessions(options.db, parseRange(url.searchParams).range)),
+    "/api/sessions": handle((url) => sessions(options.db, parseRange(url.searchParams).range, parseProvider(url.searchParams))),
     "/api/sessions/:id": (request) => {
       const url = new URL(request.url);
       try {
         refresh();
-        const detail = sessionDetail(options.db, request.params!.id, parseRange(url.searchParams).range);
+        const detail = sessionDetail(options.db, request.params!.id, parseRange(url.searchParams).range, parseProvider(url.searchParams));
         return detail ? json(detail) : json({ error: "No requests for that session in the range" }, 404);
       } catch (error) {
         if (error instanceof HttpError) return json({ error: error.message }, error.status);
@@ -104,10 +121,11 @@ export function createServer(options: ServerOptions) {
     },
     "/api/limits": handle((url) => {
       const { range } = parseRange(url.searchParams);
-      const view = limitsView(options.db, range.fromMs, range.toMs);
-      return { ...view, polling: options.tokenSource !== undefined, windows: view.windows.map((window) => ({ ...window, spend_usd: windowSpend.get(window.start_ms, window.end_ms)!.total })) };
+      const provider = parseProvider(url.searchParams);
+      const view = limitsView(options.db, range.fromMs, range.toMs, Date.now(), provider);
+      return { ...view, provider, polling: provider === "codex" ? options.codex !== undefined : options.tokenSource !== undefined, windows: view.windows.map((window) => ({ ...window, value: windowSpend.get(provider, window.start_ms, window.end_ms)!.total })) };
     }),
-    "/api/insights": handle((url) => insights(options.db, parseRange(url.searchParams).range)),
+    "/api/insights": handle((url) => insights(options.db, parseRange(url.searchParams).range, Date.now(), parseProvider(url.searchParams))),
     "/api/refresh": async (request) => {
       if (request.method !== "POST") return json({ error: "Use POST" }, 405);
       const stats = refresh(true);

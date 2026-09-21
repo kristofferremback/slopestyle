@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { unpricedModels } from "./ingest.ts";
+import { type Provider, type UsageUnit, usageUnit } from "./pricing.ts";
 
 export interface Range {
   fromMs: number;
@@ -19,8 +20,8 @@ export interface SessionSummary {
   git_branch: string | null;
   started_ms: number | null;
   ended_ms: number | null;
-  cost_usd: number;
-  cost_sub_usd: number;
+  value: number;
+  sub_value: number;
   // Input counts every token the model read: fresh, cache writes, and cache reads.
   input_tokens: number;
   cache_read_tokens: number;
@@ -29,6 +30,7 @@ export interface SessionSummary {
   requests_sub: number;
   peak_context: number;
   models: Record<string, number>;
+  efforts: Record<string, number>;
   agents: number;
   compactions: number;
 }
@@ -38,7 +40,9 @@ export interface Timeline {
   buckets: number[];
   series: { session_id: string; title: string; values: number[] }[];
   other: number[];
-  total_usd: number;
+  provider: Provider;
+  unit: UsageUnit;
+  total_value: number;
   total_input_tokens: number;
   total_output_tokens: number;
   unpriced_models: string[];
@@ -62,14 +66,14 @@ export function bucketStarts(range: Range, bucket: Bucket, offsetMinutes: number
   return starts;
 }
 
-export function timeline(db: Database, range: Range, bucket: Bucket, offsetMinutes: number): Timeline {
+export function timeline(db: Database, range: Range, bucket: Bucket, offsetMinutes: number, provider: Provider = "claude"): Timeline {
   const starts = bucketStarts(range, bucket, offsetMinutes);
   const size = bucketMs[bucket];
   const rows = db
-    .query<{ session_id: string; ts_ms: number; cost: number; input_tokens: number; output: number }, [number, number]>(
-      "SELECT session_id, ts_ms, COALESCE(cost_usd, 0) AS cost, input + cache_5m + cache_1h + cache_read AS input_tokens, output FROM requests WHERE ts_ms >= ? AND ts_ms < ?",
+    .query<{ session_id: string; ts_ms: number; cost: number; input_tokens: number; output: number }, [Provider, number, number]>(
+      "SELECT session_id, ts_ms, COALESCE(value, 0) AS cost, input + cache_5m + cache_1h + cache_read AS input_tokens, output FROM requests WHERE provider = ? AND ts_ms >= ? AND ts_ms < ?",
     )
-    .all(range.fromMs, range.toMs);
+    .all(provider, range.fromMs, range.toMs);
   const perSession = new Map<string, number[]>();
   const totals = new Map<string, number>();
   const firstStart = starts[0] ?? range.fromMs;
@@ -99,22 +103,24 @@ export function timeline(db: Database, range: Range, bucket: Bucket, offsetMinut
   if (top.length > 0) {
     const placeholders = top.map(() => "?").join(",");
     for (const row of db
-      .query<{ id: string; title: string | null; first_prompt: string | null }, string[]>(`SELECT id, title, first_prompt FROM sessions WHERE id IN (${placeholders})`)
-      .all(...top)) {
+      .query<{ id: string; title: string | null; first_prompt: string | null }, [Provider, ...string[]]>(`SELECT id, title, first_prompt FROM sessions WHERE provider = ? AND id IN (${placeholders})`)
+      .all(provider, ...top)) {
       titles.set(row.id, displayTitle(row));
     }
   }
   let total = 0;
   for (const value of totals.values()) total += value;
   return {
+    provider,
+    unit: usageUnit(provider),
     bucket,
     buckets: starts,
     series: top.map((id) => ({ session_id: id, title: titles.get(id) ?? id.slice(0, 8), values: perSession.get(id)! })),
     other,
-    total_usd: total,
+    total_value: total,
     total_input_tokens: inputTokens,
     total_output_tokens: outputTokens,
-    unpriced_models: unpricedModels(db),
+    unpriced_models: unpricedModels(db, provider),
   };
 }
 
@@ -130,14 +136,14 @@ interface SessionRow {
   ended_ms: number | null;
 }
 
-export function sessions(db: Database, range: Range): SessionSummary[] {
+export function sessions(db: Database, range: Range, provider: Provider = "claude"): SessionSummary[] {
   const requestRows = db
-    .query<{ session_id: string; agent_id: string; model: string; n: number; cost: number; peak: number; input_tokens: number; cache_read: number; output: number }, [number, number]>(
-      `SELECT session_id, agent_id, model, COUNT(*) AS n, COALESCE(SUM(cost_usd), 0) AS cost, MAX(context) AS peak,
+    .query<{ session_id: string; agent_id: string; model: string; effort: string | null; n: number; cost: number; peak: number; input_tokens: number; cache_read: number; output: number }, [Provider, number, number]>(
+      `SELECT session_id, agent_id, model, effort, COUNT(*) AS n, COALESCE(SUM(value), 0) AS cost, MAX(context) AS peak,
               SUM(input + cache_5m + cache_1h + cache_read) AS input_tokens, SUM(cache_read) AS cache_read, SUM(output) AS output
-       FROM requests WHERE ts_ms >= ? AND ts_ms < ? GROUP BY session_id, agent_id, model`,
+       FROM requests WHERE provider = ? AND ts_ms >= ? AND ts_ms < ? GROUP BY session_id, agent_id, model, effort`,
     )
-    .all(range.fromMs, range.toMs);
+    .all(provider, range.fromMs, range.toMs);
   const byId = new Map<string, SessionSummary>();
   const agentIds = new Map<string, Set<string>>();
   for (const row of requestRows) {
@@ -152,8 +158,8 @@ export function sessions(db: Database, range: Range): SessionSummary[] {
         git_branch: null,
         started_ms: null,
         ended_ms: null,
-        cost_usd: 0,
-        cost_sub_usd: 0,
+        value: 0,
+        sub_value: 0,
         input_tokens: 0,
         cache_read_tokens: 0,
         output_tokens: 0,
@@ -161,30 +167,32 @@ export function sessions(db: Database, range: Range): SessionSummary[] {
         requests_sub: 0,
         peak_context: 0,
         models: {},
+        efforts: {},
         agents: 0,
         compactions: 0,
       };
       byId.set(row.session_id, summary);
       agentIds.set(row.session_id, new Set());
     }
-    summary.cost_usd += row.cost;
+    summary.value += row.cost;
     summary.input_tokens += row.input_tokens;
     summary.cache_read_tokens += row.cache_read;
     summary.output_tokens += row.output;
     summary.requests += row.n;
     if (row.agent_id !== "") {
-      summary.cost_sub_usd += row.cost;
+      summary.sub_value += row.cost;
       summary.requests_sub += row.n;
       agentIds.get(row.session_id)!.add(row.agent_id);
     } else {
       summary.peak_context = Math.max(summary.peak_context, row.peak);
     }
     summary.models[row.model] = (summary.models[row.model] ?? 0) + row.n;
+    if (row.effort) summary.efforts[row.effort] = (summary.efforts[row.effort] ?? 0) + row.n;
   }
   if (byId.size === 0) return [];
   const ids = [...byId.keys()];
   const placeholders = ids.map(() => "?").join(",");
-  for (const row of db.query<SessionRow, string[]>(`SELECT * FROM sessions WHERE id IN (${placeholders})`).all(...ids)) {
+  for (const row of db.query<SessionRow, [Provider, ...string[]]>(`SELECT * FROM sessions WHERE provider = ? AND id IN (${placeholders})`).all(provider, ...ids)) {
     const summary = byId.get(row.id)!;
     summary.host = row.host;
     summary.title = displayTitle(row);
@@ -195,14 +203,14 @@ export function sessions(db: Database, range: Range): SessionSummary[] {
     summary.ended_ms = row.ended_ms;
   }
   for (const row of db
-    .query<{ session_id: string; n: number }, [number, number, ...string[]]>(
-      `SELECT session_id, COUNT(*) AS n FROM events WHERE kind = 'compact' AND agent_id = '' AND ts_ms >= ? AND ts_ms < ? AND session_id IN (${placeholders}) GROUP BY session_id`,
+    .query<{ session_id: string; n: number }, [Provider, number, number, ...string[]]>(
+      `SELECT session_id, COUNT(*) AS n FROM events WHERE provider = ? AND kind = 'compact' AND agent_id = '' AND ts_ms >= ? AND ts_ms < ? AND session_id IN (${placeholders}) GROUP BY session_id`,
     )
-    .all(range.fromMs, range.toMs, ...ids)) {
+    .all(provider, range.fromMs, range.toMs, ...ids)) {
     byId.get(row.session_id)!.compactions = row.n;
   }
   for (const [id, set] of agentIds) byId.get(id)!.agents = set.size;
-  return [...byId.values()].sort((a, b) => b.cost_usd - a.cost_usd);
+  return [...byId.values()].sort((a, b) => b.value - a.value);
 }
 
 export interface RequestPoint {
@@ -216,7 +224,8 @@ export interface RequestPoint {
   cache_read: number;
   output: number;
   thinking: number;
-  cost_usd: number | null;
+  effort: string | null;
+  value: number | null;
 }
 
 export interface AgentSummary {
@@ -228,12 +237,13 @@ export interface AgentSummary {
   started_ms: number | null;
   ended_ms: number | null;
   requests: number;
-  cost_usd: number;
+  value: number;
   input_tokens: number;
   cache_read_tokens: number;
   output_tokens: number;
   peak_context: number;
   models: Record<string, number>;
+  efforts: Record<string, number>;
 }
 
 export interface SessionDetail {
@@ -243,45 +253,46 @@ export interface SessionDetail {
   events: { ts_ms: number; agent_id: string; kind: string; data: Record<string, unknown> }[];
 }
 
-export function sessionDetail(db: Database, id: string, range: Range): SessionDetail | undefined {
-  const summary = sessions(db, range).find((row) => row.id === id);
+export function sessionDetail(db: Database, id: string, range: Range, provider: Provider = "claude"): SessionDetail | undefined {
+  const summary = sessions(db, range, provider).find((row) => row.id === id);
   if (!summary) return undefined;
   const requests = db
-    .query<RequestPoint, [string, number, number]>(
-      `SELECT ts_ms, agent_id, model, context, input, cache_5m, cache_1h, cache_read, output, thinking, cost_usd
-       FROM requests WHERE session_id = ? AND ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms`,
+    .query<RequestPoint, [Provider, string, number, number]>(
+      `SELECT ts_ms, agent_id, model, effort, context, input, cache_5m, cache_1h, cache_read, output, thinking, value
+       FROM requests WHERE provider = ? AND session_id = ? AND ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms, agent_id, request_id`,
     )
-    .all(id, range.fromMs, range.toMs);
+    .all(provider, id, range.fromMs, range.toMs);
   const agents = new Map<string, AgentSummary>();
   for (const row of db
-    .query<Omit<AgentSummary, "requests" | "cost_usd" | "input_tokens" | "cache_read_tokens" | "output_tokens" | "peak_context" | "models">, [string]>(
-      "SELECT id, subagent_type, model_requested, description, prompt_head, started_ms, ended_ms FROM agents WHERE session_id = ?",
+    .query<Omit<AgentSummary, "requests" | "value" | "input_tokens" | "cache_read_tokens" | "output_tokens" | "peak_context" | "models" | "efforts">, [Provider, string]>(
+      "SELECT id, subagent_type, model_requested, description, prompt_head, started_ms, ended_ms FROM agents WHERE provider = ? AND session_id = ?",
     )
-    .all(id)) {
-    agents.set(row.id, { ...row, requests: 0, cost_usd: 0, input_tokens: 0, cache_read_tokens: 0, output_tokens: 0, peak_context: 0, models: {} });
+    .all(provider, id)) {
+    agents.set(row.id, { ...row, requests: 0, value: 0, input_tokens: 0, cache_read_tokens: 0, output_tokens: 0, peak_context: 0, models: {}, efforts: {} });
   }
   for (const request of requests) {
     if (request.agent_id === "") continue;
     const agent = agents.get(request.agent_id);
     if (!agent) continue;
     agent.requests += 1;
-    agent.cost_usd += request.cost_usd ?? 0;
+    agent.value += request.value ?? 0;
     agent.input_tokens += request.input + request.cache_5m + request.cache_1h + request.cache_read;
     agent.cache_read_tokens += request.cache_read;
     agent.output_tokens += request.output;
     agent.peak_context = Math.max(agent.peak_context, request.context);
     agent.models[request.model] = (agent.models[request.model] ?? 0) + 1;
+    if (request.effort) agent.efforts[request.effort] = (agent.efforts[request.effort] ?? 0) + 1;
   }
   const events = db
-    .query<{ ts_ms: number; agent_id: string; kind: string; data: string }, [string, number, number]>(
-      "SELECT ts_ms, agent_id, kind, data FROM events WHERE session_id = ? AND ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms",
+    .query<{ ts_ms: number; agent_id: string; kind: string; data: string }, [Provider, string, number, number]>(
+      "SELECT ts_ms, agent_id, kind, data FROM events WHERE provider = ? AND session_id = ? AND ts_ms >= ? AND ts_ms < ? ORDER BY ts_ms",
     )
-    .all(id, range.fromMs, range.toMs)
+    .all(provider, id, range.fromMs, range.toMs)
     .map((row) => ({ ...row, data: JSON.parse(row.data) as Record<string, unknown> }));
   return {
     session: summary,
     requests,
-    agents: [...agents.values()].filter((agent) => agent.requests > 0).sort((a, b) => b.cost_usd - a.cost_usd),
+    agents: [...agents.values()].filter((agent) => agent.requests > 0).sort((a, b) => b.value - a.value),
     events,
   };
 }
