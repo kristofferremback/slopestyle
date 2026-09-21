@@ -446,9 +446,35 @@ test("should preserve historical Claude limit samples while adding provider iden
   `);
   ensureLimitTables(legacy);
   ensureLimitTables(legacy);
-  expect(legacy.query("SELECT provider, ts_ms, kind, percent, window_ms FROM limit_samples").all()).toEqual([{ provider: "claude", ts_ms: 1000, kind: "five_hour", percent: 42, window_ms: 5 * 3_600_000 }]);
+  legacy.query("INSERT OR REPLACE INTO limit_samples (ts_ms, kind, label, percent, resets_ms) VALUES (2000, 'five_hour', '5-hour', 43, 3000)").run();
+  legacy.query("INSERT OR REPLACE INTO limit_status (key, value) VALUES ('last_poll', '{\"polled_ms\":2000,\"ok\":true}')").run();
+  expect(legacy.query("SELECT provider, ts_ms, kind, percent, window_ms FROM limit_samples ORDER BY ts_ms").all()).toEqual([
+    { provider: "claude", ts_ms: 1000, kind: "five_hour", percent: 42, window_ms: 5 * 3_600_000 },
+    { provider: "claude", ts_ms: 2000, kind: "five_hour", percent: 43, window_ms: null },
+  ]);
   expect(legacy.query("SELECT provider, key FROM limit_status").all()).toEqual([{ provider: "claude", key: "last_poll" }]);
+  const oldWriterWindow = limitsView(legacy, -1, 4000, 2500).windows[0]!;
+  expect(oldWriterWindow.end_ms - oldWriterWindow.start_ms).toBe(5 * 3_600_000);
   legacy.close();
+});
+
+test("should repair provider-aware limit tables for the old main writer", () => {
+  const migrated = new Database(resolve(root, "provider-limits-without-default.sqlite"), { create: true });
+  migrated.exec(`
+    CREATE TABLE limit_samples (provider TEXT NOT NULL, ts_ms INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL, percent REAL NOT NULL, resets_ms INTEGER, window_ms INTEGER, PRIMARY KEY (provider, ts_ms, kind));
+    CREATE TABLE limit_status (provider TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (provider, key));
+    INSERT INTO limit_samples VALUES ('codex', 1000, 'seven_day', 'Weekly', 20, 2000, ${7 * 86_400_000});
+    INSERT INTO limit_status VALUES ('codex', 'last_poll', '{"polled_ms":1000,"ok":true}');
+  `);
+  ensureLimitTables(migrated);
+  migrated.query("INSERT OR REPLACE INTO limit_samples (ts_ms, kind, label, percent, resets_ms) VALUES (2000, 'five_hour', '5-hour', 43, 3000)").run();
+  migrated.query("INSERT OR REPLACE INTO limit_status (key, value) VALUES ('last_poll', '{\"polled_ms\":2000,\"ok\":true}')").run();
+  expect(migrated.query("SELECT provider, kind FROM limit_samples ORDER BY provider").all()).toEqual([
+    { provider: "claude", kind: "five_hour" },
+    { provider: "codex", kind: "seven_day" },
+  ]);
+  expect(migrated.query("SELECT provider FROM limit_status ORDER BY provider").all()).toEqual([{ provider: "claude" }, { provider: "codex" }]);
+  migrated.close();
 });
 
 test("should turn the usage payload into one sample per limit with resets on the minute", () => {

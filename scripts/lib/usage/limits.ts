@@ -88,35 +88,67 @@ export function parseLimits(payload: UsagePayload): LimitSample[] {
   return samples;
 }
 
+interface TableColumn {
+  name: string;
+  dflt_value: string | null;
+}
+
+function hasProviderDefault(columns: TableColumn[]): boolean {
+  const value = columns.find((column) => column.name === "provider")?.dflt_value;
+  return value === "'claude'" || value === '"claude"' || value === "claude";
+}
+
+function createLimitTables(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS limit_samples (
+      provider TEXT NOT NULL DEFAULT 'claude', ts_ms INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL,
+      percent REAL NOT NULL, resets_ms INTEGER, window_ms INTEGER,
+      PRIMARY KEY (provider, ts_ms, kind)
+    );
+    CREATE TABLE IF NOT EXISTS limit_status (
+      provider TEXT NOT NULL DEFAULT 'claude', key TEXT NOT NULL, value TEXT NOT NULL,
+      PRIMARY KEY (provider, key)
+    );
+  `);
+}
+
 export function ensureLimitTables(db: Database): void {
   // Samples are not derivable from transcripts, so this table lives outside
-  // the rebuildable schema.
-  const columns = db.query<{ name: string }, []>("PRAGMA table_info(limit_samples)").all();
-  if (columns.length > 0 && !columns.some((column) => column.name === "provider")) {
+  // the rebuildable schema. The provider default keeps the previous release's
+  // inserts valid during upgrade and rollback.
+  const columns = db.query<TableColumn, []>("PRAGMA table_info(limit_samples)").all();
+  if (columns.length > 0 && !hasProviderDefault(columns)) {
     db.exec("BEGIN IMMEDIATE");
     try {
-      const lockedColumns = db.query<{ name: string }, []>("PRAGMA table_info(limit_samples)").all();
-      if (!lockedColumns.some((column) => column.name === "provider")) {
-        db.exec(`
-          ALTER TABLE limit_samples RENAME TO limit_samples_v1;
-          ALTER TABLE limit_status RENAME TO limit_status_v1;
-          CREATE TABLE limit_samples (
-            provider TEXT NOT NULL, ts_ms INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL,
-            percent REAL NOT NULL, resets_ms INTEGER, window_ms INTEGER,
-            PRIMARY KEY (provider, ts_ms, kind)
-          );
-          INSERT INTO limit_samples (provider, ts_ms, kind, label, percent, resets_ms, window_ms)
+      const lockedColumns = db.query<TableColumn, []>("PRAGMA table_info(limit_samples)").all();
+      if (!hasProviderDefault(lockedColumns)) {
+        const providerAware = lockedColumns.some((column) => column.name === "provider");
+        const hasStatus = db.query<TableColumn, []>("PRAGMA table_info(limit_status)").all().length > 0;
+        db.exec("ALTER TABLE limit_samples RENAME TO limit_samples_previous");
+        if (hasStatus) db.exec("ALTER TABLE limit_status RENAME TO limit_status_previous");
+        createLimitTables(db);
+        if (providerAware) {
+          db.exec(`
+            INSERT INTO limit_samples (provider, ts_ms, kind, label, percent, resets_ms, window_ms)
+              SELECT provider, ts_ms, kind, label, percent, resets_ms, window_ms FROM limit_samples_previous;
+          `);
+        } else {
+          db.exec(`
+            INSERT INTO limit_samples (provider, ts_ms, kind, label, percent, resets_ms, window_ms)
             SELECT 'claude', ts_ms, kind, label, percent, resets_ms,
               CASE WHEN kind = 'five_hour' THEN ${5 * 3_600_000} ELSE ${7 * 86_400_000} END
-            FROM limit_samples_v1;
-          CREATE TABLE limit_status (
-            provider TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
-            PRIMARY KEY (provider, key)
+              FROM limit_samples_previous;
+          `);
+        }
+        if (hasStatus) {
+          db.exec(
+            providerAware
+              ? "INSERT INTO limit_status (provider, key, value) SELECT provider, key, value FROM limit_status_previous"
+              : "INSERT INTO limit_status (provider, key, value) SELECT 'claude', key, value FROM limit_status_previous",
           );
-          INSERT INTO limit_status (provider, key, value) SELECT 'claude', key, value FROM limit_status_v1;
-          DROP TABLE limit_samples_v1;
-          DROP TABLE limit_status_v1;
-        `);
+        }
+        db.exec("DROP TABLE limit_samples_previous");
+        if (hasStatus) db.exec("DROP TABLE limit_status_previous");
       }
       db.exec("COMMIT");
     } catch (error) {
@@ -124,17 +156,7 @@ export function ensureLimitTables(db: Database): void {
       throw error;
     }
   }
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS limit_samples (
-      provider TEXT NOT NULL, ts_ms INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL,
-      percent REAL NOT NULL, resets_ms INTEGER, window_ms INTEGER,
-      PRIMARY KEY (provider, ts_ms, kind)
-    );
-    CREATE TABLE IF NOT EXISTS limit_status (
-      provider TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
-      PRIMARY KEY (provider, key)
-    );
-  `);
+  createLimitTables(db);
 }
 
 export interface PollStatus {
@@ -209,7 +231,7 @@ export function limitsView(db: Database, fromMs: number, toMs: number, now = Dat
       "SELECT DISTINCT kind, label, ((resets_ms + 30000) / 60000) * 60000 AS resets_ms, window_ms FROM limit_samples WHERE provider = ? AND resets_ms IS NOT NULL ORDER BY resets_ms",
     )
     .all(provider)) {
-    const length = row.window_ms ?? 7 * 86_400_000;
+    const length = row.window_ms ?? (row.kind === "five_hour" ? 5 * 3_600_000 : 7 * 86_400_000);
     const start = row.resets_ms - length;
     if (row.resets_ms <= fromMs || start >= toMs) continue;
     windows.push({ kind: row.kind, label: row.label, start_ms: start, end_ms: row.resets_ms, current: start <= now && now < row.resets_ms });
