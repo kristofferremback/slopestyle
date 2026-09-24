@@ -55,7 +55,7 @@ For long, ambitious, or unattended work, keep the decision trail described in [d
 At each completed review boundary:
 
 1. Run one fresh low-effort subagent with `simplify` over the complete PR diff, even for a small PR. This pass belongs to the PR, not each implementation step. Hand it the accumulated proof evidence. Later review fixes get focused simplification of their delta, not another full-PR pass unless they materially change the design.
-2. Load `review` for self-review and any independent scrutiny the change warrants.
+2. Load `review` for self-review and the completed PR's coverage ledger, grouped fresh review rounds, fact-check, anchoring, and report.
 3. Load `ship` to verify, commit owned work, push, and open or update the PR or stack.
 4. Start `shepherd` in the background for each opened PR.
 5. Continue the next unblocked slice while shepherding runs. Opened PRs are reviewed in parallel, not used as checkpoints between slices. A dependent slice stacks on its unmerged parent; waiting for the parent to merge is not a blocker.
