@@ -234,8 +234,8 @@
         "hermes"
       ],
       "requires": [],
-      "source": "slopestyle",
-      "provenance": "original"
+      "source": "https://github.com/alibaba/open-code-review",
+      "provenance": "adapted"
     },
     {
       "name": "review-beta",
@@ -247,8 +247,8 @@
         "hermes"
       ],
       "requires": [],
-      "source": "https://github.com/alibaba/open-code-review",
-      "provenance": "adapted"
+      "source": "slopestyle",
+      "provenance": "original"
     },
     {
       "name": "seer",
