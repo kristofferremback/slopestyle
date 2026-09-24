@@ -53,7 +53,11 @@ Locate each surviving finding by its quoted `code` in the new version of its `pa
 
 ## Report
 
-For code and PR reviews, start with the ledger summary: total, reviewed, skipped with reasons, coverage rate, and the rounds each group ran with its stop reason. Distinguish prior coverage from scoped follow-up coverage. Evidence-only replies report verification without inventing a round or coverage.
+Structure the human-facing final review in this order:
+
+1. Start with `Suggested outcome: approve` or `Suggested outcome: comment` for a PR. For another review scope, name the appropriate suggested action first. A comment suggestion means publishing verified actionable comments when already authorized; it grants no new authority to post. An approval always needs Kris's explicit consent.
+2. Under `Description`, explain the intended outcome, how the change works, and material choices. Usually write two paragraphs; use up to three when complexity warrants.
+3. Under `Reason for suggestion`, explain why that outcome follows from the findings, proof, and limits. Put the code or PR ledger summary here: total, reviewed, skipped with reasons, coverage rate, and rounds each group ran with its stop reason. Distinguish prior coverage from scoped follow-up coverage. Evidence-only replies report verification without inventing a round or coverage.
 
 Report findings by impact, blockers before considerations, each tagged `confirmed` or `unverified`. Each finding includes the failing behavior or introduced risk, concrete location, evidence or reproducible trajectory, why it matters to the accepted outcome, and the smallest correct fix direction. Drop nits, tooling-enforced issues, and duplicates here, never during fact-check. End code and PR reviews with the disproven findings, one line each, naming the source line that disproved the claim.
 
