@@ -107,7 +107,9 @@ test("synchronizes a stable runtime safely", () => {
   succeeds([resolve(runtime, "scripts/check.sh"), "--installed"]);
   expect(execute([resolve(runtime, "scripts/sync.sh")]).exitCode).toBe(0);
 
-  const upstream = readFileSync(resolve(runtime, "skills/unslop/SKILL.md"), "utf8").split("\n").slice(0, -2).join("\n") + "\n";
+  const upstream = readFileSync(resolve(runtime, "skills/unslop/SKILL.md"), "utf8")
+    .replace("description: Use when asked to remove AI tells from writing.", "description: Cut AI tells from any writing. Must always apply.")
+    .split("\n").slice(0, -2).join("\n") + "\n";
   rmSync(resolve(home, ".agents/skills/unslop"));
   mkdirSync(resolve(home, ".agents/skills/unslop"), { recursive: true });
   writeFileSync(resolve(home, ".agents/skills/unslop/SKILL.md"), upstream);

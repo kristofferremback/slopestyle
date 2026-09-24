@@ -50,7 +50,7 @@ Use `ship` for owned follow-up commits and PR updates. Re-run focused proof and 
 
 ## Replies
 
-Apply `unslop` and [`ship`'s public attribution format](../ship/references/attribution.md). Reply with what changed or why no change is warranted. Do not impersonate Kris.
+Use [`ship`'s public attribution format](../ship/references/attribution.md). Reply with what changed or why no change is warranted. Do not impersonate Kris.
 
 ## Ready state
 
