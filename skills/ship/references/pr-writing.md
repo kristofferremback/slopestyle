@@ -1,6 +1,6 @@
 # PR writing
 
-Read [`attribution.md`](attribution.md) and apply `unslop`.
+Read [`attribution.md`](attribution.md).
 
 ## Title
 

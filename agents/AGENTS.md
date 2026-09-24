@@ -41,7 +41,7 @@ Treat dependencies like source code. Prefer permissive licenses, and add one onl
 
 ## Writing to Kristoffer
 
-Before writing anything Kristoffer will read, load and follow `unslop`. Preserve quotations, exact requested wording, code, identifiers, commands, citations, attribution templates, and established project vocabulary. If `unslop` is unavailable, say so.
+Preserve quotations, exact requested wording, code, identifiers, commands, citations, attribution templates, and established project vocabulary.
 
 Link every external reference by its identifier: pull requests, issues, Linear tickets, dashboards, runs. The link text is the identifier, the target is its canonical URL.
 

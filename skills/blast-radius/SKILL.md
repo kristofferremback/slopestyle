@@ -36,4 +36,4 @@ Report:
 - cleared risks and why they are safe,
 - the cheapest proof still needed before merge.
 
-Apply `unslop`. Strip private data before public use. `review` decides whether independent adversarial reviewers are warranted.
+Strip private data before public use. `review` decides whether independent adversarial reviewers are warranted.
