@@ -4,10 +4,11 @@ Fill every section and send the result as the reviewer's whole prompt. Leave out
 
 ## Context
 
-- Intended outcome, distilled from the plan, ticket, and PR body.
+- Problem, trigger, intended outcome, and accepted constraints, distilled from the plan, ticket, and PR body. Label inferred rationale.
+- The group's role in the overall change and the behavior that crosses its boundaries.
 - Fixed point: base and head SHAs.
 - Repository guidance that bears on these files.
-- Assigned lenses, each with its one-line definition.
+- Absolute path to `references/lenses.md` in this skill and the assigned failure lens names. Read its three assessment questions and those lenses.
 
 ## Files
 
@@ -34,7 +35,9 @@ These issues are already confirmed. Leave them out of your findings and keep rev
 
 ## Output
 
-First, one coverage line per file: `path: reviewed`, or `path: not reviewed, <reason>`.
+First, answer each of the assessment guide's three questions for this group's scope. Cite the source or probes supporting each answer and name unresolved gaps, including behavior that needs checking in another group. An empty finding list still requires this assessment.
+
+Then one coverage line per file: `path: reviewed`, or `path: not reviewed, <reason>`.
 
 Then each finding, fields in this order:
 
