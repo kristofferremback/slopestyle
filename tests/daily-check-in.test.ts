@@ -77,21 +77,24 @@ test("should escape source text and use safe links", async () => {
   expect(html).toContain('href="https://example.com/?q=%22%3E"');
 });
 
-test("should show a short today overview and keep the full inventory in native expandable rows", async () => {
+test("should keep personal work visible and separate background reviews from focus", async () => {
   const first = await example();
-  first.items.push({ ...first.items[2], id: "second-review", title: "Second review" });
+  first.items[2].attention = "background";
+  first.items.unshift({ ...first.items[2], id: "second-review", title: "Second review", plan: "must" });
+  first.items.push({ ...first.items[0], id: "unassigned", title: "Unknown owner", attention: "unassigned" });
   const html = renderReport(validateReport(first), 1);
   const focus = html.slice(html.indexOf('class="card focus"'), html.indexOf('<aside class="card side"'));
-  expect(focus.indexOf("Fix the Acme export")).toBeLessThan(focus.indexOf("Confirm sample dataset"));
-  expect(focus.indexOf("Confirm sample dataset")).toBeLessThan(focus.indexOf("Review onboarding copy"));
-  expect(html).toContain("More for today");
-  expect(html).toContain('<details class="fold" id="all-work">');
-  expect(html).toContain("1 item · 0 must");
+  expect(focus).toContain("Fix the Acme export");
+  expect(focus).not.toContain("Second review");
+  expect(focus).not.toContain("Unknown owner");
+  expect(html).toContain('<section class="stack" id="later"');
+  expect(html.indexOf('id="item-old-cleanup"')).toBeLessThan(html.indexOf('id="all-work"'));
+  expect(html).toContain('<details class="fold" id="background">');
   expect(html).toContain('<details class="item" id="item-second-review">');
-  expect(html).toContain('<details class="fold" id="later">');
   expect(html).toContain('<details class="fold" id="coverage">');
   expect(html).toContain("Mira validates the <a href=");
-  expect(html).toContain("GAL-17 · example issue</a>");
+  expect(html.match(/id="item-sample-data"/g)).toHaveLength(1);
+  expect(() => validateReport({ ...first, items: [{ ...first.items[0], attention: "unknown" }] })).toThrow("attention");
 });
 
 test("should expose only read-only allowlisted HTTP pages with working navigation", async () => {

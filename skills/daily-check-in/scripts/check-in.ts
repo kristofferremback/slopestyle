@@ -6,7 +6,7 @@ export const defaultRoot = join(homedir(), ".local", "share", "galdera-check-in"
 const sources = ["calendar", "t3", "vault", "linear", "github", "slack", "email", "todos"] as const;
 type SourceName = typeof sources[number];
 type Link = { label: string; url?: string };
-type Item = { id: string; title: string; status: "open" | "blocked" | "done" | "dropped"; plan: "must" | "aim" | "later"; rationale: string; timing: string; you: string; others: string; sources: Link[]; effort: "XS" | "S" | "M" | "L" | "XL" | "unknown"; quickWin?: boolean; closureReason?: string; closureEvidence?: string; notRevalidated?: boolean };
+type Item = { id: string; title: string; status: "open" | "blocked" | "done" | "dropped"; plan: "must" | "aim" | "later"; rationale: string; timing: string; you: string; others: string; sources: Link[]; effort: "XS" | "S" | "M" | "L" | "XL" | "unknown"; quickWin?: boolean; attention?: "work" | "background" | "unassigned"; closureReason?: string; closureEvidence?: string; notRevalidated?: boolean };
 type Decision = { id: string; itemId?: string; text: string; recordedAt: string; expiresOn?: string; state: "active" | "retired" };
 type Coverage = { source: SourceName; status: "checked" | "partial" | "unavailable" | "not-configured"; window: string; detail: string; nextStep: string };
 export type Report = { version: 1; date: string; capturedAt: string; headline: string; summary: string; dayContext: { windows: string; constraints: string }; items: Item[]; decisions: Decision[]; coverage: Coverage[]; suggestions: string[]; questions: string[] };
@@ -54,7 +54,7 @@ function link(value: unknown, where: string): Link {
   return { label, url };
 }
 function item(value: unknown, where: string, stored = false): Item {
-  const v = object(value, where); keys(v, ["id", "title", "status", "plan", "rationale", "timing", "you", "others", "sources", "effort", "quickWin", ...(stored ? ["quickWinMinutes"] : []), "closureReason", "closureEvidence", "notRevalidated"], where);
+  const v = object(value, where); keys(v, ["id", "title", "status", "plan", "rationale", "timing", "you", "others", "sources", "effort", "quickWin", "attention", ...(stored ? ["quickWinMinutes"] : []), "closureReason", "closureEvidence", "notRevalidated"], where);
   const result: Item = {
     id: string(v.id, `${where}.id`), title: string(v.title, `${where}.title`),
     status: choice(v.status, ["open", "blocked", "done", "dropped"], `${where}.status`),
@@ -64,6 +64,7 @@ function item(value: unknown, where: string, stored = false): Item {
     sources: array(v.sources, `${where}.sources`, link),
     effort: choice(stored && v.effort === undefined ? "unknown" : v.effort, ["XS", "S", "M", "L", "XL", "unknown"], `${where}.effort`),
   };
+  if (v.attention !== undefined) result.attention = choice(v.attention, ["work", "background", "unassigned"] as const, `${where}.attention`);
   if (v.quickWin !== undefined) {
     if (typeof v.quickWin !== "boolean") throw Error(`${where}.quickWin must be a boolean`);
     result.quickWin = v.quickWin;
@@ -154,24 +155,112 @@ export function renderReport(report: Report, revision: number, archive: { revisi
   const active = report.decisions.filter(x => x.state === "active" && (!x.expiresOn || x.expiresOn >= report.date));
   const inactive = report.decisions.filter(x => !active.includes(x));
   const gaps = report.coverage.filter(source => source.status !== "checked");
-  const today = report.items.filter(x => (x.plan === "must" || x.plan === "aim") && (x.status === "open" || x.status === "blocked"));
-  const focus = today.slice(0, 3);
-  const remaining = today.slice(3);
-  const later = report.items.filter(x => x.plan === "later" && (x.status === "open" || x.status === "blocked"));
+  const open = report.items.filter(x => x.status === "open" || x.status === "blocked");
+  const work = open.filter(x => !x.attention || x.attention === "work");
+  const today = work.filter(x => x.plan !== "later" && !(x.quickWin && !x.notRevalidated && x.status === "open"));
+  const later = work.filter(x => x.plan === "later" && !(x.quickWin && !x.notRevalidated && x.status === "open"));
+  const background = open.filter(x => x.attention === "background");
+  const unassigned = open.filter(x => x.attention === "unassigned");
   const closed = report.items.filter(x => x.status === "done" || x.status === "dropped");
-  const quickWins = report.items.filter(x => x.quickWin && !x.notRevalidated && x.status === "open");
-  const waiting = report.items.filter(x => x.status === "blocked");
+  const quickWins = work.filter(x => x.quickWin && !x.notRevalidated && x.status === "open");
+  const waiting = work.filter(x => x.status === "blocked");
   const changed = changes(report, previous);
   const capturedTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Stockholm", hour: "2-digit", minute: "2-digit" }).format(new Date(report.capturedAt));
   const archiveDates = [...new Set(archive.map(x => x.date))].sort().reverse();
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>${esc(report.headline)} · Galdera check-in</title><style>
-:root{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark;background:#f5f5f1;color:#1d302c}*{box-sizing:border-box}body{margin:0;line-height:1.45}a{color:#12685f;text-underline-offset:.18em}a:focus-visible,summary:focus-visible{outline:3px solid #d8833a;outline-offset:3px}header{background:#173c36;color:#f5f5ef;padding:1.15rem max(1rem,calc((100vw - 880px)/2)) 1.2rem}header a{color:#bde9db}.eyebrow{font-size:.76rem;letter-spacing:.05em;color:#c5ddd4}h1{font-size:clamp(1.45rem,3.4vw,2rem);line-height:1.16;margin:.32rem 0}.coverage-link{font-size:.85rem;margin:.35rem 0 0}.headline-note{font-size:.92rem;margin:.35rem 0 0;max-width:72ch;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}main{max-width:880px;margin:auto;padding:1rem 1rem 3rem}.overview{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(230px,1fr);gap:1rem;align-items:start}.card,.fold{background:#fff;border:1px solid #d8e0d9;border-radius:10px}.card{padding:.85rem 1rem}.card h2{font-size:1rem;margin:0 0 .4rem}.focus .item:first-of-type{border-top:0}.fold{margin-top:.7rem}.fold>summary{font-weight:650;display:flex;justify-content:space-between;gap:.75rem}.fold>summary .count{font-size:.78rem;font-weight:500;color:#536861}summary{cursor:pointer;min-height:44px;padding:.65rem .85rem;list-style-position:inside}summary::marker{color:#43887a}summary:hover{background:#f5f8f4}.fold-body{padding:.1rem .85rem .8rem;border-top:1px solid #e0e7e0}.fold-body>p:first-child{margin-top:.65rem}.item{border-top:1px solid #e0e7e0}.item>summary{position:relative;padding-right:1rem;display:grid;gap:.12rem;padding:.55rem 1rem .55rem .15rem;list-style-position:outside}.item>summary::after{content:"+";position:absolute;right:0;top:.55rem;color:#43887a}.item[open]>summary::after{content:"−"}.item-heading{display:flex;align-items:baseline;justify-content:space-between;gap:.65rem}.item-heading strong{font-size:.92rem;font-weight:650}.meta{display:flex;align-items:center;gap:.35rem;flex-shrink:0}.badge{font-size:.67rem;font-weight:650;text-transform:uppercase;letter-spacing:.04em;background:#dcebe3;color:#20584a;padding:.08rem .38rem;border-radius:4px}.badge.state{background:#f9e5c8;color:#704719}.timing{font-size:.7rem;color:#536861}.preview{font-size:.82rem;color:#536861;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1}.item-body{padding:.1rem .3rem .75rem .9rem;font-size:.85rem}.item-body p{margin:.45rem 0}.notice{background:#fff1d6;border-left:3px solid #b86f13;padding:.4rem .55rem;color:#503909}dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;margin:.65rem 0}dt{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:#536861}dd{margin:0;overflow-wrap:anywhere}.provenance{font-size:.7rem;color:#536861}.item-heading strong a{color:inherit;text-decoration-thickness:1px}.sources{font-size:.76rem;color:#536861}.sources a{overflow-wrap:anywhere}.side .item:first-child{border-top:0}.side .item-heading{align-items:center}.side .preview{display:-webkit-box}.waiting{border-top:1px solid #e0e7e0;margin-top:.65rem;padding-top:.65rem}.waiting h2{margin-bottom:.25rem}.waiting-row{padding:.35rem 0;border-top:1px solid #e0e7e0;font-size:.8rem}.waiting-row:first-of-type{border-top:0}.waiting-row strong{display:block;font-size:.86rem}.waiting-row p{margin:.1rem 0;color:#536861;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1}.priority-heading{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:#536861;margin:.5rem 0 0}.stack{margin-top:.8rem}.muted{color:#536861}p{margin:.5rem 0}ul{margin:.45rem 0;padding-left:1.2rem}li+li{margin-top:.35rem}.coverage-row{border-top:1px solid #e0e7e0;padding:.55rem 0}.coverage-row:first-child{border:0}.coverage-row strong{display:inline-block;min-width:6rem;text-transform:capitalize}.coverage-row span{font-size:.73rem;color:#536861}.coverage-row p{margin:.25rem 0}.coverage-row small{color:#536861}.archive-date{margin:.7rem 0 .1rem}.archive-links a{display:inline-block;margin:.15rem .7rem .15rem 0}.section-note{font-size:.79rem;color:#536861;margin:.15rem 0 .45rem}@media(max-width:680px){.overview{grid-template-columns:1fr}.side{order:0}dl{grid-template-columns:1fr;gap:.35rem}.item-heading{align-items:start;flex-wrap:wrap}.meta{flex-wrap:wrap}.card{padding:.7rem .85rem}}@media(prefers-color-scheme:dark){:root{background:#12211e;color:#ecf4ee}.card,.fold{background:#1b2d27;border-color:#40564c}.fold-body,.item,.coverage-row{border-color:#40564c}summary:hover{background:#263b32}.muted,.preview,.timing,dt,.sources,.provenance,.waiting-row p,.priority-heading,.fold>summary .count,.section-note,.coverage-row span,.coverage-row small{color:#b2c7ba}.badge{background:#315447;color:#d7f2dc}.badge.state{background:#604625;color:#ffe2ae}.notice{background:#453414;color:#ffdea4}a{color:#9ce0ce}}
+:root{--bg:#f3f0e8;--panel:#eae6da;--ink:#1e221f;--muted:#5b625b;--rule:#d8d3c5;--accent:#9a3a1c;--warn-bg:#f6e6c3;--warn-ink:#5a3b06;--focus:#1b5cc8;--serif:ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark;background:var(--bg);color:var(--ink)}
+*{box-sizing:border-box}
+body{margin:0;line-height:1.5;font-size:16px;-webkit-text-size-adjust:100%}
+a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:.2em}
+a:hover{text-decoration-thickness:2px}
+a:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:3px}
+p{margin:.5rem 0}
+ul{margin:.45rem 0;padding-left:1.2rem}
+li+li{margin-top:.35rem}
+.muted{color:var(--muted)}
+header{max-width:880px;margin:0 auto;padding:2rem 1rem 1.4rem}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.02em;color:var(--muted)}
+h1{font-family:var(--serif);font-weight:600;font-size:clamp(1.75rem,4.4vw,2.6rem);line-height:1.1;letter-spacing:-.015em;margin:.6rem 0 .5rem;max-width:22ch;text-wrap:balance}
+.headline-note{font-size:.95rem;color:var(--muted);margin:0;max-width:68ch;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.coverage-link{font-size:.85rem;margin:.6rem 0 0}
+main{max-width:880px;margin:0 auto;padding:0 1rem 3.5rem}
+.overview{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(240px,1fr);gap:2rem;align-items:start;border-top:2px solid var(--ink);padding-top:1rem}
+.card h2{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 .35rem}
+.side{background:var(--panel);border-radius:8px;padding:.9rem 1rem}
+.priority-heading{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin:1rem 0 0}
+.priority-heading:first-of-type{margin-top:.25rem}
+summary{cursor:pointer;min-height:44px;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"";flex:none;width:.42rem;height:.42rem;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg);transition:transform .15s}
+details[open]>summary::after{transform:rotate(-135deg)}
+@media(prefers-reduced-motion:reduce){summary::after{transition:none}}
+.item{border-top:1px solid var(--rule)}
+.focus .item:first-of-type{border-top:0}
+.side .item:first-of-type{border-top:0}
+.item>summary{position:relative;display:grid;gap:.15rem;padding:.7rem 1.6rem .7rem 0}
+.item>summary::after{position:absolute;right:.35rem;top:1.15rem}
+.item-heading{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem}
+.item-heading strong{font-size:1.02rem;font-weight:600;line-height:1.3}
+.item-heading strong a{color:inherit;text-decoration-color:var(--rule);text-decoration-thickness:1.5px}
+.item-heading strong a:hover{text-decoration-color:var(--accent)}
+.focus .item:first-of-type .item-heading strong{font-family:var(--serif);font-size:1.3rem;font-weight:600;letter-spacing:-.005em}
+.meta{display:flex;align-items:center;gap:.5rem;flex-shrink:0}
+.badge{font-size:.66rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.badge.state{color:var(--warn-ink);background:var(--warn-bg);padding:.05rem .4rem;border-radius:3px}
+.timing{font-family:var(--mono);font-size:.68rem;color:var(--ink);border:1px solid var(--muted);border-radius:3px;padding:0 .3rem;line-height:1.5}
+.preview{font-size:.88rem;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.provenance{font-size:.72rem;color:var(--muted)}
+.side .item-heading{align-items:center}
+.item-body{padding:.1rem 1.6rem .9rem 0;font-size:.9rem}
+.item-body p{margin:.45rem 0}
+.notice{background:var(--warn-bg);border-left:3px solid var(--accent);padding:.4rem .6rem;color:var(--warn-ink)}
+dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin:.8rem 0}
+dt{font-size:.66rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:.1rem}
+dd{margin:0;overflow-wrap:anywhere}
+.sources{font-size:.78rem;color:var(--muted);padding-top:.5rem;border-top:1px dotted var(--rule)}
+.sources a{overflow-wrap:anywhere}
+.waiting{border-top:1px solid var(--rule);margin-top:.9rem;padding-top:.8rem}
+.waiting h2{margin-bottom:.15rem}
+.waiting-row{padding:.5rem 0;border-top:1px solid var(--rule);font-size:.85rem}
+.waiting-row:first-of-type{border-top:0}
+.waiting-row strong{display:block;font-weight:600;font-size:.92rem}
+.waiting-row strong a{color:inherit;text-decoration-color:var(--rule);text-decoration-thickness:1.5px}
+.waiting-row p{margin:.1rem 0 0;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.section-note{font-size:.8rem;color:var(--muted);margin:.15rem 0 .45rem}
+.stack{margin-top:2.25rem}
+.fold{border-top:1px solid var(--rule)}
+.fold>summary{display:flex;align-items:center;gap:.75rem;padding:.6rem 0;font-weight:600;font-size:.95rem}
+.fold>summary .count{margin-left:auto;font-size:.76rem;font-weight:400;color:var(--muted)}
+.fold>summary:hover{color:var(--accent)}
+.fold-body{padding:.1rem 0 1rem}
+.fold-body>p:first-child{margin-top:.25rem}
+.fold .fold{margin-left:.25rem;padding-left:.9rem;border-top:0;border-left:2px solid var(--rule)}
+.coverage-row{border-top:1px solid var(--rule);padding:.6rem 0}
+.coverage-row:first-child{border:0}
+.coverage-row strong{display:inline-block;min-width:6rem;text-transform:capitalize}
+.coverage-row span{font-family:var(--mono);font-size:.72rem;color:var(--muted)}
+.coverage-row p{margin:.25rem 0}
+.coverage-row small{color:var(--muted)}
+.archive-date{margin:.7rem 0 .1rem}
+.archive-links a{display:inline-block;margin:.15rem .8rem .15rem 0}
+@media(max-width:680px){
+header{padding:1.4rem 1rem 1.1rem}
+.overview{grid-template-columns:1fr;gap:1.5rem}
+dl{grid-template-columns:1fr;gap:.6rem}
+.item-heading{align-items:start;flex-wrap:wrap;gap:.3rem .75rem}
+.focus .item:first-of-type .item-heading strong{font-size:1.2rem}
+}
+@media(prefers-color-scheme:dark){
+:root{--bg:#161815;--panel:#1f221d;--ink:#ebe7dc;--muted:#a3a89d;--rule:#33372f;--accent:#f0956f;--warn-bg:#40320f;--warn-ink:#f7dc9f;--focus:#8db4ff}
+}
 </style></head><body><header><div class="eyebrow">Galdera · ${esc(report.date)} · captured ${esc(capturedTime)} Stockholm · revision ${revision}</div><h1>${esc(report.headline)}</h1><p class="headline-note">${prose(report.summary)}</p>${gaps.length ? `<p class="coverage-link"><a href="#coverage">${gaps.length} source ${gaps.length === 1 ? "gap" : "gaps"} in this overview</a></p>` : ""}</header><main>
-  <div class="overview"><section class="card focus" id="must" aria-labelledby="today-title"><h2 id="today-title">Today · ${today.length} ${today.length === 1 ? "item" : "items"}</h2>${focus.map((x, index) => `${index === 0 ? '<h3 class="priority-heading">Do first</h3>' : index === 1 ? '<h3 class="priority-heading">Up next</h3>' : ""}${itemHtml(x)}`).join("") || '<p class="muted">Nothing planned for today.</p>'}</section>
-  <aside class="card side" id="quick-wins"><h2>Quick wins · ${quickWins.length}</h2>${quickWins.map(x => itemHtml(x, false)).join("") || '<p class="muted">None listed.</p>'}${waiting.length ? `<section class="waiting" aria-labelledby="waiting-title"><h2 id="waiting-title">Waiting on others · ${waiting.length}</h2>${waiting.slice(0, 3).map(x => `<div class="waiting-row"><strong>${x.sources[0]?.url ? sourceHtml({ label: x.title, url: x.sources[0].url }) : esc(x.title)}</strong><p>${prose(x.others)}</p></div>`).join("")}${waiting.length > 3 ? `<p class="section-note">+${waiting.length - 3} more in More work &amp; evidence</p>` : ""}</section>` : ""}</aside></div>
-  <div class="stack"><details class="fold" id="all-work"><summary>More work &amp; evidence <span class="count">${remaining.length + later.length + closed.length} more items</span></summary><div class="fold-body">${remaining.length ? `<details class="fold" id="more-today"><summary>More for today <span class="count">${remaining.length} ${remaining.length === 1 ? "item" : "items"} · ${remaining.filter(x => x.plan === "must").length} must</span></summary><div class="fold-body">${remaining.map(x => itemHtml(x)).join("")}</div></details>` : ""}
+  <div class="overview"><section class="card focus" id="must" aria-labelledby="today-title"><h2 id="today-title">Your work today · ${today.length} ${today.length === 1 ? "item" : "items"}</h2>${today.map((x, index) => `${index === 0 ? '<h3 class="priority-heading">Do first</h3>' : index === 1 ? '<h3 class="priority-heading">Up next</h3>' : ""}${itemHtml(x)}`).join("") || '<p class="muted">Nothing planned for today.</p>'}</section>
+  <aside class="card side" id="quick-wins"><h2>Quick wins · ${quickWins.length}</h2>${quickWins.map(x => itemHtml(x)).join("") || '<p class="muted">None listed.</p>'}${waiting.length ? `<section class="waiting" aria-labelledby="waiting-title"><h2 id="waiting-title">Waiting on others · ${waiting.length}</h2>${waiting.slice(0, 3).map(x => `<div class="waiting-row"><strong>${x.sources[0]?.url ? sourceHtml({ label: x.title, url: x.sources[0].url }) : esc(x.title)}</strong><p>${prose(x.others)}</p></div>`).join("")}${waiting.length > 3 ? `<p class="section-note">+${waiting.length - 3} more on your plate</p>` : ""}</section>` : ""}</aside></div>
+  <section class="stack" id="later" aria-labelledby="plate-title"><h2 id="plate-title">Also on your plate · ${later.length}</h2>${later.map(x => itemHtml(x)).join("") || '<p class="muted">Nothing else listed.</p>'}</section>
+  <div class="stack"><details class="fold" id="background"><summary>Background reviews &amp; agents <span class="count">${background.length}</span></summary><div class="fold-body">${background.map(x => itemHtml(x)).join("") || '<p class="muted">None listed.</p>'}</div></details>
+  <details class="fold" id="unassigned"><summary>Ownership unclear <span class="count">${unassigned.length}</span></summary><div class="fold-body">${unassigned.map(x => itemHtml(x)).join("") || '<p class="muted">None listed.</p>'}</div></details>
+  <details class="fold" id="all-work"><summary>Evidence &amp; history</summary><div class="fold-body">
   <details class="fold" id="day"><summary>Schedule &amp; constraints</summary><div class="fold-body"><p><strong>Summary:</strong> ${prose(report.summary)}</p><p><strong>Windows:</strong> ${prose(report.dayContext.windows)}</p><p><strong>Constraints:</strong> ${prose(report.dayContext.constraints)}</p></div></details>
-  <details class="fold" id="later"><summary>Broader inventory <span class="count">${later.length} open or blocked</span></summary><div class="fold-body">${later.map(x => itemHtml(x)).join("") || '<p class="muted">Nothing listed.</p>'}</div></details>
   <details class="fold" id="decisions"><summary>Decisions <span class="count">${active.length} in force${inactive.length ? ` · ${inactive.length} earlier` : ""}</span></summary><div class="fold-body">${active.map(x => `<p>${prose(x.text)}${x.expiresOn ? ` <span class="muted">(through ${esc(x.expiresOn)})</span>` : ""}</p>`).join("") || '<p class="muted">None in force.</p>'}${inactive.length ? `<details class="fold"><summary>Earlier decisions <span class="count">${inactive.length}</span></summary><div class="fold-body">${inactive.map(x => `<p>${prose(x.text)} <span class="muted">(${x.state === "retired" ? "retired" : "expired"})</span></p>`).join("")}</div></details>` : ""}</div></details>
   <details class="fold" id="suggestions"><summary>Suggestions <span class="count">${report.suggestions.length}</span></summary><div class="fold-body">${listHtml(report.suggestions)}</div></details>
   <details class="fold" id="questions"><summary>Questions <span class="count">${report.questions.length}</span></summary><div class="fold-body">${listHtml(report.questions)}</div></details>
