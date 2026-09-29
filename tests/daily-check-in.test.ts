@@ -90,7 +90,10 @@ test("should keep personal work visible and separate background reviews from foc
   expect(html).toContain('<section class="stack" id="later"');
   expect(html.indexOf('id="item-old-cleanup"')).toBeLessThan(html.indexOf('id="all-work"'));
   expect(html).toContain('<details class="fold" id="background">');
-  expect(html).toMatch(/<details class="item[^"]*" id="item-second-review">/);
+  expect(html).toContain('class="detail-panel item" id="item-second-review"');
+  expect(html).toContain('href="#item-second-review"');
+  expect(html).toContain('aria-label="Work items"');
+  expect(html).toContain('aria-label="Task details"');
   expect(html).toContain('<details class="fold" id="coverage">');
   expect(html).toContain("Mira validates the <a href=");
   expect(html.match(/id="item-sample-data"/g)).toHaveLength(1);
