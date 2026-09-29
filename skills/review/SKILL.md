@@ -15,6 +15,8 @@ A review answers three questions:
 
 Use the [assessment guide and review lenses](references/lenses.md) to investigate all three within the requested scope. File coverage records what was inspected; the answers establish the assessment.
 
+Treat the implementation as provisional. Optimize for the smallest coherent design that satisfies the actual requirements. Challenge unnecessary behavior before repairing its edge cases. When additional machinery seems necessary, explain which requirement needs it and why a simpler ownership or data-flow model is insufficient.
+
 ## Frame
 
 1. Pin the exact scope and fixed point. For a PR, capture base and head SHAs. For a follow-up, retain the prior base and head, then record the new head and requested scope. Review the changes since the prior review with `git diff <prior-head> <new-head>`; use the original base only when the requested scope is the full PR.
