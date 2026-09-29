@@ -90,7 +90,7 @@ test("should keep personal work visible and separate background reviews from foc
   expect(html).toContain('<section class="stack" id="later"');
   expect(html.indexOf('id="item-old-cleanup"')).toBeLessThan(html.indexOf('id="all-work"'));
   expect(html).toContain('<details class="fold" id="background">');
-  expect(html).toContain('<details class="item" id="item-second-review">');
+  expect(html).toMatch(/<details class="item[^"]*" id="item-second-review">/);
   expect(html).toContain('<details class="fold" id="coverage">');
   expect(html).toContain("Mira validates the <a href=");
   expect(html.match(/id="item-sample-data"/g)).toHaveLength(1);
@@ -164,7 +164,7 @@ test("should link claims to their precise evidence while keeping unsafe markup i
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).not.toContain('href="javascript:');
     expect(html).toContain('T3 thread 123 · link unavailable');
-    expect(html).toContain('class="provenance"><a href="https://example.com/notes/onboarding-copy#draft"');
+    expect(html).toMatch(/class="provenance">[\s\S]*?<a href="https:\/\/example.com\/notes\/onboarding-copy#draft"/);
   } finally { server.stop(true); }
 });
 
@@ -187,4 +187,21 @@ test("should read early snapshots without carrying minute estimates into the cur
   expect(restored.items[1]).toMatchObject({ effort: "unknown", quickWin: true });
   expect(renderReport(restored, 1)).not.toContain("8 min");
   expect(() => validateReport(legacy)).toThrow();
+});
+
+test("should preserve sourced dependency steps and clear them when work is not revalidated", async () => {
+  const report = await example();
+  report.items[0].steps = [{ title: "Deploy <consumer>", state: "waiting", owner: "You & release agent", detail: "After [runtime](https://example.com/runtime) is live.", sources: [{ label: "Release", url: "https://example.com/release" }] }];
+  const path = await root();
+  await publish(path, report, 0);
+  expect((await latest(path))?.report.items[0].steps).toEqual(report.items[0].steps);
+  const html = renderReport(report, 1);
+  expect(html).toContain('aria-label="Dependencies and next actions"');
+  expect(html).toContain("Deploy &lt;consumer&gt;");
+  expect(html).toContain("You &amp; release agent");
+  expect(html).toContain('href="https://example.com/runtime"');
+  expect(() => validateReport({ ...report, items: [{ ...report.items[0], steps: [{ ...report.items[0].steps![0], sources: [] }] }] })).toThrow("needs evidence");
+  await publish(path, { ...report, items: [] }, 1);
+  expect((await latest(path))?.report.items[0]).toMatchObject({ notRevalidated: true });
+  expect((await latest(path))?.report.items[0].steps).toBeUndefined();
 });

@@ -6,7 +6,8 @@ export const defaultRoot = join(homedir(), ".local", "share", "galdera-check-in"
 const sources = ["calendar", "t3", "vault", "linear", "github", "slack", "email", "todos"] as const;
 type SourceName = typeof sources[number];
 type Link = { label: string; url?: string };
-type Item = { id: string; title: string; status: "open" | "blocked" | "done" | "dropped"; plan: "must" | "aim" | "later"; rationale: string; timing: string; you: string; others: string; sources: Link[]; effort: "XS" | "S" | "M" | "L" | "XL" | "unknown"; quickWin?: boolean; attention?: "work" | "background" | "unassigned"; closureReason?: string; closureEvidence?: string; notRevalidated?: boolean };
+type Step = { title: string; state: "done" | "active" | "waiting" | "unknown"; owner: string; detail: string; sources: Link[] };
+type Item = { id: string; title: string; status: "open" | "blocked" | "done" | "dropped"; plan: "must" | "aim" | "later"; rationale: string; timing: string; you: string; others: string; sources: Link[]; effort: "XS" | "S" | "M" | "L" | "XL" | "unknown"; quickWin?: boolean; steps?: Step[]; attention?: "work" | "background" | "unassigned"; closureReason?: string; closureEvidence?: string; notRevalidated?: boolean };
 type Decision = { id: string; itemId?: string; text: string; recordedAt: string; expiresOn?: string; state: "active" | "retired" };
 type Coverage = { source: SourceName; status: "checked" | "partial" | "unavailable" | "not-configured"; window: string; detail: string; nextStep: string };
 export type Report = { version: 1; date: string; capturedAt: string; headline: string; summary: string; dayContext: { windows: string; constraints: string }; items: Item[]; decisions: Decision[]; coverage: Coverage[]; suggestions: string[]; questions: string[] };
@@ -53,8 +54,14 @@ function link(value: unknown, where: string): Link {
   catch { throw Error(`${where}.url must be an HTTP(S) URL`); }
   return { label, url };
 }
+function step(value: unknown, where: string): Step {
+  const v = object(value, where); keys(v, ["title", "state", "owner", "detail", "sources"], where);
+  const evidence = array(v.sources, `${where}.sources`, link);
+  if (!evidence.length) throw Error(`${where}.sources needs evidence`);
+  return { title: string(v.title, `${where}.title`), state: choice(v.state, ["done", "active", "waiting", "unknown"], `${where}.state`), owner: string(v.owner, `${where}.owner`), detail: string(v.detail, `${where}.detail`), sources: evidence };
+}
 function item(value: unknown, where: string, stored = false): Item {
-  const v = object(value, where); keys(v, ["id", "title", "status", "plan", "rationale", "timing", "you", "others", "sources", "effort", "quickWin", "attention", ...(stored ? ["quickWinMinutes"] : []), "closureReason", "closureEvidence", "notRevalidated"], where);
+  const v = object(value, where); keys(v, ["id", "title", "status", "plan", "rationale", "timing", "you", "others", "sources", "effort", "quickWin", "attention", "steps", ...(stored ? ["quickWinMinutes"] : []), "closureReason", "closureEvidence", "notRevalidated"], where);
   const result: Item = {
     id: string(v.id, `${where}.id`), title: string(v.title, `${where}.title`),
     status: choice(v.status, ["open", "blocked", "done", "dropped"], `${where}.status`),
@@ -64,6 +71,7 @@ function item(value: unknown, where: string, stored = false): Item {
     sources: array(v.sources, `${where}.sources`, link),
     effort: choice(stored && v.effort === undefined ? "unknown" : v.effort, ["XS", "S", "M", "L", "XL", "unknown"], `${where}.effort`),
   };
+  if (v.steps !== undefined) result.steps = array(v.steps, `${where}.steps`, step);
   if (v.attention !== undefined) result.attention = choice(v.attention, ["work", "background", "unassigned"] as const, `${where}.attention`);
   if (v.quickWin !== undefined) {
     if (typeof v.quickWin !== "boolean") throw Error(`${where}.quickWin must be a boolean`);
@@ -128,11 +136,33 @@ function prose(value: string): string {
   return (result + esc(value.slice(offset))).replace(/\n/g, "<br>");
 }
 function sourceHtml(link: Link): string { return link.url ? `<a href="${esc(link.url)}" rel="noopener noreferrer">${esc(link.label)}</a>` : `<span>${esc(link.label)} · link unavailable</span>`; }
-function itemHtml(item: Item, anchor = true): string {
+type IconName = "target" | "bolt" | "layers" | "review" | "users" | "calendar" | "link" | "alert" | "arrow" | "check";
+function icon(name: IconName): string {
+  const paths: Record<IconName, string> = {
+    target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+    bolt: '<path d="m13 2-9 12h7l-1 8 10-12h-7z"/>',
+    layers: '<path d="m12 3 9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5"/>',
+    review: '<path d="M7 3v12a4 4 0 0 0 4 4h6M7 7h7a3 3 0 0 1 3 3v9"/><circle cx="7" cy="3" r="2"/><circle cx="17" cy="19" r="2"/>',
+    users: '<circle cx="9" cy="8" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6M18 15a5 5 0 0 1 3 4v2"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4M17 3v4M3 11h18"/>',
+    link: '<path d="m10 13 4-4M8 15l-1 1a3 3 0 0 1-4-4l4-4a3 3 0 0 1 4 0M13 11a3 3 0 0 1 0-4l4-4a3 3 0 0 1 4 4l-1 1"/>',
+    alert: '<path d="m12 3 10 18H2zM12 9v5M12 17v1"/>',
+    arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
+    check: '<path d="m5 12 4 4L19 6"/>',
+  };
+  return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
+}
+function sectionHeading(name: string, count: number, glyph: IconName, id?: string): string {
+  return `<div class="section-heading"><span class="section-icon">${icon(glyph)}</span><h2${id ? ` id="${id}"` : ""}>${name}</h2><span class="count">${count}</span></div>`;
+}
+function itemHtml(item: Item, rank?: number): string {
   const closure = item.closureReason ? `<p class="muted">Closure: ${prose(item.closureReason)} · ${prose(item.closureEvidence!)}</p>` : "";
-  return `<details class="item"${anchor ? ` id="item-${encodeURIComponent(item.id)}"` : ""}>
-    <summary><span class="item-heading"><strong>${item.sources[0]?.url ? sourceHtml({ label: item.title, url: item.sources[0].url }) : esc(item.title)}</strong><span class="meta"><span class="badge">${esc(item.plan === "must" ? "Must" : item.plan === "aim" ? "Aim" : "Later")}</span>${item.status !== "open" ? `<span class="badge state">${esc(item.status)}</span>` : ""}<span class="timing" title="Estimated effort">${item.effort === "unknown" ? "Effort ?" : item.effort}</span></span></span><span class="preview">${prose(item.you || item.rationale)}</span><span class="provenance">${item.sources[0] ? sourceHtml(item.sources[0]) : "Source missing"}</span></summary>
-    <div class="item-body"><p>${prose(item.rationale)}</p>${item.notRevalidated ? '<p class="notice">Carried forward · not revalidated · no current action assumed</p>' : ""}<dl><div><dt>When</dt><dd>${prose(item.timing)}</dd></div><div><dt>You</dt><dd>${prose(item.you)}</dd></div><div><dt>Others</dt><dd>${prose(item.others)}</dd></div></dl>${closure}<div class="sources">Sources · ${item.sources.map(sourceHtml).join(" · ")}</div></div>
+  const primary = item.sources[0];
+  const source = primary ? sourceHtml(primary) : "Source missing";
+  const state = item.status === "blocked" ? "Blocked" : item.status === "done" ? "Done" : item.status === "dropped" ? "Dropped" : item.plan === "must" ? "Must today" : item.plan === "aim" ? "Aim today" : "Later";
+  return `<details class="item ${item.plan === "must" ? "must" : ""}" id="item-${encodeURIComponent(item.id)}">
+    <summary><span class="task-mark" title="${state}">${rank ? `<span>${rank}</span>` : icon(item.status === "blocked" ? "users" : item.status === "done" ? "check" : item.quickWin ? "bolt" : "layers")}<span class="sr-only">${state}</span></span><span class="task-content"><span class="item-heading"><strong>${primary?.url ? sourceHtml({ label: item.title, url: primary.url }) : esc(item.title)}</strong><span class="timing" title="Estimated effort: ${item.effort}" aria-label="Estimated effort: ${item.effort}">${item.effort === "unknown" ? "?" : item.effort}</span></span><span class="preview">${icon("arrow")}<span>${prose(item.you || item.rationale)}</span></span><span class="task-footer"><span class="provenance">${icon("link")}${source}</span>${item.plan === "must" || item.status !== "open" ? `<span class="badge state">${state}</span>` : ""}</span></span></summary>
+    <div class="item-body"><p>${prose(item.rationale)}</p>${item.notRevalidated ? '<p class="notice">Carried forward · not revalidated · no current action assumed</p>' : ""}<dl><div><dt>${icon("calendar")}When</dt><dd>${prose(item.timing)}</dd></div><div><dt>${icon("target")}You</dt><dd>${prose(item.you)}</dd></div><div><dt>${icon("users")}Others</dt><dd>${prose(item.others)}</dd></div></dl>${item.steps?.length ? `<ol class="steps" aria-label="Dependencies and next actions">${item.steps.map(x => `<li class="step ${x.state}"><span class="step-marker">${icon(x.state === "done" ? "check" : x.state === "active" ? "arrow" : x.state === "waiting" ? "layers" : "alert")}</span><div><div class="step-heading"><strong>${esc(x.title)}</strong><span class="step-state">${x.state}</span></div><div class="step-owner">${icon("users")}${prose(x.owner)}</div><p>${prose(x.detail)}</p><div class="step-sources">${x.sources.map(sourceHtml).join(" · ")}</div></div></li>`).join("")}</ol>` : ""}${closure}<div class="sources">Sources · ${item.sources.map(sourceHtml).join(" · ")}</div></div>
   </details>`;
 }
 function listHtml(values: string[]): string { return values.length ? `<ul>${values.map(x => `<li>${prose(x)}</li>`).join("")}</ul>` : '<p class="muted">None recorded.</p>'; }
@@ -168,99 +198,28 @@ export function renderReport(report: Report, revision: number, archive: { revisi
   const capturedTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Stockholm", hour: "2-digit", minute: "2-digit" }).format(new Date(report.capturedAt));
   const archiveDates = [...new Set(archive.map(x => x.date))].sort().reverse();
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>${esc(report.headline)} · Galdera check-in</title><style>
-:root{--bg:#f3f0e8;--panel:#eae6da;--ink:#1e221f;--muted:#5b625b;--rule:#d8d3c5;--accent:#9a3a1c;--warn-bg:#f6e6c3;--warn-ink:#5a3b06;--focus:#1b5cc8;--serif:ui-serif,"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark;background:var(--bg);color:var(--ink)}
-*{box-sizing:border-box}
-body{margin:0;line-height:1.5;font-size:16px;-webkit-text-size-adjust:100%}
-a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:.2em}
-a:hover{text-decoration-thickness:2px}
-a:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:3px}
-p{margin:.5rem 0}
-ul{margin:.45rem 0;padding-left:1.2rem}
-li+li{margin-top:.35rem}
-.muted{color:var(--muted)}
-header{max-width:880px;margin:0 auto;padding:2rem 1rem 1.4rem}
-.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.02em;color:var(--muted)}
-h1{font-family:var(--serif);font-weight:600;font-size:clamp(1.75rem,4.4vw,2.6rem);line-height:1.1;letter-spacing:-.015em;margin:.6rem 0 .5rem;max-width:22ch;text-wrap:balance}
-.headline-note{font-size:.95rem;color:var(--muted);margin:0;max-width:68ch;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
-.coverage-link{font-size:.85rem;margin:.6rem 0 0}
-main{max-width:880px;margin:0 auto;padding:0 1rem 3.5rem}
-.overview{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(240px,1fr);gap:2rem;align-items:start;border-top:2px solid var(--ink);padding-top:1rem}
-.card h2{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 .35rem}
-.side{background:var(--panel);border-radius:8px;padding:.9rem 1rem}
-.priority-heading{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin:1rem 0 0}
-.priority-heading:first-of-type{margin-top:.25rem}
-summary{cursor:pointer;min-height:44px;list-style:none}
-summary::-webkit-details-marker{display:none}
-summary::after{content:"";flex:none;width:.42rem;height:.42rem;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg);transition:transform .15s}
-details[open]>summary::after{transform:rotate(-135deg)}
-@media(prefers-reduced-motion:reduce){summary::after{transition:none}}
-.item{border-top:1px solid var(--rule)}
-.focus .item:first-of-type{border-top:0}
-.side .item:first-of-type{border-top:0}
-.item>summary{position:relative;display:grid;gap:.15rem;padding:.7rem 1.6rem .7rem 0}
-.item>summary::after{position:absolute;right:.35rem;top:1.15rem}
-.item-heading{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem}
-.item-heading strong{font-size:1.02rem;font-weight:600;line-height:1.3}
-.item-heading strong a{color:inherit;text-decoration-color:var(--rule);text-decoration-thickness:1.5px}
-.item-heading strong a:hover{text-decoration-color:var(--accent)}
-.focus .item:first-of-type .item-heading strong{font-family:var(--serif);font-size:1.3rem;font-weight:600;letter-spacing:-.005em}
-.meta{display:flex;align-items:center;gap:.5rem;flex-shrink:0}
-.badge{font-size:.66rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
-.badge.state{color:var(--warn-ink);background:var(--warn-bg);padding:.05rem .4rem;border-radius:3px}
-.timing{font-family:var(--mono);font-size:.68rem;color:var(--ink);border:1px solid var(--muted);border-radius:3px;padding:0 .3rem;line-height:1.5}
-.preview{font-size:.88rem;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
-.provenance{font-size:.72rem;color:var(--muted)}
-.side .item-heading{align-items:center}
-.item-body{padding:.1rem 1.6rem .9rem 0;font-size:.9rem}
-.item-body p{margin:.45rem 0}
-.notice{background:var(--warn-bg);border-left:3px solid var(--accent);padding:.4rem .6rem;color:var(--warn-ink)}
-dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin:.8rem 0}
-dt{font-size:.66rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:.1rem}
-dd{margin:0;overflow-wrap:anywhere}
-.sources{font-size:.78rem;color:var(--muted);padding-top:.5rem;border-top:1px dotted var(--rule)}
-.sources a{overflow-wrap:anywhere}
-.waiting{border-top:1px solid var(--rule);margin-top:.9rem;padding-top:.8rem}
-.waiting h2{margin-bottom:.15rem}
-.waiting-row{padding:.5rem 0;border-top:1px solid var(--rule);font-size:.85rem}
-.waiting-row:first-of-type{border-top:0}
-.waiting-row strong{display:block;font-weight:600;font-size:.92rem}
-.waiting-row strong a{color:inherit;text-decoration-color:var(--rule);text-decoration-thickness:1.5px}
-.waiting-row p{margin:.1rem 0 0;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
-.section-note{font-size:.8rem;color:var(--muted);margin:.15rem 0 .45rem}
-.stack{margin-top:2.25rem}
-.fold{border-top:1px solid var(--rule)}
-.fold>summary{display:flex;align-items:center;gap:.75rem;padding:.6rem 0;font-weight:600;font-size:.95rem}
-.fold>summary .count{margin-left:auto;font-size:.76rem;font-weight:400;color:var(--muted)}
-.fold>summary:hover{color:var(--accent)}
-.fold-body{padding:.1rem 0 1rem}
-.fold-body>p:first-child{margin-top:.25rem}
-.fold .fold{margin-left:.25rem;padding-left:.9rem;border-top:0;border-left:2px solid var(--rule)}
-.coverage-row{border-top:1px solid var(--rule);padding:.6rem 0}
-.coverage-row:first-child{border:0}
-.coverage-row strong{display:inline-block;min-width:6rem;text-transform:capitalize}
-.coverage-row span{font-family:var(--mono);font-size:.72rem;color:var(--muted)}
-.coverage-row p{margin:.25rem 0}
-.coverage-row small{color:var(--muted)}
-.archive-date{margin:.7rem 0 .1rem}
-.archive-links a{display:inline-block;margin:.15rem .8rem .15rem 0}
-@media(max-width:680px){
-header{padding:1.4rem 1rem 1.1rem}
-.overview{grid-template-columns:1fr;gap:1.5rem}
-dl{grid-template-columns:1fr;gap:.6rem}
-.item-heading{align-items:start;flex-wrap:wrap;gap:.3rem .75rem}
-.focus .item:first-of-type .item-heading strong{font-size:1.2rem}
-}
-@media(prefers-color-scheme:dark){
-:root{--bg:#161815;--panel:#1f221d;--ink:#ebe7dc;--muted:#a3a89d;--rule:#33372f;--accent:#f0956f;--warn-bg:#40320f;--warn-ink:#f7dc9f;--focus:#8db4ff}
-}
-</style></head><body><header><div class="eyebrow">Galdera · ${esc(report.date)} · captured ${esc(capturedTime)} Stockholm · revision ${revision}</div><h1>${esc(report.headline)}</h1><p class="headline-note">${prose(report.summary)}</p>${gaps.length ? `<p class="coverage-link"><a href="#coverage">${gaps.length} source ${gaps.length === 1 ? "gap" : "gaps"} in this overview</a></p>` : ""}</header><main>
-  <div class="overview"><section class="card focus" id="must" aria-labelledby="today-title"><h2 id="today-title">Your work today · ${today.length} ${today.length === 1 ? "item" : "items"}</h2>${today.map((x, index) => `${index === 0 ? '<h3 class="priority-heading">Do first</h3>' : index === 1 ? '<h3 class="priority-heading">Up next</h3>' : ""}${itemHtml(x)}`).join("") || '<p class="muted">Nothing planned for today.</p>'}</section>
-  <aside class="card side" id="quick-wins"><h2>Quick wins · ${quickWins.length}</h2>${quickWins.map(x => itemHtml(x)).join("") || '<p class="muted">None listed.</p>'}${waiting.length ? `<section class="waiting" aria-labelledby="waiting-title"><h2 id="waiting-title">Waiting on others · ${waiting.length}</h2>${waiting.slice(0, 3).map(x => `<div class="waiting-row"><strong>${x.sources[0]?.url ? sourceHtml({ label: x.title, url: x.sources[0].url }) : esc(x.title)}</strong><p>${prose(x.others)}</p></div>`).join("")}${waiting.length > 3 ? `<p class="section-note">+${waiting.length - 3} more on your plate</p>` : ""}</section>` : ""}</aside></div>
-  <section class="stack" id="later" aria-labelledby="plate-title"><h2 id="plate-title">Also on your plate · ${later.length}</h2>${later.map(x => itemHtml(x)).join("") || '<p class="muted">Nothing else listed.</p>'}</section>
-  <div class="stack"><details class="fold" id="background"><summary>Background reviews &amp; agents <span class="count">${background.length}</span></summary><div class="fold-body">${background.map(x => itemHtml(x)).join("") || '<p class="muted">None listed.</p>'}</div></details>
-  <details class="fold" id="unassigned"><summary>Ownership unclear <span class="count">${unassigned.length}</span></summary><div class="fold-body">${unassigned.map(x => itemHtml(x)).join("") || '<p class="muted">None listed.</p>'}</div></details>
-  <details class="fold" id="all-work"><summary>Evidence &amp; history</summary><div class="fold-body">
-  <details class="fold" id="day"><summary>Schedule &amp; constraints</summary><div class="fold-body"><p><strong>Summary:</strong> ${prose(report.summary)}</p><p><strong>Windows:</strong> ${prose(report.dayContext.windows)}</p><p><strong>Constraints:</strong> ${prose(report.dayContext.constraints)}</p></div></details>
+:root{--bg:#f4f6fa;--panel:#fff;--ink:#202b40;--muted:#607089;--rule:#e1e6ef;--accent:#365ed4;--accent-bg:#eaf0ff;--green:#18735a;--green-bg:#e9f5ef;--warn-bg:#fff3de;--warn-ink:#87570a;--focus:#4164d9;--shadow:0 2px 5px #18304c05,0 8px 24px #18304c04;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark;background:var(--bg);color:var(--ink)}
+*{box-sizing:border-box}body{margin:0;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}a:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:5px}
+p{margin:.5rem 0}ul{padding-left:1.2rem}li+li{margin-top:.4rem}.muted{color:var(--muted)}.icon{width:19px;height:19px;flex:none;vertical-align:middle}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+header{max-width:1240px;margin:auto;padding:24px 28px;display:flex;align-items:center;gap:14px}.brand{width:40px;height:40px;background:var(--ink);color:var(--panel);border-radius:12px;display:grid;place-items:center}.brand .icon{width:22px;height:22px}h1{font-size:19px;letter-spacing:-.4px;margin:0;font-weight:650}.eyebrow{font-size:12px;color:var(--muted)}.toolbar{margin-left:auto;display:flex;align-items:center;gap:8px}.toolbar a{display:flex;align-items:center;gap:7px;min-height:44px;padding:8px 11px;border:1px solid var(--rule);border-radius:9px;background:var(--panel);font-size:12px;color:var(--muted)}.toolbar .coverage-link{color:var(--warn-ink);background:var(--warn-bg);border-color:transparent}.toolbar .icon{width:16px;height:16px}
+main{max-width:1240px;margin:auto;padding:4px 28px 40px}.overview{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:24px;align-items:start}.section-heading{display:flex;align-items:center;gap:10px;min-height:40px;margin-bottom:12px}.section-heading h2{font-size:14px;font-weight:650;margin:0}.section-icon{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--accent-bg);color:var(--accent)}.count{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--rule);min-width:24px;height:24px;border-radius:7px;display:inline-grid;place-items:center;padding:0 6px}.side{border:1px solid var(--rule);border-radius:16px;padding:16px;background:var(--green-bg)}.side .section-icon{background:var(--panel);color:var(--green)}.side .item{box-shadow:none}
+summary{cursor:pointer;min-height:44px;list-style:none}summary::-webkit-details-marker{display:none}summary::after{content:"";width:6px;height:6px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg);flex:none}details[open]>summary::after{transform:rotate(225deg)}
+.item{background:var(--panel);border:1px solid var(--rule);border-radius:13px;box-shadow:var(--shadow);min-width:0;overflow:hidden}.item+.item{margin-top:10px}.item>summary{display:flex;align-items:flex-start;gap:13px;padding:17px}.item>summary::after{margin:10px 2px 0 3px}.task-mark{display:grid;place-items:center;flex:none;width:30px;height:30px;border-radius:9px;color:var(--muted);background:var(--bg);font-size:13px;font-weight:650}.focus .item:first-of-type{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),var(--shadow)}.focus .item:first-of-type .task-mark{background:var(--accent);color:white}.must .task-mark{background:var(--warn-bg);color:var(--warn-ink)}.task-content{display:grid;gap:9px;min-width:0;flex:1}.item-heading{display:flex;align-items:flex-start;gap:10px}.item-heading strong{font-size:14px;line-height:1.4;font-weight:620;flex:1;min-width:0}.item-heading strong a{color:var(--ink)}.timing{font-size:11px;font-weight:650;color:var(--muted);border:1px solid var(--rule);border-radius:5px;min-width:24px;height:23px;display:inline-grid;place-items:center;flex:none;padding:0 4px}.preview{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--muted);line-height:1.5}.preview .icon{width:14px;height:14px;margin-top:2px;color:var(--accent)}.preview>span{min-width:0}.task-footer{display:flex;align-items:center;gap:8px;justify-content:space-between}.provenance{display:flex;align-items:center;gap:5px;min-width:0;font-size:11px;color:var(--muted)}.provenance .icon{width:12px;height:12px}.provenance a{color:var(--muted)}.provenance span{overflow-wrap:anywhere}.badge{font-size:10px;white-space:nowrap;padding:2px 6px;border-radius:5px;background:var(--warn-bg);color:var(--warn-ink)}
+.item-body{padding:16px;border-top:1px solid var(--rule);font-size:13px;background:var(--panel)}.item-body>p:first-child{margin-top:0}dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0}dl>div{background:var(--bg);border-radius:9px;padding:12px}dt{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:650;color:var(--muted);margin-bottom:7px}dt .icon{width:14px;height:14px}dd{margin:0;overflow-wrap:anywhere}.sources{font-size:11px;border-top:1px solid var(--rule);padding-top:12px;overflow-wrap:anywhere}.notice{background:var(--warn-bg);color:var(--warn-ink);border-radius:8px;padding:10px}.side dl,.task-grid dl{grid-template-columns:1fr}
+.steps{list-style:none;padding:0;margin:20px 0}.step{display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;position:relative;padding:0 0 20px}.step+.step{margin-top:0}.step:not(:last-child)::before{content:"";position:absolute;left:13px;top:30px;bottom:4px;border-left:2px solid var(--rule)}.step-marker{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--bg);color:var(--muted)}.step-marker .icon{width:15px;height:15px}.step.done .step-marker{background:var(--green-bg);color:var(--green)}.step.active .step-marker{background:var(--accent-bg);color:var(--accent)}.step-heading{display:flex;gap:8px;align-items:baseline;justify-content:space-between}.step-state{font-size:10px;color:var(--muted);text-transform:capitalize}.step-owner{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px;margin-top:4px}.step-owner .icon{width:13px;height:13px}.step-sources{font-size:11px;overflow-wrap:anywhere}.step p{font-size:12px;margin:6px 0}.waiting{margin-top:22px}.waiting-row{padding:12px 0;border-top:1px solid var(--rule);font-size:12px}.waiting-row strong{display:block}.waiting-row p{color:var(--muted)}.section-note{font-size:12px;color:var(--muted)}.stack{margin-top:28px}.task-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}.task-grid .item+.item{margin-top:0}.task-grid .item>summary{padding:14px}.task-grid .task-mark{width:26px;height:26px;background:transparent}.task-grid .task-mark .icon{width:17px;height:17px}.task-grid .item-heading strong{font-size:13px}.task-grid .task-content{gap:6px}
+.utilities{background:var(--panel);border:1px solid var(--rule);border-radius:14px;overflow:hidden;margin-top:28px}.fold+.fold{border-top:1px solid var(--rule)}.fold>summary{display:flex;align-items:center;gap:12px;padding:14px 18px;font-size:13px;font-weight:550}.fold>summary>.icon{color:var(--muted);width:17px;height:17px}.fold>summary::after{margin-left:auto}.fold>summary .count{font-size:11px;background:var(--bg);height:22px;white-space:normal}.fold-body{padding:0 18px 16px}.fold .fold{border:1px solid var(--rule);border-radius:8px;margin-top:8px}.fold .fold>summary{font-size:12px}.coverage-row{padding:10px 0;border-bottom:1px solid var(--rule)}.coverage-row strong{text-transform:capitalize;margin-right:12px}.coverage-row span,.coverage-row small{color:var(--muted);font-size:11px}.archive-links{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}.archive-links a{border:1px solid var(--rule);padding:9px 12px;border-radius:7px}.archive-date{font-size:12px}
+@media(max-width:900px){header{padding:20px}.overview{grid-template-columns:minmax(0,1fr) 260px;gap:16px}main{padding:0 20px 32px}.item>summary{padding:14px;gap:10px}.task-grid{grid-template-columns:1fr}dl{grid-template-columns:1fr}}
+@media(max-width:680px){header{padding:16px;flex-wrap:wrap;gap:10px}.toolbar{width:100%;margin:4px 0 0}.toolbar a{flex:1;justify-content:center}main{padding:0 16px 24px}.overview{grid-template-columns:1fr;gap:20px}.side{padding:13px}.task-grid .item>summary{padding:13px}.item-heading strong{font-size:14px}.task-mark{width:26px;height:26px}.section-heading{margin-bottom:9px}.stack{margin-top:24px}.fold>summary{padding:13px}.fold-body{padding:0 12px 12px}}
+@media(prefers-color-scheme:dark){:root{--bg:#111722;--panel:#1b2331;--ink:#e8edf6;--muted:#a4b0c5;--rule:#303c50;--accent:#9bb3ff;--accent-bg:#263757;--green:#8bd6b6;--green-bg:#182e2b;--warn-bg:#382e1d;--warn-ink:#edc881;--focus:#b6c7ff;--shadow:none}.focus .item:first-of-type .task-mark{color:#17213b}.brand{background:var(--accent);color:var(--bg)}}
+</style></head><body><header><div class="brand">${icon("layers")}</div><div><h1>Galdera</h1><div class="eyebrow">${esc(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Stockholm", weekday: "long", day: "numeric", month: "short" }).format(new Date(report.capturedAt)))} · ${esc(capturedTime)}</div></div><nav class="toolbar" aria-label="Report tools"><a href="#day">${icon("calendar")}Schedule</a><a class="coverage-link" href="#coverage">${icon(gaps.length ? "alert" : "check")}${gaps.length ? `${gaps.length} source gaps` : "Sources checked"}</a><a href="#archive">${icon("layers")}r${revision}</a></nav></header><main>
+  <div class="overview"><section class="card focus" id="must" aria-labelledby="today-title">${sectionHeading("Today", today.length, "target", "today-title")}${today.map((x, index) => itemHtml(x, index + 1)).join("") || '<p class="muted">Nothing planned for today.</p>'}</section>
+  <aside class="card side" id="quick-wins">${sectionHeading("Quick wins", quickWins.length, "bolt")}${quickWins.map(x => itemHtml(x)).join("") || '<p class="muted">None listed.</p>'}${waiting.length ? `<section class="waiting" aria-labelledby="waiting-title">${sectionHeading("Waiting", waiting.length, "users", "waiting-title")}${waiting.slice(0, 3).map(x => `<div class="waiting-row"><strong>${x.sources[0]?.url ? sourceHtml({ label: x.title, url: x.sources[0].url }) : esc(x.title)}</strong><p>${prose(x.others)}</p></div>`).join("")}${waiting.length > 3 ? `<p class="section-note">+${waiting.length - 3} more on your plate</p>` : ""}</section>` : ""}</aside></div>
+  <section class="stack" id="later" aria-labelledby="plate-title">${sectionHeading("Your plate", later.length, "layers", "plate-title")}<div class="task-grid">${later.map(x => itemHtml(x)).join("") || '<p class="muted">Nothing else listed.</p>'}</div></section>
+  <div class="utilities"><details class="fold" id="background"><summary>${icon("review")}Background reviews &amp; agents <span class="count">${background.length}</span></summary><div class="fold-body task-grid">${background.map(x => itemHtml(x)).join("") || '<p class="muted">None listed.</p>'}</div></details>
+  <details class="fold" id="unassigned"><summary>${icon("users")}Ownership unclear <span class="count">${unassigned.length}</span></summary><div class="fold-body task-grid">${unassigned.map(x => itemHtml(x)).join("") || '<p class="muted">None listed.</p>'}</div></details>
+  <details class="fold" id="all-work"><summary>${icon("link")}Evidence &amp; history</summary><div class="fold-body">
+  <details class="fold" id="day"><summary>Schedule &amp; constraints</summary><div class="fold-body"><p><strong>${esc(report.headline)}</strong></p><p>${prose(report.summary)}</p><p><strong>Windows:</strong> ${prose(report.dayContext.windows)}</p><p><strong>Constraints:</strong> ${prose(report.dayContext.constraints)}</p></div></details>
   <details class="fold" id="decisions"><summary>Decisions <span class="count">${active.length} in force${inactive.length ? ` · ${inactive.length} earlier` : ""}</span></summary><div class="fold-body">${active.map(x => `<p>${prose(x.text)}${x.expiresOn ? ` <span class="muted">(through ${esc(x.expiresOn)})</span>` : ""}</p>`).join("") || '<p class="muted">None in force.</p>'}${inactive.length ? `<details class="fold"><summary>Earlier decisions <span class="count">${inactive.length}</span></summary><div class="fold-body">${inactive.map(x => `<p>${prose(x.text)} <span class="muted">(${x.state === "retired" ? "retired" : "expired"})</span></p>`).join("")}</div></details>` : ""}</div></details>
   <details class="fold" id="suggestions"><summary>Suggestions <span class="count">${report.suggestions.length}</span></summary><div class="fold-body">${listHtml(report.suggestions)}</div></details>
   <details class="fold" id="questions"><summary>Questions <span class="count">${report.questions.length}</span></summary><div class="fold-body">${listHtml(report.questions)}</div></details>
@@ -296,7 +255,7 @@ function carryForward(input: Report, previous: Report | undefined): Report {
   if (!previous) return input;
   if (input.date < previous.date) throw Error("date cannot move backwards");
   const ids = new Set(input.items.map(x => x.id));
-  const omitted = previous.items.filter(x => !ids.has(x.id) && (x.status === "open" || x.status === "blocked")).map(x => ({ ...x, plan: "later" as const, notRevalidated: true, quickWin: false, effort: "unknown" as const, timing: "Not revalidated", you: "Current action unknown; needs revalidation.", others: "Current dependencies unknown; needs revalidation." }));
+  const omitted = previous.items.filter(x => !ids.has(x.id) && (x.status === "open" || x.status === "blocked")).map(x => ({ ...x, plan: "later" as const, notRevalidated: true, steps: undefined, quickWin: false, effort: "unknown" as const, timing: "Not revalidated", you: "Current action unknown; needs revalidation.", others: "Current dependencies unknown; needs revalidation." }));
   const decisionIds = new Set(input.decisions.map(x => x.id));
   return { ...input, items: [...input.items, ...omitted], decisions: [...input.decisions, ...previous.decisions.filter(x => !decisionIds.has(x.id))] };
 }
