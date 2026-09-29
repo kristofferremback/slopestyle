@@ -136,7 +136,7 @@ function prose(value: string): string {
   return (result + esc(value.slice(offset))).replace(/\n/g, "<br>");
 }
 function sourceHtml(link: Link): string { return link.url ? `<a href="${esc(link.url)}" rel="noopener noreferrer">${esc(link.label)}</a>` : `<span>${esc(link.label)} · link unavailable</span>`; }
-type IconName = "target" | "bolt" | "layers" | "review" | "users" | "calendar" | "link" | "alert" | "arrow" | "check";
+type IconName = "target" | "bolt" | "layers" | "review" | "users" | "calendar" | "link" | "alert" | "arrow" | "check" | "refresh";
 function icon(name: IconName): string {
   const paths: Record<IconName, string> = {
     target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
@@ -149,6 +149,7 @@ function icon(name: IconName): string {
     alert: '<path d="m12 3 10 18H2zM12 9v5M12 17v1"/>',
     arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
     check: '<path d="m5 12 4 4L19 6"/>',
+    refresh: '<path d="M20 11a8 8 0 0 0-14.9-4M4 5v4h4M4 13a8 8 0 0 0 14.9 4M20 19v-4h-4"/>',
   };
   return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
 }
@@ -183,7 +184,36 @@ export function changes(report: Report, previous?: Report): Link[] {
   }
   return result.length ? result : [{ label: "No item changes recorded." }];
 }
-export function renderReport(report: Report, revision: number, archive: { revision: number; date: string }[] = [], previous?: Report): string {
+type ArchiveEntry = { revision: number; date: string; capturedAt?: string };
+function utcCalendarDate(year: number, monthIndex: number, day: number): Date {
+  const result = new Date(0);
+  result.setUTCHours(12, 0, 0, 0);
+  result.setUTCFullYear(year, monthIndex, day);
+  return result;
+}
+function calendarHtml(month: string, archive: ArchiveEntry[], selectedDate: string): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const first = new Date(`${month}-01T12:00:00Z`);
+  const days = utcCalendarDate(year, monthNumber, 0).getUTCDate();
+  const offset = (first.getUTCDay() + 6) % 7;
+  const cells = Math.ceil((offset + days) / 7) * 7;
+  const recorded = new Set(archive.map(x => x.date));
+  const shiftMonth = (delta: number) => {
+    const shifted = utcCalendarDate(year, monthNumber - 1 + delta, 1);
+    return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
+  };
+  const route = `/days/${selectedDate}/`;
+  const grid = Array.from({ length: cells }, (_, index) => {
+    const day = index - offset + 1;
+    if (day < 1 || day > days) return '<span class="calendar-empty" aria-hidden="true"></span>';
+    const date = `${month}-${String(day).padStart(2, "0")}`;
+    if (recorded.has(date)) return `<a class="calendar-day recorded${date === selectedDate ? " selected" : ""}" href="/days/${date}/" aria-label="${date}"${date === selectedDate ? ' aria-current="date"' : ""}><time datetime="${date}">${day}</time></a>`;
+    return `<span class="calendar-day${date === selectedDate ? " selected missing" : ""}" aria-disabled="true"><time datetime="${date}">${day}</time></span>`;
+  }).join("");
+  const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => `<span>${day}</span>`).join("");
+  return `<section class="calendar" aria-label="Check-in calendar"><nav class="calendar-nav" aria-label="Calendar month"><a href="${route}?month=${shiftMonth(-1)}#archive" aria-label="Previous month">‹</a><strong>${esc(new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", month: "long", year: "numeric" }).format(first))}</strong><a href="${route}?month=${shiftMonth(1)}#archive" aria-label="Next month">›</a></nav><div class="calendar-grid calendar-weekdays" aria-hidden="true">${weekdays}</div><div class="calendar-grid">${grid}</div><p class="calendar-help">Recorded days are links. Reload loads saved progress; invoke daily-check-in to recheck sources.</p><p class="calendar-selected">Selected: <time datetime="${selectedDate}">${selectedDate}</time></p></section>`;
+}
+export function renderReport(report: Report, revision: number, archive: ArchiveEntry[] = [], previous?: Report, month = report.date.slice(0, 7)): string {
   const active = report.decisions.filter(x => x.state === "active" && (!x.expiresOn || x.expiresOn >= report.date));
   const inactive = report.decisions.filter(x => !active.includes(x));
   const gaps = report.coverage.filter(source => source.status !== "checked");
@@ -198,6 +228,7 @@ export function renderReport(report: Report, revision: number, archive: { revisi
   const changed = changes(report, previous);
   const capturedTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Stockholm", hour: "2-digit", minute: "2-digit" }).format(new Date(report.capturedAt));
   const archiveDates = [...new Set(archive.map(x => x.date))].sort().reverse();
+  const dateUrl = `/days/${report.date}/?month=${month}#archive`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>${esc(report.headline)} · Galdera check-in</title><style>
 :root{--bg:#f4f6fa;--panel:#fff;--ink:#202b40;--muted:#607089;--rule:#e1e6ef;--accent:#365ed4;--accent-bg:#eaf0ff;--green:#18735a;--green-bg:#e9f5ef;--warn-bg:#fff3de;--warn-ink:#87570a;--focus:#4164d9;--shadow:0 2px 5px #18304c05,0 8px 24px #18304c04;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:light dark;background:var(--bg);color:var(--ink)}
 *{box-sizing:border-box}body{margin:0;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
@@ -209,11 +240,12 @@ main{margin:0 20px 20px;display:grid;grid-template-columns:minmax(300px,34%) min
 .reading-pane{min-width:0;overflow:auto;overscroll-behavior:contain}.reading-toolbar{display:none;position:sticky;top:0;z-index:1;align-items:center;justify-content:space-between;gap:12px;background:var(--panel);border-bottom:1px solid var(--rule);padding:6px 20px;font-size:11px}.inbox-ready .reading-toolbar{display:flex}button{font:inherit;color:var(--muted);cursor:pointer;background:none;border:0;min-height:44px;padding:8px;display:flex;align-items:center;gap:8px}button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}.reading-toolbar button .icon{transform:rotate(180deg);width:16px;height:16px}.detail-panel{max-width:980px;margin:0 auto}.detail-heading{padding:28px 30px 20px}.detail-heading h2{font-size:25px;line-height:1.25;letter-spacing:-.5px;margin:9px 0 16px;overflow-wrap:anywhere}.detail-heading h2:focus{outline:none}.empty{padding:8px 12px;font-size:12px}.evidence-link{display:flex;align-items:center;gap:10px;padding:14px 10px;font-size:12px}.evidence-link .icon{width:16px;height:16px}.evidence-link .icon:last-child{margin-left:auto}
 summary{cursor:pointer;min-height:44px;list-style:none}summary::-webkit-details-marker{display:none}summary::after{content:"";width:6px;height:6px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg);flex:none}details[open]>summary::after{transform:rotate(225deg)}
 .item-body{padding:0 30px 30px;font-size:13px;background:var(--panel)}.item-body>p:first-child{margin-top:0}dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0}dl>div{background:var(--bg);border-radius:9px;padding:12px}dt{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:650;color:var(--muted);margin-bottom:7px}dt .icon{width:14px;height:14px}dd{margin:0;overflow-wrap:anywhere}.sources{font-size:11px;border-top:1px solid var(--rule);padding-top:12px;overflow-wrap:anywhere}.notice{background:var(--warn-bg);color:var(--warn-ink);border-radius:8px;padding:10px}
-.steps{list-style:none;padding:0;margin:20px 0}.step{display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;position:relative;padding:0 0 20px}.step+.step{margin-top:0}.step:not(:last-child)::before{content:"";position:absolute;left:13px;top:30px;bottom:4px;border-left:2px solid var(--rule)}.step-marker{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--bg);color:var(--muted)}.step-marker .icon{width:15px;height:15px}.step.done .step-marker{background:var(--green-bg);color:var(--green)}.step.active .step-marker{background:var(--accent-bg);color:var(--accent)}.step-heading{display:flex;gap:8px;align-items:baseline;justify-content:space-between}.step-state{font-size:10px;color:var(--muted);text-transform:capitalize}.step-owner{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px;margin-top:4px}.step-owner .icon{width:13px;height:13px}.step-sources{font-size:11px;overflow-wrap:anywhere}.step p{font-size:12px;margin:6px 0}.utilities{padding:0 20px 24px}.task-list>.fold{border-top:1px solid var(--rule);margin-top:12px}.fold+.fold{border-top:1px solid var(--rule)}.fold>summary{display:flex;align-items:center;gap:12px;padding:14px 18px;font-size:13px;font-weight:550}.fold>summary>.icon{color:var(--muted);width:17px;height:17px}.fold>summary::after{margin-left:auto}.fold>summary .count{font-size:11px;background:var(--bg);height:22px;white-space:normal}.fold-body{padding:0 18px 16px}.fold .fold{border:1px solid var(--rule);border-radius:8px;margin-top:8px}.fold .fold>summary{font-size:12px}.coverage-row{padding:10px 0;border-bottom:1px solid var(--rule)}.coverage-row strong{text-transform:capitalize;margin-right:12px}.coverage-row span,.coverage-row small{color:var(--muted);font-size:11px}.archive-links{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}.archive-links a{border:1px solid var(--rule);padding:9px 12px;border-radius:7px}.archive-date{font-size:12px}
+.steps{list-style:none;padding:0;margin:20px 0}.step{display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;position:relative;padding:0 0 20px}.step+.step{margin-top:0}.step:not(:last-child)::before{content:"";position:absolute;left:13px;top:30px;bottom:4px;border-left:2px solid var(--rule)}.step-marker{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--bg);color:var(--muted)}.step-marker .icon{width:15px;height:15px}.step.done .step-marker{background:var(--green-bg);color:var(--green)}.step.active .step-marker{background:var(--accent-bg);color:var(--accent)}.step-heading{display:flex;gap:8px;align-items:baseline;justify-content:space-between}.step-state{font-size:10px;color:var(--muted);text-transform:capitalize}.step-owner{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px;margin-top:4px}.step-owner .icon{width:13px;height:13px}.step-sources{font-size:11px;overflow-wrap:anywhere}.step p{font-size:12px;margin:6px 0}.utilities{padding:0 20px 24px}.task-list>.fold{border-top:1px solid var(--rule);margin-top:12px}.fold+.fold{border-top:1px solid var(--rule)}.fold>summary{display:flex;align-items:center;gap:12px;padding:14px 18px;font-size:13px;font-weight:550}.fold>summary>.icon{color:var(--muted);width:17px;height:17px}.fold>summary::after{margin-left:auto}.fold>summary .count{font-size:11px;background:var(--bg);height:22px;white-space:normal}.fold-body{padding:0 18px 16px}.fold .fold{border:1px solid var(--rule);border-radius:8px;margin-top:8px}.fold .fold>summary{font-size:12px}.coverage-row{padding:10px 0;border-bottom:1px solid var(--rule)}.coverage-row strong{text-transform:capitalize;margin-right:12px}.coverage-row span,.coverage-row small{color:var(--muted);font-size:11px}.archive-links{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}.archive-links a{border:1px solid var(--rule);padding:9px 12px;border-radius:7px}.archive-date{font-size:12px}.detail-panel,.fold{scroll-margin-top:72px}.calendar{max-width:390px;margin:8px 0 18px;border:1px solid var(--rule);border-radius:10px;padding:12px}.calendar-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.calendar-nav a{display:grid;place-items:center;width:40px;height:40px;border:1px solid var(--rule);border-radius:7px;font-size:20px}.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center}.calendar-weekdays{font-size:10px;color:var(--muted);margin-bottom:4px}.calendar-day{display:grid;place-items:center;min-height:40px;border-radius:7px}.calendar-day.recorded{border:1px solid var(--accent);font-weight:650}.calendar-day.selected{box-shadow:inset 0 0 0 2px var(--accent);background:var(--accent-bg)}.calendar-day[aria-disabled="true"]{color:var(--muted);opacity:.65}.calendar-help,.calendar-selected{font-size:11px;color:var(--muted);margin:10px 0 0}
 @media(max-width:1000px){main{grid-template-columns:minmax(290px,38%) minmax(0,1fr);margin:0 12px 12px}.detail-heading{padding:22px}.item-body{padding:0 22px 24px}dl{grid-template-columns:1fr}.detail-heading h2{font-size:22px}}
 @media(max-width:700px){header{padding:12px;flex-wrap:wrap;gap:10px}.toolbar{width:100%;margin:0}.toolbar a{flex:1;justify-content:center;padding:7px;font-size:11px}main{display:block;margin:0 8px 8px}.task-list{border:0;height:100%;padding:8px}.inbox-ready .reading-pane{display:none;height:100%}.inbox-ready.show-detail .task-list{display:none}.inbox-ready.show-detail .reading-pane{display:block}.reading-toolbar{padding:4px 12px}.detail-heading{padding:20px 16px 16px}.item-body{padding:0 16px 24px}.step{gap:9px}.step-heading{flex-wrap:wrap}.utilities{padding:0 12px 20px}}
+@media(max-width:400px){.toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.toolbar a{min-width:0}.fold#archive>.fold-body{padding-left:8px;padding-right:8px}.calendar{max-width:none}.calendar-grid{gap:2px}}
 @media(prefers-color-scheme:dark){:root{--bg:#111722;--panel:#1b2331;--ink:#e8edf6;--muted:#a4b0c5;--rule:#303c50;--accent:#9bb3ff;--accent-bg:#263757;--green:#8bd6b6;--green-bg:#182e2b;--warn-bg:#382e1d;--warn-ink:#edc881;--focus:#b6c7ff;--shadow:none}.brand{background:var(--accent);color:var(--bg)}}
-</style></head><body><header><div class="brand">${icon("layers")}</div><div><h1>Galdera</h1><div class="eyebrow">${esc(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Stockholm", weekday: "long", day: "numeric", month: "short" }).format(new Date(report.capturedAt)))} · ${esc(capturedTime)}</div></div><nav class="toolbar" aria-label="Report tools"><a href="#day">${icon("calendar")}Schedule</a><a class="coverage-link" href="#coverage">${icon(gaps.length ? "alert" : "check")}${gaps.length ? `${gaps.length} source gaps` : "Sources checked"}</a><a href="#archive">${icon("layers")}r${revision}</a></nav></header><main>
+</style></head><body><header><div class="brand">${icon("layers")}</div><div><h1>Galdera</h1><a class="eyebrow date-link" href="${dateUrl}" title="Captured ${esc(report.capturedAt)}"><time datetime="${report.date}">${report.date}</time> · Captured ${esc(capturedTime)}</a></div><nav class="toolbar" aria-label="Report tools"><a href="#day">${icon("calendar")}Schedule</a><a class="coverage-link" href="#coverage">${icon(gaps.length ? "alert" : "check")}${gaps.length ? `${gaps.length} source gaps` : "Sources checked"}</a><a href="/days/${report.date}/" title="Loads the latest published progress for this day. Invoke daily-check-in to recheck sources.">${icon("refresh")}Reload</a><a href="#archive">${icon("layers")}r${revision}</a></nav></header><main>
   <nav class="task-list" aria-label="Work items"><section class="card focus" id="must" aria-labelledby="today-title">${sectionHeading("Today", today.length, "target", "today-title")}${today.map((x, index) => itemRow(x, index + 1)).join("") || '<p class="muted empty">Nothing planned for today.</p>'}</section>
   <section class="card side" id="quick-wins" aria-labelledby="quick-title">${sectionHeading("Quick wins", quickWins.length, "bolt", "quick-title")}${quickWins.map(x => itemRow(x)).join("") || '<p class="muted empty">None listed.</p>'}</section>
   <section class="stack" id="later" aria-labelledby="plate-title">${sectionHeading("Your plate", later.length, "layers", "plate-title")}${later.map(x => itemRow(x)).join("") || '<p class="muted empty">Nothing else listed.</p>'}</section>
@@ -229,7 +261,7 @@ summary{cursor:pointer;min-height:44px;list-style:none}summary::-webkit-details-
   <details class="fold" id="questions"><summary>Questions <span class="count">${report.questions.length}</span></summary><div class="fold-body">${listHtml(report.questions)}</div></details>
   <details class="fold" id="changes"><summary>Since the previous check-in <span class="count">${changed.length} ${changed.length === 1 ? "change" : "changes"}${closed.length ? ` · ${closed.length} closed` : ""}</span></summary><div class="fold-body">${`<ul>${changed.map(x => `<li>${x.url ? sourceHtml(x) : esc(x.label)}</li>`).join("")}</ul>`}${closed.length ? `<p><strong>Closed items</strong></p><ul>${closed.map(x => `<li><a href="#item-${encodeURIComponent(x.id)}">${esc(x.title)}</a></li>`).join("")}</ul>` : ""}</div></details>
   <details class="fold" id="coverage"><summary>Source coverage <span class="count">${report.coverage.length} sources · ${gaps.length} ${gaps.length === 1 ? "gap" : "gaps"}</span></summary><div class="fold-body">${report.coverage.map(x => `<div class="coverage-row"><strong>${esc(x.source)}</strong><span>${esc(x.status)}</span><p>${prose(x.detail)}</p><small>Window: ${prose(x.window)}${x.nextStep ? ` · Next: ${prose(x.nextStep)}` : ""}</small></div>`).join("")}</div></details>
-  <details class="fold" id="archive"><summary>Archive <span class="count">${archive.length} ${archive.length === 1 ? "revision" : "revisions"}</span></summary><div class="fold-body">${archiveDates.map(d => `<div class="archive-date"><strong>${esc(d)}</strong></div><nav class="archive-links" aria-label="Revisions for ${esc(d)}">${archive.filter(x => x.date === d).map(x => `<a href="/snapshots/${x.revision}/">Revision ${x.revision}</a>`).join("")}</nav>`).join("") || '<p class="muted">No earlier revisions.</p>'}<p><a href="/archive#archive">Open archive page</a></p></div></details></div></section></section>
+  <details class="fold" id="archive"><summary>${icon("calendar")}Calendar &amp; archive <span class="count">${archiveDates.length} ${archiveDates.length === 1 ? "day" : "days"} · ${archive.length} revisions</span></summary><div class="fold-body">${calendarHtml(month, archive, report.date)}${archiveDates.map(d => `<div class="archive-date"><strong>${esc(d)}</strong></div><nav class="archive-links" aria-label="Revisions for ${esc(d)}">${archive.filter(x => x.date === d).map(x => `<a href="/snapshots/${x.revision}/" title="${x.capturedAt ? `Captured ${esc(x.capturedAt)}` : `Revision ${x.revision}`}">Revision ${x.revision}${x.capturedAt ? ` · ${esc(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Stockholm", hour: "2-digit", minute: "2-digit" }).format(new Date(x.capturedAt)))}` : ""}</a>`).join("")}</nav>`).join("") || '<p class="muted">No earlier revisions.</p>'}</div></details></div></section></section>
 </main><script>
 const panes = [...document.querySelectorAll('.detail-panel')];
 const rows = [...document.querySelectorAll('.task-link')];
@@ -317,7 +349,7 @@ function carryForward(input: Report, previous: Report | undefined): Report {
   if (!previous) return input;
   if (input.date < previous.date) throw Error("date cannot move backwards");
   const ids = new Set(input.items.map(x => x.id));
-  const omitted = previous.items.filter(x => !ids.has(x.id) && (x.status === "open" || x.status === "blocked")).map(x => ({ ...x, plan: "later" as const, notRevalidated: true, steps: undefined, quickWin: false, effort: "unknown" as const, timing: "Not revalidated", you: "Current action unknown; needs revalidation.", others: "Current dependencies unknown; needs revalidation." }));
+  const omitted = previous.items.filter(x => !ids.has(x.id) && (x.status === "open" || x.status === "blocked" || (input.date === previous.date && (x.status === "done" || x.status === "dropped")))).map(x => x.status === "done" || x.status === "dropped" ? x : ({ ...x, plan: "later" as const, notRevalidated: true, steps: undefined, quickWin: false, effort: "unknown" as const, timing: "Not revalidated", you: "Current action unknown; needs revalidation.", others: "Current dependencies unknown; needs revalidation." }));
   const decisionIds = new Set(input.decisions.map(x => x.id));
   return { ...input, items: [...input.items, ...omitted], decisions: [...input.decisions, ...previous.decisions.filter(x => !decisionIds.has(x.id))] };
 }
@@ -333,7 +365,7 @@ export async function publish(root: string, raw: unknown, expected: number): Pro
   await mkdir(stage, { mode: 0o700 });
   try {
     const history = await archive(root);
-    const html = renderReport(report, revision, [...history, { revision, date: report.date }], previous?.report);
+    const html = renderReport(report, revision, [...history, { revision, date: report.date, capturedAt: report.capturedAt }], previous?.report);
     await writeFile(join(stage, "report.json"), JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
     await writeFile(join(stage, "index.html"), html, { flag: "wx" });
     // Directory rename is atomic. A competing writer cannot replace a populated destination.
@@ -341,23 +373,52 @@ export async function publish(root: string, raw: unknown, expected: number): Pro
   } catch (error) { await rm(stage, { recursive: true, force: true }); throw error; }
   return { revision, report };
 }
-export async function archive(root = defaultRoot): Promise<{ revision: number; date: string }[]> {
+export async function archive(root = defaultRoot): Promise<ArchiveEntry[]> {
   const found = await revisions(root);
-  return Promise.all(found.map(async revision => ({ revision, date: validateStoredReport(JSON.parse(await readFile(join(root, dirname(revision), "report.json"), "utf8"))).date })));
+  return Promise.all(found.map(async revision => {
+    const report = validateStoredReport(JSON.parse(await readFile(join(root, dirname(revision), "report.json"), "utf8")));
+    return { revision, date: report.date, capturedAt: report.capturedAt };
+  }));
 }
-function response(body: string, status = 200, method = "GET", type = "text/html; charset=utf-8"): Response {
-  return new Response(method === "HEAD" ? null : body, { status, headers: { "content-type": type, "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+function response(body: string, status = 200, method = "GET", type = "text/html; charset=utf-8", extraHeaders: Record<string, string> = {}): Response {
+  return new Response(method === "HEAD" ? null : body, { status, headers: { "content-type": type, "cache-control": "no-store", "x-content-type-options": "nosniff", ...extraHeaders } });
+}
+function validDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T12:00:00Z`)) && new Date(`${value}T12:00:00Z`).toISOString().slice(0, 10) === value;
+}
+function validMonth(value: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(value) && !Number.isNaN(Date.parse(`${value}-01T12:00:00Z`));
+}
+function missingDatePage(date: string, month: string, history: ArchiveEntry[]): string {
+  const available = [...new Set(history.map(x => x.date))].sort().reverse();
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>No check-in for ${date}</title><style>:root{color-scheme:light dark;font-family:system-ui,sans-serif;background:#f4f6fa;color:#202b40}body{max-width:680px;margin:32px auto;padding:0 16px}a{color:#365ed4}.calendar{max-width:390px;margin:16px 0;border:1px solid #ccd3df;border-radius:10px;padding:12px}.calendar-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.calendar-nav a{display:grid;place-items:center;width:40px;height:40px;border:1px solid #ccd3df;border-radius:7px;font-size:20px}.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center}.calendar-weekdays,.muted{font-size:11px;opacity:.7}.calendar-day{display:grid;place-items:center;min-height:40px;border-radius:7px}.calendar-day.recorded{border:1px solid #365ed4;font-weight:650}.calendar-day.selected{outline:2px solid #365ed4}.calendar-day[aria-disabled=true]{opacity:.5}.calendar-help{font-size:11px;opacity:.7}@media(prefers-color-scheme:dark){:root{background:#111722;color:#e8edf6}a{color:#9bb3ff}.calendar,.calendar-nav a{border-color:#303c50}.calendar-day.recorded{border-color:#9bb3ff}}</style></head><body><h1>No check-in for <time datetime="${date}">${date}</time></h1><p>There is no published report for this date. Choose a recorded day below.</p>${calendarHtml(month, history, date)}<h2>Available dates</h2>${available.length ? `<ul>${available.map(day => `<li><a href="/days/${day}/">${day}</a></li>`).join("")}</ul>` : '<p class="muted">No check-ins have been published yet.</p>'}</body></html>`;
 }
 export async function handleRequest(request: Request, root = defaultRoot): Promise<Response> {
   if (!["GET", "HEAD"].includes(request.method)) return response("Method not allowed", 405, request.method, "text/plain; charset=utf-8");
-  const path = new URL(request.url).pathname;
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const monthValues = url.searchParams.getAll("month");
+  if (monthValues.length > 1 || (monthValues.length === 1 && !validMonth(monthValues[0]!))) return response("Invalid month; expected YYYY-MM", 400, request.method, "text/plain; charset=utf-8");
+  const requestedMonth = monthValues[0];
   const history = await archive(root);
+  const currentEntry = history.at(-1);
   if (path === "/" || path === "/archive") {
-    const current = await latest(root);
-    if (!current) return response("No check-in published yet", 404, request.method, "text/plain; charset=utf-8");
-    const priorRevision = history.filter(x => x.revision < current.revision).at(-1)?.revision;
+    if (!currentEntry) return response("No check-in published yet", 404, request.method, "text/plain; charset=utf-8");
+    const destination = `/days/${currentEntry.date}/${requestedMonth ? `?month=${requestedMonth}` : ""}${path === "/archive" ? "#archive" : ""}`;
+    return response("", 302, request.method, "text/plain; charset=utf-8", { location: destination });
+  }
+  const dayMatch = /^\/days\/([^/]+)\/?$/.exec(path);
+  if (dayMatch) {
+    const requestedDate = dayMatch[1]!;
+    if (!validDate(requestedDate)) return response("Not found", 404, request.method, "text/plain; charset=utf-8");
+    const month = requestedMonth ?? requestedDate.slice(0, 7);
+    const matching = history.filter(x => x.date === requestedDate);
+    if (!matching.length) return response(missingDatePage(requestedDate, month, history), 404, request.method);
+    const entry = matching.at(-1)!;
+    const report = validateStoredReport(JSON.parse(await readFile(join(root, dirname(entry.revision), "report.json"), "utf8")));
+    const priorRevision = history.filter(x => x.revision < entry.revision).at(-1)?.revision;
     const prior = priorRevision === undefined ? undefined : validateStoredReport(JSON.parse(await readFile(join(root, dirname(priorRevision), "report.json"), "utf8")));
-    return response(renderReport(current.report, current.revision, history, prior), 200, request.method);
+    return response(renderReport(report, entry.revision, history, prior, month), 200, request.method);
   }
   const match = /^\/snapshots\/(\d{1,8})\/?$/.exec(path);
   if (!match) return response("Not found", 404, request.method, "text/plain; charset=utf-8");

@@ -34,6 +34,9 @@ test("should publish immutable revisions, carry open work and decisions, and rej
   expect(await latest(path)).toBeNull();
   const first = await example();
   expect((await publish(path, first, 0)).revision).toBe(1);
+  const firstHtml = await readFile(join(path, "00000001", "index.html"), "utf8");
+  expect(firstHtml).toContain('href="/snapshots/1/" title="Captured 2026-09-29T09:30:00+02:00">Revision 1 · 09:30</a>');
+  expect(firstHtml).toContain('href="/days/2026-09-29/" aria-label="2026-09-29"');
   const second: Report = { ...first, date: "2026-09-30", capturedAt: "2026-09-30T09:00:00+02:00", headline: "Synthetic second day", items: [first.items[0]], decisions: [], questions: [] };
   const result = await publish(path, second, 1);
   expect(result.revision).toBe(2);
@@ -64,6 +67,15 @@ test("should report revised item details even when status and plan are unchanged
   const first = await example();
   const second = { ...first, items: first.items.map((item, index) => index === 0 ? { ...item, timing: "Before lunch" } : item) };
   expect(renderReport(validateReport(second), 2, [], first)).toContain('<a href="https://example.com/issues/GAL-17" rel="noopener noreferrer">Updated: Fix the Acme export</a>');
+});
+
+test("should keep calendar navigation Monday-first across the year boundary", async () => {
+  const report = await example();
+  const html = renderReport(report, 1, [{ revision: 1, date: "2026-12-31" }, { revision: 2, date: "2027-01-01" }], undefined, "2026-12");
+  expect(html).toContain('<div class="calendar-grid calendar-weekdays" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>');
+  expect(html).toContain('href="/days/2026-09-29/?month=2027-01#archive"');
+  expect(html).toContain('href="/days/2026-12-31/"');
+  expect(html).toContain("December 2026");
 });
 
 test("should escape source text and use safe links", async () => {
@@ -110,16 +122,74 @@ test("should expose only read-only allowlisted HTTP pages with working navigatio
     expect(current.status).toBe(200);
     expect(html).toContain("Second revision");
     expect(html).toContain('href="/snapshots/1/"');
-    expect(html).toContain('href="/archive#archive"');
+    expect(html).toContain('href="#archive"');
     expect(html).toContain('id="archive"');
-    expect((await fetch(base + "/archive")).status).toBe(200);
+    expect((await fetch(base + "/archive", { redirect: "manual" })).headers.get("location")).toBe(`/days/${first.date}/#archive`);
     expect((await fetch(base + "/snapshots/1/")).status).toBe(200);
     expect((await fetch(base + "/snapshots/1/").then(x => x.text()))).toContain(first.headline);
+    expect((await fetch(base + "/days/2026-09-29/")).status).toBe(200);
     expect((await fetch(base + "/snapshots/1/report.json")).status).toBe(404);
     expect((await fetch(base + "/../report.json")).status).toBe(404);
     expect((await fetch(base + "/", { method: "POST" })).status).toBe(405);
     const head = await fetch(base + "/", { method: "HEAD" });
     expect(head.status).toBe(200); expect(await head.text()).toBe("");
+  } finally { server.stop(true); }
+});
+
+test("should serve latest dated progress and a usable calendar without changing snapshots", async () => {
+  const path = await root();
+  const dayOne = await example();
+  await publish(path, dayOne, 0);
+  const firstBytes = await readFile(join(path, "00000001", "index.html"));
+  const closed: Report = { ...dayOne, capturedAt: "2026-09-29T11:30:00+02:00", items: dayOne.items.map(x => x.id === "acme-export" ? { ...x, status: "done", plan: "later", closureReason: "Fixed", closureEvidence: "Verified in staging" } : x) };
+  await publish(path, closed, 1);
+  const sameDayOmission: Report = { ...closed, capturedAt: "2026-09-29T13:00:00+02:00", items: closed.items.filter(x => x.id !== "acme-export") };
+  const retained = await publish(path, sameDayOmission, 2);
+  expect(retained.report.items.find(x => x.id === "acme-export")).toMatchObject({ status: "done", closureReason: "Fixed", closureEvidence: "Verified in staging" });
+  const dayTwo: Report = { ...sameDayOmission, date: "2026-09-30", capturedAt: "2026-09-30T09:00:00+02:00" };
+  const nextDay = await publish(path, dayTwo, 3);
+  expect(nextDay.report.items.some(x => x.id === "acme-export")).toBe(false);
+  expect(await readFile(join(path, "00000001", "index.html"))).toEqual(firstBytes);
+
+  const server = serve(path, 0);
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    const redirect = await fetch(`${base}/#item-acme-export`, { redirect: "manual" });
+    expect(redirect.status).toBe(302);
+    expect(redirect.headers.get("location")).toBe("/days/2026-09-30/");
+    const day = await fetch(`${base}/days/2026-09-29/`).then(x => x.text());
+    expect(day).toContain('href="/days/2026-09-29/" title="Loads the latest published progress for this day. Invoke daily-check-in to recheck sources."');
+    expect(day).toContain("Closure: Fixed");
+    expect(day).toContain("Captured 13:00");
+    expect(day).toContain('href="/days/2026-09-29/?month=2026-08#archive"');
+    expect(day).toContain('href="/days/2026-09-29/?month=2026-10#archive"');
+    expect(day).toContain('href="/days/2026-09-29/"');
+    expect(day).toContain("Revision 3 · 13:00");
+    expect(day).toContain("Selected: <time datetime=\"2026-09-29\">2026-09-29</time>");
+    expect(day).toContain("Reload loads saved progress; invoke daily-check-in to recheck sources.");
+    expect((await fetch(`${base}/days/2026-09-29/?month=2026-10`)).status).toBe(200);
+    expect((await fetch(`${base}/days/2026-09-31/`)).status).toBe(404);
+    expect((await fetch(`${base}/days/nope/`)).status).toBe(404);
+    const missing = await fetch(`${base}/days/2026-10-03/`).then(x => x.text());
+    expect(missing).toContain("No check-in for");
+    expect(missing).toContain('href="/days/2026-09-29/"');
+    expect((await fetch(`${base}/days/2026-09-29/?month=2026-13`)).status).toBe(400);
+    const head = await fetch(`${base}/days/2026-09-29/`, { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+    expect((await fetch(`${base}/days/2026-09-29/`, { method: "POST" })).status).toBe(405);
+  } finally { server.stop(true); }
+});
+
+test("should return honest empty-root and missing-date responses", async () => {
+  const path = await root();
+  const server = serve(path, 0);
+  try {
+    const base = `http://127.0.0.1:${server.port}`;
+    expect((await fetch(`${base}/`)).status).toBe(404);
+    const missing = await fetch(`${base}/days/2026-01-02/`);
+    expect(missing.status).toBe(404);
+    expect(await missing.text()).toContain("No check-ins have been published yet.");
   } finally { server.stop(true); }
 });
 
