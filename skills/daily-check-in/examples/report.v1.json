@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "date": "2026-09-29",
+  "capturedAt": "2026-09-29T09:30:00+02:00",
+  "headline": "Prepare tomorrow’s demo",
+  "summary": "Fictional preview. Prioritize the [demo · example calendar](https://example.com/calendar/acme-demo); polish can wait.",
+  "dayContext": {
+    "windows": "Office 09:30–12:00 and 13:00–16:00. Standup has already happened. Boat travel is protected time, not a full work block.",
+    "constraints": "Fictional [demo · example calendar](https://example.com/calendar/acme-demo) at 10:00 tomorrow. Lunch around noon; no evening work assumed."
+  },
+  "items": [
+    {
+      "id": "acme-export",
+      "title": "Fix the Acme export",
+      "status": "open",
+      "plan": "must",
+      "rationale": "The [demo · example calendar](https://example.com/calendar/acme-demo) needs the broken export fixed.",
+      "timing": "Today before 15:00 · [GAL-17 · example issue](https://example.com/issues/GAL-17)",
+      "you": "Reproduce and fix [GAL-17 · example issue](https://example.com/issues/GAL-17).",
+      "others": "Mira validates the [dataset · example note](https://example.com/notes/sample-data) after the fix.",
+      "sources": [
+        {
+          "label": "Fictional issue GAL-17",
+          "url": "https://example.com/issues/GAL-17"
+        }
+      ],
+      "effort": "M"
+    },
+    {
+      "id": "sample-data",
+      "title": "Confirm sample dataset",
+      "status": "open",
+      "plan": "must",
+      "rationale": "The [demo · example calendar](https://example.com/calendar/acme-demo) needs a usable dataset.",
+      "timing": "Ask before lunch; review after [GAL-17 · example issue](https://example.com/issues/GAL-17).",
+      "you": "Ask Mira which [dataset · example note](https://example.com/notes/sample-data) is current.",
+      "others": "Mira shares the [dataset · example note](https://example.com/notes/sample-data).",
+      "sources": [
+        {
+          "label": "Example note · sample data",
+          "url": "https://example.com/notes/sample-data"
+        }
+      ],
+      "effort": "S",
+      "quickWin": true
+    },
+    {
+      "id": "onboarding-copy",
+      "title": "Review onboarding copy",
+      "status": "open",
+      "plan": "aim",
+      "rationale": "Recommendation: after the [demo · example calendar](https://example.com/calendar/acme-demo) is ready.",
+      "timing": "After [GAL-17 · example issue](https://example.com/issues/GAL-17) is verified.",
+      "you": "Review the [wording · example draft by Jules](https://example.com/notes/onboarding-copy#draft).",
+      "others": "Jules drafted the [wording · example draft by Jules](https://example.com/notes/onboarding-copy#draft).",
+      "sources": [
+        {
+          "label": "Example draft · Jules · Sep 29",
+          "url": "https://example.com/notes/onboarding-copy#draft"
+        }
+      ],
+      "effort": "S"
+    },
+    {
+      "id": "old-cleanup",
+      "title": "Archive old screenshots",
+      "status": "blocked",
+      "plan": "later",
+      "rationale": "Waiting for the [design review · example note](https://example.com/notes/design-review).",
+      "timing": "After feedback arrives",
+      "you": "Check back after the [design review · example note](https://example.com/notes/design-review).",
+      "others": "Jules reviews the [screenshots · example folder](https://example.com/design/screenshots).",
+      "sources": [
+        {
+          "label": "Example todo · screenshots",
+          "url": "https://example.com/todos/screenshots"
+        }
+      ],
+      "effort": "M"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "demo-first",
+      "itemId": "acme-export",
+      "text": "Prioritize [GAL-17 · example issue](https://example.com/issues/GAL-17) through Wednesday · [example decision](https://example.com/notes/demo-decision).",
+      "recordedAt": "2026-09-29T09:25:00+02:00",
+      "expiresOn": "2026-09-30",
+      "state": "active"
+    }
+  ],
+  "coverage": [
+    {
+      "source": "calendar",
+      "status": "checked",
+      "window": "Today and next two weeks",
+      "detail": "Reviewed the [demo · example calendar](https://example.com/calendar/acme-demo).",
+      "nextStep": ""
+    },
+    {
+      "source": "t3",
+      "status": "checked",
+      "window": "Since prior check-in",
+      "detail": "Reviewed [example thread](https://example.com/threads/demo).",
+      "nextStep": ""
+    },
+    {
+      "source": "vault",
+      "status": "partial",
+      "window": "Current project notes",
+      "detail": "Reviewed [wording · example draft by Jules](https://example.com/notes/onboarding-copy#draft); older prep may remain.",
+      "nextStep": "Review older demo prep if export fix needs it."
+    },
+    {
+      "source": "linear",
+      "status": "checked",
+      "window": "Open Galdera issues",
+      "detail": "Reviewed [GAL-17 · example issue](https://example.com/issues/GAL-17).",
+      "nextStep": ""
+    },
+    {
+      "source": "github",
+      "status": "checked",
+      "window": "Open Galdera pull requests",
+      "detail": "No fictional blocker found.",
+      "nextStep": ""
+    },
+    {
+      "source": "slack",
+      "status": "unavailable",
+      "window": "Since prior check-in",
+      "detail": "Synthetic access gap; no message conclusions drawn.",
+      "nextStep": "Ask for access in the conversation."
+    },
+    {
+      "source": "email",
+      "status": "not-configured",
+      "window": "Since prior check-in",
+      "detail": "No email connector in this synthetic example.",
+      "nextStep": "Ask whether email should be connected."
+    },
+    {
+      "source": "todos",
+      "status": "checked",
+      "window": "All open Galdera todos",
+      "detail": "Reviewed [example cleanup task](https://example.com/todos/screenshots).",
+      "nextStep": ""
+    }
+  ],
+  "suggestions": [
+    "Recommendation: leave the afternoon for [GAL-17 · example issue](https://example.com/issues/GAL-17) verification."
+  ],
+  "questions": [
+    "Can I access the Galdera Slack stream for the next check-in?"
+  ]
+}

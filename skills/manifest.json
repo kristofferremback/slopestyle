@@ -41,6 +41,23 @@
       "provenance": "original"
     },
     {
+      "name": "daily-check-in",
+      "path": "skills/daily-check-in",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [
+        "Bun",
+        "read access to Galdera sources",
+        "slopestyle-ports and Tailscale for private hosting"
+      ],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "datadog",
       "path": "skills/datadog",
       "targets": [
