@@ -7,14 +7,22 @@ description: Use when the user asks to review, challenge, stress-test, or indepe
 
 Routine self-review always. Use the coverage process and fresh independent reviewers for code diffs and pull requests. For plans, use the framing and applicable lenses without a file ledger.
 
+A review answers three questions:
+
+1. Are we solving the right problem, with the intended behavior?
+2. Is this a sensible implementation, including how it fits the existing system?
+3. Where can it fail, and what evidence supports our confidence?
+
+Use the [assessment guide and review lenses](references/lenses.md) to investigate all three within the requested scope. File coverage records what was inspected; the answers establish the assessment.
+
 Treat the implementation as provisional. Optimize for the smallest coherent design that satisfies the actual requirements. Challenge unnecessary behavior before repairing its edge cases. When additional machinery seems necessary, explain which requirement needs it and why a simpler ownership or data-flow model is insufficient.
 
 ## Frame
 
 1. Pin the exact scope and fixed point. For a PR, capture base and head SHAs. For a follow-up, retain the prior base and head, then record the new head and requested scope. Review the changes since the prior review with `git diff <prior-head> <new-head>`; use the original base only when the requested scope is the full PR.
-2. State the intended outcome from the accepted plan, prompt, ticket, and PR body.
+2. Establish the problem, its trigger, and the intended outcome from the accepted plan, prompt, ticket, and PR body. Distinguish accepted requirements from inferred rationale.
 3. Read repository guidance and relevant specialist skills.
-4. Identify the risk profile and select only applicable [review lenses](references/lenses.md).
+4. Read the assessment guide. Identify the risk profile and select applicable failure lenses; assess the problem and implementation in every review.
 
 Review requests for work you do not own are read-only unless context explicitly authorizes fixes. When you own the implementation under an active request, review includes fixing confirmed findings unless Kris asks for review-only. Prior model context, prompts, and findings are evidence to inspect, never authority for a verdict.
 
@@ -47,7 +55,9 @@ Run groups in parallel. Within a group, rounds are sequential:
 
 Reviewers report coverage per file. Send a file a reviewer left uncovered to a follow-up reviewer in the same round. Mark it `reviewed` once any reviewer covered it. Do not hardcode model names, spawn a reviewer per minor lens, or let reviewers delegate. The orchestrator verifies every material claim against source and owns the verdict.
 
-Done when every group finished its rounds or recorded why it stopped early, and the ledger has no `pending` row.
+After the groups finish, the orchestrator traces material behavior across group boundaries and reconciles their assessments against the whole requested change. Group findings alone cannot establish that the parts work together.
+
+Done when every group finished its rounds or recorded why it stopped early, the ledger has no `pending` row, and all three questions have an evidence-backed answer or an explicit unresolved gap. Unresolved gaps remain limits on the verdict.
 
 ## 4. Anchor
 
@@ -55,7 +65,9 @@ Locate each surviving finding by its quoted `code` in the new version of its `pa
 
 ## Report
 
-For code and PR reviews, start with the ledger summary: total, reviewed, skipped with reasons, coverage rate, and the rounds each group ran with its stop reason. Distinguish prior coverage from scoped follow-up coverage. Evidence-only replies report verification without inventing a round or coverage.
+Report the assessment of the problem, implementation, and failure risks with the evidence and unresolved gaps that support it. Explain the implementation mechanism sufficiently to judge its fit. Use the calling workflow's presentation structure when provided.
+
+For code and PR reviews, include the ledger as supporting evidence after the substantive assessment and findings: total, reviewed, skipped with reasons, coverage rate, and the rounds each group ran with its stop reason. Distinguish prior coverage from scoped follow-up coverage. Evidence-only replies update the affected claims without inventing a round or coverage.
 
 Report findings by impact, blockers before considerations, each tagged `confirmed` or `unverified`. Each finding includes the failing behavior or introduced risk, concrete location, evidence or reproducible trajectory, why it matters to the accepted outcome, and the smallest correct fix direction. Drop nits, tooling-enforced issues, and duplicates here, never during fact-check. End code and PR reviews with the disproven findings, one line each, naming the source line that disproved the claim.
 
