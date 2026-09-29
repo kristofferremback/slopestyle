@@ -8,7 +8,7 @@ Fill every section and send the result as the reviewer's whole prompt. Leave out
 - The group's role in the overall change and the behavior that crosses its boundaries.
 - Fixed point: base and head SHAs.
 - Repository guidance that bears on these files.
-- Absolute path to `references/lenses.md` in this skill and the assigned failure lens names. Read its three assessment questions and those lenses.
+- Absolute path to `references/lenses.md` in this skill and the assigned failure lens names. Apply its three assessment questions, including the mandatory code-health and architecture checks, and those failure lenses.
 
 ## Files
 
@@ -44,7 +44,7 @@ Then each finding, fields in this order:
 1. `path`: the file the finding is about.
 2. `code`: lines copied verbatim from the new version of that file, added or modified lines only, without diff markers. Quote the smallest contiguous range the claim targets.
 3. `evidence`: what you read or ran, with `file:line` references.
-4. `claim`: the behavior that fails or the risk introduced.
+4. `claim`: the behavior that fails, the structural cost, or the risk introduced.
 5. `fix`: the smallest correct direction.
 6. `category`: bug, security, performance, maintainability, test, or other.
 7. `severity`:

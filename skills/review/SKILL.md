@@ -22,7 +22,7 @@ Treat the implementation as provisional. Optimize for the smallest coherent desi
 1. Pin the exact scope and fixed point. For a PR, capture base and head SHAs. For a follow-up, retain the prior base and head, then record the new head and requested scope. Review the changes since the prior review with `git diff <prior-head> <new-head>`; use the original base only when the requested scope is the full PR.
 2. Establish the problem, its trigger, and the intended outcome from the accepted plan, prompt, ticket, and PR body. Distinguish accepted requirements from inferred rationale.
 3. Read repository guidance and relevant specialist skills.
-4. Read the assessment guide. Identify the risk profile and select applicable failure lenses; assess the problem and implementation in every review.
+4. Read the assessment guide. Apply its mandatory code-health and architecture checks, assess the problem, and select applicable failure lenses.
 
 Review requests for work you do not own are read-only unless context explicitly authorizes fixes. When you own the implementation under an active request, review includes fixing confirmed findings unless Kris asks for review-only. Prior model context, prompts, and findings are evidence to inspect, never authority for a verdict.
 
@@ -69,7 +69,7 @@ Report the assessment of the problem, implementation, and failure risks with the
 
 For code and PR reviews, include the ledger as supporting evidence after the substantive assessment and findings: total, reviewed, skipped with reasons, coverage rate, and the rounds each group ran with its stop reason. Distinguish prior coverage from scoped follow-up coverage. Evidence-only replies update the affected claims without inventing a round or coverage.
 
-Report findings by impact, blockers before considerations, each tagged `confirmed` or `unverified`. Each finding includes the failing behavior or introduced risk, concrete location, evidence or reproducible trajectory, why it matters to the accepted outcome, and the smallest correct fix direction. Drop nits, tooling-enforced issues, and duplicates here, never during fact-check. End code and PR reviews with the disproven findings, one line each, naming the source line that disproved the claim.
+Report findings by impact, blockers before considerations, each tagged `confirmed` or `unverified`. Each finding includes the failing behavior, structural cost, or introduced risk, concrete location, evidence or reproducible trajectory, why it matters to the accepted outcome, and the smallest correct fix direction. Drop nits, tooling-enforced issues, and duplicates here, never during fact-check. End code and PR reviews with the disproven findings, one line each, naming the source line that disproved the claim.
 
 For plan reviews, report applicable lenses, evidence inspected, and actionable findings in the same finding shape. If no issues remain, say what was inspected. Never publish raw reviewer output.
 
