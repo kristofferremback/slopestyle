@@ -83,7 +83,7 @@ test("should keep personal work visible and separate background reviews from foc
   first.items.unshift({ ...first.items[2], id: "second-review", title: "Second review", plan: "must" });
   first.items.push({ ...first.items[0], id: "unassigned", title: "Unknown owner", attention: "unassigned" });
   const html = renderReport(validateReport(first), 1);
-  const focus = html.slice(html.indexOf('class="card focus"'), html.indexOf('<aside class="card side"'));
+  const focus = html.slice(html.indexOf('class="card focus"'), html.indexOf('<section class="card side"'));
   expect(focus).toContain("Fix the Acme export");
   expect(focus).not.toContain("Second review");
   expect(focus).not.toContain("Unknown owner");
