@@ -7,6 +7,8 @@ description: Use when the user asks to review, challenge, stress-test, or indepe
 
 Routine self-review always. Use the coverage process and fresh independent reviewers for code diffs and pull requests. For plans, use the framing and applicable lenses without a file ledger.
 
+Treat the implementation as provisional. Optimize for the smallest coherent design that satisfies the actual requirements. Challenge unnecessary behavior before repairing its edge cases. When additional machinery seems necessary, explain which requirement needs it and why a simpler ownership or data-flow model is insufficient.
+
 ## Frame
 
 1. Pin the exact scope and fixed point. For a PR, capture base and head SHAs. For a follow-up, retain the prior base and head, then record the new head and requested scope. Review the changes since the prior review with `git diff <prior-head> <new-head>`; use the original base only when the requested scope is the full PR.

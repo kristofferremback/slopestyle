@@ -24,6 +24,8 @@ Treat dependencies like source code. Prefer permissive licenses, and add one onl
 
 ## Engineering defaults
 
+Treat the implementation as provisional. Optimize for the smallest coherent design that satisfies the actual requirements. Challenge unnecessary behavior before repairing its edge cases. When additional machinery seems necessary, explain which requirement needs it and why a simpler ownership or data-flow model is insufficient.
+
 - Build the smallest complete, correct solution. Prefer correctness, simplicity, reuse, reversibility, then cost. More code means more maintenance.
 - Take on necessary complexity so users don't have to. Contain it inside a clear, testable boundary.
 - Avoid speculative features, configuration, abstractions, compatibility layers, and unrelated cleanup.
