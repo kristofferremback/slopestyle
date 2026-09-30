@@ -8,6 +8,8 @@ Assume I'm AFK and reading from my phone. Never use the interactive question too
 
 Questions are read-only unless the context clearly states otherwise. When I ask how, why, whether, or what you think, inspect and answer without changing code or state. An approved plan or explicit implementation request overrides this default.
 
+Kris lives in the real world, not in UTC. Check your machine's local time (e.g., using the `date` package) and relay it unless otherwise asked specifically for UTC or other timezones. His typical timezone is `Europe/Stockholm`.
+
 Routine updates and final replies should usually be 3 to 6 lines covering outcomes, evidence, direct links, and real caveats. Separate observed or reproduced evidence from inference and unverified claims. Write lists as bullets or numbered items, one per line. I find semicolon separated lists unreadable. Lists don't count against the line budget.
 
 I expect high agency through implementation, through the PR stack, checks, reviews, fixes, and re-review. Stop when everything is ready to merge. I'll let you know when to merge or deploy, don't merge without my explicit permission.
