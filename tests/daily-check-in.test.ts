@@ -158,6 +158,10 @@ test("should serve latest dated progress and a usable calendar without changing 
     expect(redirect.status).toBe(302);
     expect(redirect.headers.get("location")).toBe("/days/2026-09-30/");
     const day = await fetch(`${base}/days/2026-09-29/`).then(x => x.text());
+    const completed = day.slice(day.indexOf('<section class="stack" id="done"'), day.indexOf('<section class="stack" id="later"'));
+    expect(completed).toContain('href="#item-acme-export"');
+    expect(completed).toContain('<span class="badge">Done</span>');
+    expect(completed).not.toContain('<details');
     expect(day).toContain('href="/days/2026-09-29/" title="Loads the latest published progress for this day. Invoke daily-check-in to recheck sources."');
     expect(day).toContain("Closure: Fixed");
     expect(day).toContain("Captured 13:00");
@@ -179,6 +183,19 @@ test("should serve latest dated progress and a usable calendar without changing 
     expect(await head.text()).toBe("");
     expect((await fetch(`${base}/days/2026-09-29/`, { method: "POST" })).status).toBe(405);
   } finally { server.stop(true); }
+});
+
+test("should display completed work separately from dropped outcomes", async () => {
+  const first = await example();
+  first.items[0] = { ...first.items[0]!, status: "done", closureReason: "Fixed", closureEvidence: "Verified in staging" };
+  first.items[1] = { ...first.items[1]!, status: "dropped", closureReason: "Superseded", closureEvidence: "Replacement delivered" };
+  const html = renderReport(validateReport(first), 1);
+  const completed = html.slice(html.indexOf('<section class="stack" id="done"'), html.indexOf('<section class="stack" id="later"'));
+  expect(completed).toContain(first.items[0].title);
+  expect(completed).not.toContain(first.items[1].title);
+  const dropped = html.slice(html.indexOf('<details class="fold" id="dropped"'), html.indexOf('<a class="evidence-link"'));
+  expect(dropped).toContain(first.items[1].title);
+  expect(dropped).not.toContain(first.items[0].title);
 });
 
 test("should return honest empty-root and missing-date responses", async () => {
