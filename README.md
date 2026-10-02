@@ -72,6 +72,12 @@ Remove the scheduler without removing guidance or the checkout:
 
 Start fresh Pi, Claude Code, Codex, and Hermes Agent sessions after an update. Existing sessions retain the guidance loaded at startup.
 
+## Daily work check-in
+
+Invoke `daily-check-in` manually to review work commitments across projects, discuss priorities, and publish a private laptop HTML report. The skill and its Bun helper live in `skills/daily-check-in/`. Version 1 snapshots are immutable numbered directories under `~/.local/share/galdera-check-in`, each with `report.json` and `index.html`; the local server provides a calendar and `/days/YYYY-MM-DD/` views. Each date shows its latest published update, with earlier revisions retained. Rerun the skill for fresh source research during the day, then reload the dated page to see progress. The workflow has no scheduler and does not change source systems.
+
+Before post-merge sync installs this managed skill, move the existing standalone `~/.codex/skills/daily-check-in` directory intact to a backup location **outside both** `~/.codex/skills` and `~/.agents/skills`. Codex discovers managed skills through the `.agents/skills` link; leaving the standalone copy creates duplicate discovery. `--replace` does not solve that shadowing case. Do not run the installer from a development checkout.
+
 ## Host selection
 
 `hosts.json` registers `kristoffer-mbp-galdera` and `homelab`, using stable machine IDs. The installer matches the local OS hostname against those IDs and their aliases, ignoring case and a trailing dot. It does not contact Tailscale. The laptop uses the static macOS hostname `kristoffer-mbp-galdera`. Its previous macOS names remain aliases so sync can install this configuration before the machine is renamed.

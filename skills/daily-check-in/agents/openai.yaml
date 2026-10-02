@@ -1,0 +1,4 @@
+interface:
+  display_name: "Daily Check-In"
+  short_description: "Update the check-in page with priorities and dependencies"
+  default_prompt: "Use $daily-check-in to gather my open work, update and verify the existing private check-in page, then link it with today’s priorities and actions needed from me and others."
