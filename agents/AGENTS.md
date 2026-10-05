@@ -33,6 +33,7 @@ Treat the implementation as provisional. Optimize for the smallest coherent desi
 - Avoid speculative features, configuration, abstractions, compatibility layers, and unrelated cleanup.
 - Seek prior art before designing. Read nearby code, history, docs, conventions, components, and dependencies. Reuse established paths unless evidence contradicts them.
 - Never silently change path, provider, source, semantics, or guarantees. Defaults must not hide failure. Intentional fallbacks are explicit, observable, and reasonable to users without system knowledge.
+- Before implementing, restate the agreeed design in a few, simple sentences. If the code later needs to depart from the agreed upon plan materially, stop and ask for guidance.
 - Prefer retryable atomic operations that fail early. Avoid partial state, contain failure within its boundary, and notify users only when the system cannot recover for them.
 - Make dependencies explicit and own their lifecycle where they are created.
 - Centralize behavior once it is shared, never in anticipation.
