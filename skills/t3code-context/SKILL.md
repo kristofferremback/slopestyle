@@ -9,13 +9,15 @@ Read a T3 Code thread and recover the context another thread needs. Run the bund
 
 ## Find and read
 
-Start with the supplied T3 thread ID. If unknown, search within the relevant project or topic:
+Start with the supplied T3 thread ID. Inside T3, the connected `t3_thread_search`, `t3_thread_list`, and `t3_thread_read` tools answer quick lookups of active threads. Their search is capped and scoped to one project. Use this reader when a search must be exhaustive, reach archived threads, match tool output, or run outside T3:
 
 ```sh
-python3 scripts/threads.py list --search 'topic' --project '/path/to/project'
+python3 scripts/threads.py list --search 'topic' --project '/path/to/project' --since 2026-10-01
 python3 scripts/threads.py inspect THREAD_ID
 python3 scripts/threads.py read THREAD_ID messages --limit 50 --offset 0
 ```
+
+Search is literal and ignores ASCII case. It covers titles, messages, activities (tool calls and output), plans, and subagents; `--messages-only` narrows it. Each thread lists its first matches with section, item ID, timestamp, and snippet. `search.unavailable` names sections that could not be searched. Activity payloads are searched as stored JSON, so a phrase containing quotes or line breaks can miss; search a distinctive fragment such as an ID, path, or command. `--since` and `--until` filter by last update.
 
 Inspect identifies the project, branch, worktree, model/session, available record counts, and local diagnostic resources. A provider's resume ID differs from the T3 thread ID.
 

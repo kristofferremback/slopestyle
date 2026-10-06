@@ -133,7 +133,9 @@ function v2Fixture() {
 CREATE TABLE orchestration_v2_projection_messages(message_id TEXT PRIMARY KEY,thread_id TEXT,run_id TEXT,role TEXT,streaming INTEGER,created_at TEXT,updated_at TEXT,payload_json TEXT);
 CREATE TABLE orchestration_v2_projection_subagents(subagent_id TEXT PRIMARY KEY,thread_id TEXT,child_thread_id TEXT,status TEXT,started_at TEXT,payload_json TEXT);
 CREATE TABLE orchestration_v2_projection_provider_sessions(provider_session_id TEXT PRIMARY KEY,thread_id TEXT,status TEXT,updated_at TEXT,payload_json TEXT);
-CREATE TABLE orchestration_v2_projection_provider_threads(provider_thread_id TEXT PRIMARY KEY,thread_id TEXT,first_run_ordinal INTEGER,payload_json TEXT);`);
+CREATE TABLE orchestration_v2_projection_provider_threads(provider_thread_id TEXT PRIMARY KEY,thread_id TEXT,first_run_ordinal INTEGER,payload_json TEXT);
+CREATE TABLE orchestration_v2_projection_turn_items(turn_item_id TEXT PRIMARY KEY,thread_id TEXT,ordinal INTEGER,type TEXT,updated_at TEXT,payload_json TEXT);
+INSERT INTO orchestration_v2_projection_turn_items VALUES('ti1','active',1,'user_message','4','{"text":"fresh needle"}'),('ti2','active',2,'command_execution','6','{"command":"echo fresh needle"}');`);
   f.db
     .query(
       "INSERT INTO orchestration_v2_projection_threads VALUES(?,?,?,?,?,?,?,?)",
@@ -230,6 +232,42 @@ describe("t3code-context SQLite reader", () => {
     const missing = cli(f.path, "inspect", "active' OR 1=1 --");
     expect(missing.stderr).toContain("thread not found");
     expect(missing.stderr).toContain(`database: ${realpathSync(f.path)}`);
+    f.db.close();
+  });
+  test("should search case-insensitively across activities and show where", () => {
+    const f = fixture();
+    f.db
+      .query(
+        "UPDATE projection_thread_activities SET payload_json=? WHERE activity_id='a2'",
+      )
+      .run('{"command":"rg needle-cmd src"}');
+    const message = cli(f.path, "list", "--search", "FIRST LITERAL").json;
+    expect(message.items[0].matches).toEqual([
+      { section: "messages", item_id: "m1", at: "1", snippet: "first literal" },
+    ]);
+    const activity = cli(f.path, "list", "--search", "Needle-Cmd").json;
+    expect(activity.items[0].matches[0]).toMatchObject({
+      section: "activities",
+      item_id: "a2",
+      snippet: "rg needle-cmd src",
+    });
+    expect(
+      cli(f.path, "list", "--search", "needle-cmd", "--messages-only").json
+        .total,
+    ).toBe(0);
+    const capped = cli(f.path, "list", "--search", "e", "--matches", "1").json;
+    expect(capped.items[0].matches.length).toBe(1);
+    expect(capped.items[0].more_matches).toBe(true);
+    f.db.close();
+  });
+  test("should filter threads by update window", () => {
+    const f = fixture(),
+      ids = (...args: string[]) =>
+        cli(f.path, "list", "--all", ...args).json.items.map(
+          (x: any) => x.thread_id,
+        );
+    expect(ids("--since", "2")).toEqual(["active", "archived"]);
+    expect(ids("--until", "2")).toEqual(["deleted"]);
     f.db.close();
   });
   test("should separate current projections from historical events", () => {
@@ -372,6 +410,25 @@ describe("t3code-context SQLite reader", () => {
     expect(cli(f.path, "read", "active", "plans").stderr).toContain(
       "unavailable",
     );
+    f.db.close();
+  });
+  test("should search v2 activities without repeating message turn items", () => {
+    const f = v2Fixture(),
+      result = cli(f.path, "list", "--search", "NEEDLE").json;
+    expect(result.search.searched).toEqual([
+      "title",
+      "messages",
+      "activities",
+      "subagents",
+    ]);
+    expect(Object.keys(result.search.unavailable)).toEqual(["plans"]);
+    expect(
+      result.items[0].matches.map((x: any) => [x.section, x.item_id]),
+    ).toEqual([
+      ["messages", "v1"],
+      ["activities", "ti2"],
+    ]);
+    expect(result.items[0].matches[1].snippet).toBe("echo fresh needle");
     f.db.close();
   });
   test("should report subagents unavailable in the legacy schema", () => {

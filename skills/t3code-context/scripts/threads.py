@@ -452,6 +452,42 @@ class Reader:
         }
 
 
+# Searchable text per section: (section, item id, timestamp, text). JSON
+# payloads are searched as stored text; snippets come from their decoded values.
+LEGACY_SEARCH = {
+    "messages": "SELECT thread_id,message_id AS item_id,created_at AS at,text AS body FROM projection_thread_messages",
+    "activities": "SELECT thread_id,activity_id AS item_id,created_at AS at,payload_json AS body FROM projection_thread_activities",
+    "plans": "SELECT thread_id,plan_id AS item_id,created_at AS at,plan_markdown AS body FROM projection_thread_proposed_plans",
+}
+V2_SEARCH = {
+    "messages": "SELECT thread_id,message_id AS item_id,created_at AS at,json_extract(payload_json,'$.text') AS body FROM orchestration_v2_projection_messages",
+    # Message turn items repeat the messages section.
+    "activities": "SELECT thread_id,turn_item_id AS item_id,updated_at AS at,payload_json AS body FROM orchestration_v2_projection_turn_items WHERE type NOT IN ('user_message','assistant_message')",
+    "plans": "SELECT thread_id,plan_id AS item_id,NULL AS at,payload_json AS body FROM orchestration_v2_projection_plans",
+    "subagents": "SELECT thread_id,subagent_id AS item_id,started_at AS at,payload_json AS body FROM orchestration_v2_projection_subagents",
+}
+
+
+def snippet(text: str, term: str, width: int = 80) -> str:
+    """Return text around the first case-insensitive match, preferring a decoded JSON string."""
+    try:
+        stack = [json.loads(text)]
+        while stack:
+            value = stack.pop()
+            if isinstance(value, str) and term.lower() in value.lower():
+                text = value
+                break
+            if isinstance(value, dict):
+                stack += reversed(list(value.values()))
+            elif isinstance(value, list):
+                stack += reversed(value)
+    except (TypeError, ValueError):
+        pass
+    at = max(text.lower().find(term.lower()), 0)
+    start, end = max(at - width, 0), at + len(term) + width
+    return ("…" if start else "") + text[start:end] + ("…" if end < len(text) else "")
+
+
 def list_threads(r: Reader, a: argparse.Namespace) -> dict[str, Any]:
     r.require(
         r.threads_table,
@@ -459,28 +495,44 @@ def list_threads(r: Reader, a: argparse.Namespace) -> dict[str, Any]:
     )
     r.require("projection_projects", {"project_id", "title", "workspace_root"})
     filters = []
-    params = []
+    params: list[Any] = []
     cols = r.columns(r.threads_table) or set()
     if not a.all:
         filters += ["t.deleted_at IS NULL"] + (
             ["t.archived_at IS NULL"] if "archived_at" in cols else []
         )
+    searched = skipped = hits = None
     if a.search is not None:
         ok, reason = r.availability("messages")
         if not ok:
             raise ReaderError(f"search is unavailable: {reason}")
-        messages, text = (
-            ("orchestration_v2_projection_messages", "json_extract(m.payload_json,'$.text')")
-            if r.v2
-            else ("projection_thread_messages", "m.text")
+        sources = V2_SEARCH if r.v2 else LEGACY_SEARCH
+        names = ["messages"] if a.messages_only else list(sources)
+        skipped = {}
+        searched = []
+        for name in names:
+            available, reason = r.availability(name)
+            if available:
+                searched.append(name)
+            else:
+                skipped[name] = reason
+        hits = " UNION ALL ".join(
+            f"SELECT '{name}' AS section,* FROM ({sources[name]})" for name in searched
         )
+        hits = f"SELECT * FROM ({hits}) WHERE instr(lower(body),lower(?))>0"
         filters.append(
-            f"(instr(t.title,?)>0 OR EXISTS(SELECT 1 FROM {messages} m WHERE m.thread_id=t.thread_id AND instr({text},?)>0))"
+            f"(instr(lower(t.title),lower(?))>0 OR t.thread_id IN (SELECT thread_id FROM ({hits})))"
         )
         params += [a.search, a.search]
     if a.project is not None:
         filters.append("(p.project_id=? OR p.title=? OR p.workspace_root=?)")
         params += [a.project] * 3
+    if a.since is not None:
+        filters.append("t.updated_at>=?")
+        params.append(a.since)
+    if a.until is not None:
+        filters.append("t.updated_at<?")
+        params.append(a.until)
     where = " WHERE " + " AND ".join(filters) if filters else ""
     base = (
         f" FROM {r.threads_table} t LEFT JOIN projection_projects p ON p.project_id=t.project_id"
@@ -494,7 +546,18 @@ def list_threads(r: Reader, a: argparse.Namespace) -> dict[str, Any]:
         (*params, a.limit, a.offset),
     ).fetchall()
     items = [decode(x, r.threads_table) for x in rows]
-    return {
+    if hits is not None:
+        for item in items:
+            found = r.db.execute(
+                f"SELECT section,item_id,at,body FROM ({hits}) WHERE thread_id=? ORDER BY at IS NULL,at,item_id LIMIT ?",
+                (a.search, item["thread_id"], a.matches + 1),
+            ).fetchall()
+            item["matches"] = [
+                {"section": section, "item_id": item_id, "at": at, "snippet": snippet(body, a.search)}
+                for section, item_id, at, body in found[: a.matches]
+            ]
+            item["more_matches"] = len(found) > a.matches
+    result = {
         "source": r.source(),
         "total": total,
         "offset": a.offset,
@@ -502,6 +565,9 @@ def list_threads(r: Reader, a: argparse.Namespace) -> dict[str, Any]:
         "next_offset": a.offset + len(items) if a.offset + len(items) < total else None,
         "items": items,
     }
+    if searched is not None:
+        result["search"] = {"searched": ["title", *searched], "unavailable": skipped}
+    return result
 
 
 def export_data(r: Reader, thread_id: str) -> dict[str, Any]:
@@ -615,6 +681,10 @@ def parser() -> argparse.ArgumentParser:
     listed.add_argument("--search")
     listed.add_argument("--project")
     listed.add_argument("--all", action="store_true")
+    listed.add_argument("--since", help="updated at or after this ISO timestamp")
+    listed.add_argument("--until", help="updated before this ISO timestamp")
+    listed.add_argument("--messages-only", action="store_true")
+    listed.add_argument("--matches", type=positive, default=3, help="matches shown per thread")
     listed.add_argument("--limit", type=positive, default=50)
     listed.add_argument("--offset", type=nonnegative, default=0)
     inspect = commands.add_parser("inspect")
