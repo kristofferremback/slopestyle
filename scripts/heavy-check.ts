@@ -10,10 +10,9 @@ import { stateRoot, writeAtomic } from "./lib/core.ts";
 const args = process.argv.slice(2);
 let label: string | undefined;
 let waitSeconds = 1_800;
-const separator = args.indexOf("--");
-if (separator === -1) usage(2, "Separate the command with --.");
-
-for (let index = 0; index < separator; index += 1) {
+// Options end at "--" or the first non-option. Bun 1.4 drops a "--" that directly follows the script path.
+let index = 0;
+for (; index < args.length && args[index] !== "--" && args[index].startsWith("-"); index += 1) {
   switch (args[index]) {
     case "--label": {
       const value = args[++index];
@@ -36,7 +35,7 @@ for (let index = 0; index < separator; index += 1) {
   }
 }
 
-const command = args.slice(separator + 1);
+const command = args.slice(args[index] === "--" ? index + 1 : index);
 if (command.length === 0) usage(2, "A command is required after --.");
 label ??= basename(command[0]);
 
