@@ -1,33 +1,37 @@
 # T3 Code API and storage
 
-Verified against the installed T3 Code `0.0.41-nightly.20260911.1533` source and its local database. These are internal contracts that can change between nightly builds. On a schema error, inspect `sqlite_master` and `PRAGMA table_info(...)` through a read-only connection, then compare the installed source before interpreting the records. Do not silently switch profiles or treat unavailable data as an empty result.
+Verified against the installed T3 Code `0.0.46-nightly.20261005.2676` source and its local database. These are internal contracts that can change between nightly builds. On a schema error, inspect `sqlite_master` and `PRAGMA table_info(...)` through a read-only connection, then compare the installed source before interpreting the records. Do not silently switch profiles or treat unavailable data as an empty result.
 
 ## Database and current context
 
 T3's base directory defaults to `~/.t3`. Runtime data normally lives under `userdata`; development servers can use `dev`. An explicit base directory and `T3CODE_HOME` affect this choice. Pass the actual database path with `--db` for a development profile. Path derivation lives in [config.ts](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/config.ts).
 
-Open the database with SQLite URI `mode=ro`, enable `PRAGMA query_only=ON`, and read each export in one transaction. Keep WAL visibility. `immutable=1` or copying only `state.sqlite` can miss recent data in `state.sqlite-wal`. Do not run migrations, checkpointing, or cleanup against the live database.
+Open the database with SQLite URI `mode=ro`, enable `PRAGMA query_only=ON`, and read each export in one transaction. Keep WAL visibility. `immutable=1` or copying only the database file can miss recent data in its `-wal` sidecar. Do not run migrations, checkpointing, or cleanup against the live database.
 
-The reader uses a fixed set of thread-related tables:
+Current builds write `statev2.sqlite`. It holds the `orchestration_v2_*` tables plus copies of the legacy tables, frozen when the data was imported. The older `state.sqlite` is frozen at the same point. The reader picks one schema per database: orchestration-v2 whenever `orchestration_v2_projection_threads` exists, otherwise legacy. It never mixes the two, and reports its choice in `source.schema`.
 
-| Records | Table | Meaning |
-| --- | --- | --- |
-| Thread and project | `projection_threads`, `projection_projects` | Title, project root, branch/worktree, model, lifecycle flags |
-| Conversation | `projection_thread_messages` | Current message text, roles, timestamps, attachment metadata, streaming state |
-| Activities | `projection_thread_activities` | Tool calls/results, subagent activity, compaction, operational summaries and payloads |
-| Plans | `projection_thread_proposed_plans` | Plan text and implementation linkage |
-| Turns | `projection_turns` | Turn lifecycle, message linkage, checkpoint refs and changed files |
-| Linked PRs | `projection_thread_pull_requests` | Explicit PR associations and last recorded host snapshots |
-| Session and resume | `projection_thread_sessions`, `provider_session_runtime` | Provider status and opaque resume identifiers |
-| Checkpoint diffs | `checkpoint_diff_blobs` | Cached diffs for turn ranges, when present |
-| Approval state | `projection_pending_approvals` | Recorded requests and decisions, not fresh authorization |
-| Audit history | `orchestration_events` | Append-only thread events, including superseded content |
+| Records | Orchestration-v2 table | Legacy table | Meaning |
+| --- | --- | --- | --- |
+| Thread | `orchestration_v2_projection_threads` | `projection_threads` | Title, lifecycle, branch/worktree, model. V2 keeps linked PRs, lineage, and forks in `payload`. |
+| Project | `projection_projects` | `projection_projects` | Title and workspace root. V2 still uses the legacy table. |
+| Conversation | `orchestration_v2_projection_messages` | `projection_thread_messages` | Message text, roles, timestamps, attachment metadata, streaming state. The v2 text and attachments live in `payload`, and the reader lifts them to the legacy shape. |
+| Activities | `orchestration_v2_projection_turn_items` | `projection_thread_activities` | Tool calls/results, reasoning, file changes, subagents, checkpoints, compaction |
+| Plans | `orchestration_v2_projection_plans` | `projection_thread_proposed_plans` | V2 plan steps and explanation, or legacy plan text |
+| Turns | `orchestration_v2_projection_runs` | `projection_turns` | Run or turn lifecycle, provider thread linkage, checkpoint refs |
+| Subagents | `orchestration_v2_projection_subagents` | none | Delegated work, including the child T3 thread ID |
+| Linked PRs | thread `payload` | `projection_thread_pull_requests` | Explicit PR associations and recorded host snapshots |
+| Session and resume | `orchestration_v2_projection_provider_sessions`, `orchestration_v2_projection_provider_threads` | `projection_thread_sessions`, `provider_session_runtime` | Provider status, model, and native thread identifiers |
+| Checkpoint diffs | turn items of type `checkpoint` | `checkpoint_diff_blobs` | Checkpoint records or cached diffs |
+| Approval state | `orchestration_v2_projection_runtime_requests` | `projection_pending_approvals` | Recorded requests and decisions, not fresh authorization |
+| Audit history | `orchestration_v2_events` | `orchestration_events` | Append-only thread events, including superseded content |
 
-Messages sort by `created_at, message_id`. Activities sort by `sequence, created_at, activity_id`, with null sequences first. Keep these collections separate. A merged timestamp timeline is an interpretation of interleaving, not a guaranteed reconstruction of the UI. See [ProjectionThreadMessages.ts](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/persistence/Layers/ProjectionThreadMessages.ts) and [ProjectionThreadActivities.ts](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/persistence/Layers/ProjectionThreadActivities.ts).
+In v2, `inspect` returns `session` as the thread's provider sessions and `provider_runtime` as its provider threads, both lists. V2 messages sort by `created_at, message_id`, and turn items sort by `ordinal, turn_item_id`. These orders follow [ProjectionStore.ts](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/orchestration-v2/ProjectionStore.ts). Legacy messages sort by `created_at, message_id`. Legacy activities sort by `sequence, created_at, activity_id`, with null sequences first. Keep these collections separate. A merged timestamp timeline is an interpretation of interleaving, not a guaranteed reconstruction of the UI. See [ProjectionThreadMessages.ts](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/persistence/Layers/ProjectionThreadMessages.ts) and [ProjectionThreadActivities.ts](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/persistence/Layers/ProjectionThreadActivities.ts).
 
 Rewinding rebuilds projections and can remove messages, activities, plans, and turns. The event stream still contains older data. Reading every `thread.message-sent` event as a separate message would duplicate streaming updates and revive reverted content. See [ProjectionPipeline.ts](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/orchestration/Layers/ProjectionPipeline.ts).
 
-The reader excludes authentication tables, settings, secrets, and `runtime_payload_json`. Resume cursors are provider-specific metadata. They are not credentials or permission to resume a session. Two verified native transcript lookups are:
+The reader excludes authentication tables, settings, secrets, and `runtime_payload_json`. Native thread IDs and resume cursors are provider-specific metadata. They are not credentials or permission to resume a session.
+
+In v2, each provider thread's `payload.nativeThreadRef.nativeId` is the native conversation ID. For Claude Agent, search for `NATIVE_ID.jsonl` under `~/.claude/projects/`. For Codex, search the filenames under `~/.codex/sessions/` for that ID. Two verified legacy lookups are:
 
 - Codex uses `resume_cursor_json.threadId`. Search the filenames under `~/.codex/sessions/` for that provider ID.
 - Claude Agent uses `resume_cursor_json.resume`. Search for `PROVIDER_SESSION_ID.jsonl` under `~/.claude/projects/`. Its `threadId` can still be the T3 ID, and `resumeSessionAt` identifies a resume boundary inside the provider session.

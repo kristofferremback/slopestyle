@@ -125,6 +125,60 @@ CREATE TABLE orchestration_events(sequence INTEGER PRIMARY KEY,event_id TEXT,agg
   }
   return { dir, path, db };
 }
+// statev2.sqlite keeps the legacy tables beside the v2 ones, frozen at migration.
+function v2Fixture() {
+  const f = fixture();
+  f.db
+    .exec(`CREATE TABLE orchestration_v2_projection_threads(thread_id TEXT PRIMARY KEY,project_id TEXT,title TEXT,created_at TEXT,updated_at TEXT,archived_at TEXT,deleted_at TEXT,payload_json TEXT);
+CREATE TABLE orchestration_v2_projection_messages(message_id TEXT PRIMARY KEY,thread_id TEXT,run_id TEXT,role TEXT,streaming INTEGER,created_at TEXT,updated_at TEXT,payload_json TEXT);
+CREATE TABLE orchestration_v2_projection_subagents(subagent_id TEXT PRIMARY KEY,thread_id TEXT,child_thread_id TEXT,status TEXT,started_at TEXT,payload_json TEXT);
+CREATE TABLE orchestration_v2_projection_provider_sessions(provider_session_id TEXT PRIMARY KEY,thread_id TEXT,status TEXT,updated_at TEXT,payload_json TEXT);
+CREATE TABLE orchestration_v2_projection_provider_threads(provider_thread_id TEXT PRIMARY KEY,thread_id TEXT,first_run_ordinal INTEGER,payload_json TEXT);`);
+  f.db
+    .query(
+      "INSERT INTO orchestration_v2_projection_threads VALUES(?,?,?,?,?,?,?,?)",
+    )
+    .run("active", "p1", "Fresh", "1", "9", null, null, '{"pullRequests":[]}');
+  const m = f.db.query(
+    "INSERT INTO orchestration_v2_projection_messages VALUES(?,?,?,?,?,?,?,?)",
+  );
+  m.run(
+    "v2",
+    "active",
+    "r1",
+    "assistant",
+    0,
+    "5",
+    "5",
+    '{"text":"reply","attachments":[],"createdBy":"agent"}',
+  );
+  m.run(
+    "v1",
+    "active",
+    "r1",
+    "user",
+    0,
+    "4",
+    "4",
+    '{"text":"fresh needle","attachments":[{"name":"b.png"}]}',
+  );
+  f.db
+    .query(
+      "INSERT INTO orchestration_v2_projection_subagents VALUES(?,?,?,?,?,?)",
+    )
+    .run("s1", "active", "child", "completed", "4", "{}");
+  f.db
+    .query(
+      "INSERT INTO orchestration_v2_projection_provider_sessions VALUES(?,?,?,?,?)",
+    )
+    .run("ps1", "active", "ready", "5", '{"model":"m"}');
+  f.db
+    .query(
+      "INSERT INTO orchestration_v2_projection_provider_threads VALUES(?,?,?,?)",
+    )
+    .run("pt1", "active", 1, '{"nativeThreadRef":{"nativeId":"native-1"}}');
+  return f;
+}
 function cli(path: string, ...args: string[]) {
   const r = Bun.spawnSync(["python3", script, "--db", path, ...args], {
       stdout: "pipe",
@@ -148,6 +202,7 @@ describe("t3code-context SQLite reader", () => {
     expect(typeof page.captured_at).toBe("string");
     expect(page.source).toEqual({
       kind: "t3-sqlite-projections",
+      schema: "legacy",
       database: realpathSync(f.path),
       read_only: true,
     });
@@ -288,6 +343,43 @@ describe("t3code-context SQLite reader", () => {
     expect(text).toContain("Full activity payloads are omitted");
     expect(text).not.toContain('"text": "first line\\n');
     expect(text).not.toContain('"payload"');
+    f.db.close();
+  });
+  test("should read only orchestration-v2 tables when present", () => {
+    const f = v2Fixture(),
+      page = cli(f.path, "read", "active", "messages").json;
+    expect(page.source.schema).toBe("orchestration-v2");
+    expect(page.items.map((x: any) => [x.message_id, x.text])).toEqual([
+      ["v1", "fresh needle"],
+      ["v2", "reply"],
+    ]);
+    expect(page.items[0].attachments[0].name).toBe("b.png");
+    expect(page.items[1].payload).toEqual({ createdBy: "agent" });
+    expect(cli(f.path, "list", "--search", "needle").json.total).toBe(1);
+    expect(cli(f.path, "list", "--search", "first literal").json.total).toBe(0);
+    expect(cli(f.path, "list", "--all").json.total).toBe(1);
+    const inspection = cli(f.path, "inspect", "active").json;
+    expect(inspection.thread.title).toBe("Fresh");
+    expect(inspection.session.map((x: any) => x.status)).toEqual(["ready"]);
+    expect(
+      inspection.provider_runtime[0].payload.nativeThreadRef.nativeId,
+    ).toBe("native-1");
+    expect(inspection.sections.subagents.count).toBe(1);
+    expect(inspection.sections["pull-requests"].reason).toContain(
+      "thread record",
+    );
+    expect(inspection.sections.checkpoints.available).toBe(false);
+    expect(cli(f.path, "read", "active", "plans").stderr).toContain(
+      "unavailable",
+    );
+    f.db.close();
+  });
+  test("should report subagents unavailable in the legacy schema", () => {
+    const f = fixture();
+    expect(cli(f.path, "inspect", "active").json.sections.subagents).toEqual({
+      available: false,
+      reason: "subagents are recorded only in the orchestration-v2 schema",
+    });
     f.db.close();
   });
   test("should never create a missing input database", () => {
