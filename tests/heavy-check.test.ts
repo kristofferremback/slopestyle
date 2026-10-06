@@ -278,3 +278,16 @@ test("returns the wrapped command exit code", async () => {
     await release([result]);
   }
 }, 10_000);
+
+test("runs a command after a leading separator that the runtime may strip", async () => {
+  const home = resolve(scratch, "separator-home");
+  const log = resolve(scratch, "separator.log");
+  mkdirSync(home, { recursive: true });
+  writeFileSync(log, "");
+
+  const env: Record<string, string | undefined> = { ...process.env, HOME: home };
+  delete env.SLOPESTYLE_HEAVY_CHECK;
+  const guarded = Bun.spawn([process.execPath, heavyCheck, "--", process.execPath, helper, "mark", log, "ran"], { env, stderr: "pipe" });
+  expect(await guarded.exited).toBe(0);
+  expect(readFileSync(log, "utf8")).toBe("ran\n");
+});
