@@ -103,9 +103,8 @@ for (const path of legacyThrea) {
   }
 }
 
-const unslopPatch = readFileSync(resolve(repoRoot, "skills/unslop/PATCH.md"), "utf8");
-const legacyUnslopHash = unslopPatch.match(/Unmodified `SKILL\.md` SHA-256: `([0-9a-f]{64})`/)?.[1];
-assert(legacyUnslopHash, "unslop PATCH.md is missing its upstream hash");
+// The external pstack unslop installed before the managed fork, pinned at cursor/plugins 60c641e.
+const legacyUnslopHash = "181883e539caec8258ec9129e3ba5f133409144a2cbf2aa361158ab94cfc3441";
 
 function isExactLegacyUnslop(target: string): boolean {
   const skillFile = resolve(target, "SKILL.md");
