@@ -400,7 +400,7 @@
         "Threa workspace credentials"
       ],
       "source": "https://github.com/threahq/threa/tree/main/.agents/skills/threa-cli",
-      "upstreamCommit": "820fddf57901ea486712faccd3061b7a3553a7a9",
+      "upstreamCommit": "3192421abbf25a48b953c572bc442eabc5348001",
       "provenance": "synchronized"
     },
     {
@@ -414,7 +414,7 @@
       ],
       "requires": [],
       "source": "https://github.com/cursor/plugins/tree/main/pstack/skills/unslop",
-      "upstreamCommit": "60c641e4fad674784b30abcf9f8915dea39df38d",
+      "upstreamCommit": "df581122cde17e6e27686b5a448bde23e4ad4318",
       "provenance": "forked"
     },
     {

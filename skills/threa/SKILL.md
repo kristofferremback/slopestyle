@@ -7,7 +7,7 @@ description: Use when a task needs Threa workspace memory, messages, streams, at
 
 `threa` is a command-line client for one Threa workspace. The same core is served over MCP with `threa mcp serve`. One key, one workspace, bound at startup. No command and no tool takes a workspace id.
 
-Prefer the CLI when you have a shell. Check for it first: `threa whoami` if it is on PATH, otherwise `bun /abs/path/to/threa/packages/cli/src/cli.ts whoami` from a checkout. If you are an MCP client with the tools loaded instead, use the tool named in each section (the tool names are given alongside the commands).
+Prefer the CLI when you have a shell. Check for it first: `threa whoami` if it is on PATH, otherwise `npx -y @threahq/cli whoami`, or `bun /abs/path/to/threa/packages/cli/src/cli.ts whoami` from a checkout. If you are an MCP client with the tools loaded instead, use the tool named in each section (the tool names are given alongside the commands).
 
 ## External-effect gate
 
@@ -45,6 +45,7 @@ Read results already carry author identity, so you seldom need a second call to 
 - The query is semantic by default and optional. Pass the idea you are after even if you do not know the exact wording; leave it empty (`--what memos` with no query) to browse the most recent memos.
 - Pass `--exact` to match a literal phrase.
 - Narrow with `--stream`, `--knowledge-type`, `--memo-type`, `--tag`, `--scope`, and `--before`/`--after`.
+- When you are answering a specific message, `threa memos recall "<message>"` (tool `recall_memos`) returns only the memos a model judged relevant to it, at most 5, or `(nothing relevant)`. It runs a model per call, so recall once per message and use search to explore.
 - Follow a hit with `threa memos get <id>` (tool `get_memo`) to see the source messages it was extracted from, so you can cite or verify the origin.
 
 ## Conversation create and resume
@@ -81,7 +82,7 @@ One `search` command covers all three kinds; pick with `--what`, and pass only t
 
 - **`--what messages`**, default full-text: you know the words that appear in the message. Add `--semantic` when you know the idea but not the wording, or `--exact` to match the query as a literal phrase. Query required.
 - **`--what memos`**: search workspace memory (see the memory section). Query optional and semantic; an empty query browses recent memos.
-- **`--what attachments`**: search files by filename or extracted content, then `threa attachments get <id>` (tool `get_attachment`) for the full extracted text, or `threa attachments get <id> --url` (tool `get_attachment_download_url`) only when you need the raw bytes' URL. Query optional; omit it to browse the most recent attachments. `threa attachments download <id> [dest]` fetches the bytes to disk. A directory dest names the file after the attachment (`name (1).ext` on conflict); a file dest is written as given.
+- **`--what attachments`**: search files by filename or extracted content, then `threa attachments get <id>` (tool `get_attachment`) for the full extracted text, or `threa attachments get <id> --url` (tool `get_attachment_download_url`) only when you need the raw bytes' URL. Query optional; omit it to browse the most recent attachments. `threa attachments download <id> [dest]` fetches the bytes to disk. A directory dest names the file after the attachment (`name (1).ext` on conflict); a file dest is written as given. `threa attachments upload <path> [--name f] [--type mime]` uploads a file and returns its id. Link it in a message as `[name](attachment:<id>)`.
 - **Recent-first browsing**: `threa memos list` and `threa attachments list` (both take repeatable `--stream` and `--limit`) are shorthand for a query-less search. Use them for "what's new here" instead of inventing a query.
 - **`messages find-by-metadata`**: you want messages by a reference you stamped at send time, not by text. It is exact key/value AND-containment, the right tool for dedup and external-id lookup.
 
