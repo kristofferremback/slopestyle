@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-SECTIONS = {
+BY_THREAD = "thread_id=?"
+# Each section maps to (table, required columns, order, row filter), or to the
+# reason it is unavailable in that schema.
+LEGACY_SECTIONS: dict[str, tuple[str, set[str], str, str] | str] = {
     "messages": (
         "projection_thread_messages",
         {
@@ -20,21 +23,25 @@ SECTIONS = {
             "attachments_json",
         },
         "created_at,message_id",
+        BY_THREAD,
     ),
     "activities": (
         "projection_thread_activities",
         {"thread_id", "activity_id", "sequence", "created_at", "payload_json"},
         "sequence IS NOT NULL,sequence,created_at,activity_id",
+        BY_THREAD,
     ),
     "plans": (
         "projection_thread_proposed_plans",
         {"thread_id", "plan_id", "plan_markdown", "created_at"},
         "created_at,plan_id",
+        BY_THREAD,
     ),
     "turns": (
         "projection_turns",
         {"thread_id", "row_id", "turn_id", "requested_at", "checkpoint_files_json"},
         "requested_at,COALESCE(turn_id,''),row_id",
+        BY_THREAD,
     ),
     "pull-requests": (
         "projection_thread_pull_requests",
@@ -48,30 +55,108 @@ SECTIONS = {
             "stack_json",
         },
         "linked_at,host,repository,number",
+        BY_THREAD,
     ),
+    "subagents": "subagents are recorded only in the orchestration-v2 schema",
     "events": (
         "orchestration_events",
         {"aggregate_kind", "stream_id", "sequence", "payload_json", "metadata_json"},
         "sequence",
+        "aggregate_kind='thread' AND stream_id=?",
     ),
     "checkpoints": (
         "checkpoint_diff_blobs",
         {"thread_id", "from_turn_count", "to_turn_count"},
         "from_turn_count,to_turn_count",
+        BY_THREAD,
     ),
     "approvals": (
         "projection_pending_approvals",
         {"thread_id", "request_id", "created_at"},
         "created_at,request_id",
+        BY_THREAD,
     ),
 }
+V2_SECTIONS: dict[str, tuple[str, set[str], str, str] | str] = {
+    "messages": (
+        "orchestration_v2_projection_messages",
+        {"thread_id", "message_id", "role", "streaming", "created_at", "payload_json"},
+        "created_at,message_id",
+        BY_THREAD,
+    ),
+    "activities": (
+        "orchestration_v2_projection_turn_items",
+        {"thread_id", "turn_item_id", "ordinal", "type", "payload_json"},
+        "ordinal,turn_item_id",
+        BY_THREAD,
+    ),
+    "plans": (
+        "orchestration_v2_projection_plans",
+        {"thread_id", "plan_id", "payload_json"},
+        "plan_id",
+        BY_THREAD,
+    ),
+    "turns": (
+        "orchestration_v2_projection_runs",
+        {"thread_id", "run_id", "ordinal", "requested_at", "payload_json"},
+        "ordinal,run_id",
+        BY_THREAD,
+    ),
+    "pull-requests": "orchestration-v2 stores linked pull requests on the thread record; read thread.payload from inspect",
+    "subagents": (
+        "orchestration_v2_projection_subagents",
+        {"thread_id", "subagent_id", "child_thread_id", "started_at", "payload_json"},
+        "COALESCE(started_at,''),subagent_id",
+        BY_THREAD,
+    ),
+    "events": (
+        "orchestration_v2_events",
+        {"thread_id", "sequence", "event_type", "payload_json"},
+        "sequence",
+        BY_THREAD,
+    ),
+    "checkpoints": "orchestration-v2 records checkpoints as activities of type checkpoint",
+    "approvals": (
+        "orchestration_v2_projection_runtime_requests",
+        {"thread_id", "runtime_request_id", "created_at", "payload_json"},
+        "created_at,runtime_request_id",
+        BY_THREAD,
+    ),
+}
+SECTIONS = list(LEGACY_SECTIONS)
+V2_THREADS = "orchestration_v2_projection_threads"
+V2_PROVIDER_SESSIONS = "orchestration_v2_projection_provider_sessions"
+V2_PROVIDER_THREADS = "orchestration_v2_projection_provider_threads"
 ALLOW = {
-    *(v[0] for v in SECTIONS.values()),
+    *(v[0] for v in [*LEGACY_SECTIONS.values(), *V2_SECTIONS.values()] if isinstance(v, tuple)),
     "projection_threads",
     "projection_projects",
     "projection_thread_sessions",
     "provider_session_runtime",
+    V2_THREADS,
+    V2_PROVIDER_SESSIONS,
+    V2_PROVIDER_THREADS,
 }
+V2_MESSAGE_FIELDS = {"id", "threadId", "runId", "nodeId", "role", "text", "attachments", "streaming", "createdAt", "updatedAt"}
+
+
+def v2_message(row: dict[str, Any]) -> dict[str, Any]:
+    """Shape a v2 message like a legacy one: text and attachments live in its payload."""
+    payload = row.pop("payload") or {}
+    result = {
+        "message_id": row.pop("message_id"),
+        "thread_id": row.pop("thread_id"),
+        "role": row.pop("role"),
+        "text": payload.get("text", ""),
+        "is_streaming": row.pop("streaming"),
+        "created_at": row.pop("created_at"),
+        "attachments": payload.get("attachments"),
+        **row,
+    }
+    extra = {k: v for k, v in payload.items() if k not in V2_MESSAGE_FIELDS}
+    if extra:
+        result["payload"] = extra
+    return result
 
 
 class ReaderError(Exception):
@@ -122,6 +207,10 @@ class Reader:
             self.db.execute("BEGIN")
         except sqlite3.Error as exc:
             raise ReaderError(f"cannot open database read-only: {exc}") from exc
+        # statev2.sqlite also keeps the legacy tables, frozen at migration time.
+        self.v2 = self.columns(V2_THREADS) is not None
+        self.sections = V2_SECTIONS if self.v2 else LEGACY_SECTIONS
+        self.threads_table = V2_THREADS if self.v2 else "projection_threads"
 
     def close(self):
         self.db.rollback()
@@ -137,7 +226,10 @@ class Reader:
         return values or None
 
     def availability(self, name: str) -> tuple[bool, str | None]:
-        table, required, _ = SECTIONS[name]
+        spec = self.sections[name]
+        if isinstance(spec, str):
+            return False, spec
+        table, required, _, _ = spec
         columns = self.columns(table)
         if columns is None:
             return False, f"table {table} is unavailable"
@@ -160,7 +252,7 @@ class Reader:
 
     def thread(self, thread_id: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
         self.require(
-            "projection_threads",
+            self.threads_table,
             {
                 "thread_id",
                 "project_id",
@@ -173,9 +265,9 @@ class Reader:
         self.require("projection_projects", {"project_id", "title", "workspace_root"})
         thread = decode(
             self.db.execute(
-                "SELECT * FROM projection_threads WHERE thread_id=?", (thread_id,)
+                f"SELECT * FROM {self.threads_table} WHERE thread_id=?", (thread_id,)
             ).fetchone(),
-            "projection_threads",
+            self.threads_table,
         )
         if thread is None:
             raise ReaderError(f"thread not found: {thread_id}")
@@ -195,12 +287,7 @@ class Reader:
         available, reason = self.availability(name)
         if not available:
             raise ReaderError(f"section {name} is unavailable: {reason}")
-        table, _, order = SECTIONS[name]
-        where = (
-            "aggregate_kind='thread' AND stream_id=?"
-            if name == "events"
-            else "thread_id=?"
-        )
+        table, _, order, where = self.sections[name]
         total = self.db.execute(
             f"SELECT COUNT(*) FROM {table} WHERE {where}", (thread_id,)
         ).fetchone()[0]
@@ -208,7 +295,7 @@ class Reader:
             f"SELECT * FROM {table} WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?",
             (thread_id, limit, offset),
         ).fetchall()
-        items = [decode(r, table) for r in rows]
+        items = [self.item(name, table, r) for r in rows]
         return {
             "captured_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "source": self.source(),
@@ -222,22 +309,34 @@ class Reader:
         }
 
     def all(self, thread_id: str, name: str) -> list[Any]:
-        table, _, order = SECTIONS[name]
-        where = (
-            "aggregate_kind='thread' AND stream_id=?"
-            if name == "events"
-            else "thread_id=?"
-        )
+        table, _, order, where = self.sections[name]
+        return [
+            self.item(name, table, r)
+            for r in self.db.execute(
+                f"SELECT * FROM {table} WHERE {where} ORDER BY {order}", (thread_id,)
+            )
+        ]
+
+    def item(self, name: str, table: str, row: sqlite3.Row) -> dict[str, Any]:
+        item = decode(row, table)
+        return v2_message(item) if self.v2 and name == "messages" else item
+
+    def thread_rows(self, table: str, order: str, thread_id: str) -> list[Any] | None:
+        columns = self.columns(table)
+        if not columns or "thread_id" not in columns:
+            return None
         return [
             decode(r, table)
             for r in self.db.execute(
-                f"SELECT * FROM {table} WHERE {where} ORDER BY {order}", (thread_id,)
+                f"SELECT * FROM {table} WHERE thread_id=? ORDER BY {order}",
+                (thread_id,),
             )
         ]
 
     def source(self) -> dict[str, Any]:
         return {
             "kind": "t3-sqlite-projections",
+            "schema": "orchestration-v2" if self.v2 else "legacy",
             "database": str(self.path),
             "read_only": True,
         }
@@ -283,45 +382,52 @@ class Reader:
 
     def inspect(self, thread_id: str) -> dict[str, Any]:
         thread, project = self.thread(thread_id)
-        session = runtime = None
-        columns = self.columns("projection_thread_sessions")
-        if columns and "thread_id" in columns:
-            session = decode(
-                self.db.execute(
-                    "SELECT * FROM projection_thread_sessions WHERE thread_id=?",
-                    (thread_id,),
-                ).fetchone(),
-                "projection_thread_sessions",
+        if self.v2:
+            # A v2 thread can span several provider sessions and native threads.
+            session = self.thread_rows(
+                V2_PROVIDER_SESSIONS, "updated_at,provider_session_id", thread_id
             )
-        columns = self.columns("provider_session_runtime")
-        allowed = {
-            "provider_name",
-            "provider_instance_id",
-            "adapter_key",
-            "status",
-            "last_seen_at",
-            "resume_cursor_json",
-        }
-        if columns and "thread_id" in columns:
-            selected = sorted(columns & allowed)
-            if selected:
-                runtime = decode(
+            runtime = self.thread_rows(
+                V2_PROVIDER_THREADS,
+                "COALESCE(first_run_ordinal,0),provider_thread_id",
+                thread_id,
+            )
+        else:
+            session = runtime = None
+            columns = self.columns("projection_thread_sessions")
+            if columns and "thread_id" in columns:
+                session = decode(
                     self.db.execute(
-                        f"SELECT {','.join(selected)} FROM provider_session_runtime WHERE thread_id=?",
+                        "SELECT * FROM projection_thread_sessions WHERE thread_id=?",
                         (thread_id,),
                     ).fetchone(),
-                    "provider_session_runtime",
+                    "projection_thread_sessions",
                 )
+            columns = self.columns("provider_session_runtime")
+            allowed = {
+                "provider_name",
+                "provider_instance_id",
+                "adapter_key",
+                "status",
+                "last_seen_at",
+                "resume_cursor_json",
+            }
+            if columns and "thread_id" in columns:
+                selected = sorted(columns & allowed)
+                if selected:
+                    runtime = decode(
+                        self.db.execute(
+                            f"SELECT {','.join(selected)} FROM provider_session_runtime WHERE thread_id=?",
+                            (thread_id,),
+                        ).fetchone(),
+                        "provider_session_runtime",
+                    )
         sections = {}
-        for name, (table, _, _) in SECTIONS.items():
+        for name in SECTIONS:
             available, reason = self.availability(name)
             item = {"available": available}
             if available:
-                where = (
-                    "aggregate_kind='thread' AND stream_id=?"
-                    if name == "events"
-                    else "thread_id=?"
-                )
+                table, _, _, where = self.sections[name]
                 item["count"] = self.db.execute(
                     f"SELECT COUNT(*) FROM {table} WHERE {where}", (thread_id,)
                 ).fetchone()[0]
@@ -348,13 +454,13 @@ class Reader:
 
 def list_threads(r: Reader, a: argparse.Namespace) -> dict[str, Any]:
     r.require(
-        "projection_threads",
+        r.threads_table,
         {"thread_id", "project_id", "title", "created_at", "updated_at", "deleted_at"},
     )
     r.require("projection_projects", {"project_id", "title", "workspace_root"})
     filters = []
     params = []
-    cols = r.columns("projection_threads") or set()
+    cols = r.columns(r.threads_table) or set()
     if not a.all:
         filters += ["t.deleted_at IS NULL"] + (
             ["t.archived_at IS NULL"] if "archived_at" in cols else []
@@ -363,8 +469,13 @@ def list_threads(r: Reader, a: argparse.Namespace) -> dict[str, Any]:
         ok, reason = r.availability("messages")
         if not ok:
             raise ReaderError(f"search is unavailable: {reason}")
+        messages, text = (
+            ("orchestration_v2_projection_messages", "json_extract(m.payload_json,'$.text')")
+            if r.v2
+            else ("projection_thread_messages", "m.text")
+        )
         filters.append(
-            "(instr(t.title,?)>0 OR EXISTS(SELECT 1 FROM projection_thread_messages m WHERE m.thread_id=t.thread_id AND instr(m.text,?)>0))"
+            f"(instr(t.title,?)>0 OR EXISTS(SELECT 1 FROM {messages} m WHERE m.thread_id=t.thread_id AND instr({text},?)>0))"
         )
         params += [a.search, a.search]
     if a.project is not None:
@@ -372,7 +483,7 @@ def list_threads(r: Reader, a: argparse.Namespace) -> dict[str, Any]:
         params += [a.project] * 3
     where = " WHERE " + " AND ".join(filters) if filters else ""
     base = (
-        " FROM projection_threads t LEFT JOIN projection_projects p ON p.project_id=t.project_id"
+        f" FROM {r.threads_table} t LEFT JOIN projection_projects p ON p.project_id=t.project_id"
         + where
     )
     total = r.db.execute("SELECT COUNT(*)" + base, params).fetchone()[0]
@@ -382,7 +493,7 @@ def list_threads(r: Reader, a: argparse.Namespace) -> dict[str, Any]:
         + " ORDER BY t.updated_at DESC,t.thread_id LIMIT ? OFFSET ?",
         (*params, a.limit, a.offset),
     ).fetchall()
-    items = [decode(x, "projection_threads") for x in rows]
+    items = [decode(x, r.threads_table) for x in rows]
     return {
         "source": r.source(),
         "total": total,
@@ -526,7 +637,7 @@ def main() -> int:
         a.db
         or Path(os.environ.get("T3CODE_HOME", "~/.t3")).expanduser()
         / "userdata"
-        / "state.sqlite"
+        / "statev2.sqlite"
     )
     r = None
     try:
