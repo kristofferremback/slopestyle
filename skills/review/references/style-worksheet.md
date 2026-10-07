@@ -25,10 +25,13 @@ A structural change is worthwhile only when you can show the removed burden and 
 
 ## Finding template
 
-- **Suggestion:** friendly, specific recommendation and source location.
+Each comment connects **problem → proposed change → illustrative example**. Explain in plain prose what makes the current code difficult to read or change, then say what to change and how that addresses the difficulty. The code illustrates the stated proposal; it must not leave the reader to infer the recommendation by comparing snippets. Name concrete responsibilities, decisions or data rather than asking vaguely to "simplify", "extract" or "improve readability".
+
+- **Problem:** source location and the specific reading, maintenance or testing burden in the current code.
+- **Proposed change:** friendly, concrete recommendation naming what changes, where it belongs and what becomes easier afterward.
 - **Origin and disposition:** introduced/worsened here or pre-existing, with base evidence; fix here, refactor first or non-blocking follow-up.
-- **Scale and cost today:** affected responsibilities/callers and the concrete reading, maintenance or testing burden.
-- **What good looks like:** compact proposed code and explanation, following the [style pass](style-review.md)'s example requirements.
+- **Scale:** affected responsibilities and callers.
+- **What good looks like:** compact proposed code demonstrating that exact change, following the [style pass](style-review.md)'s example requirements. Label existing code as before; make the intended difference explicit.
 - **Why worth it:** what callers stop knowing, edits or special cases that disappear, and why a smaller alternative is insufficient. For refactor-first proposals, consider the combined work.
 - **Preservation and proof:** behavior/contracts to retain, how to verify them, what was actually checked and what remains uncertain.
 - **Delivery:** suggestion, direct fix or optional commit; identify any broader work as a separate proposal.
@@ -43,14 +46,14 @@ If inline placement is unsupported or the finding spans the overall design, use 
 
 ## Expandable comments
 
-For substantial findings, keep a self-contained suggestion visible and put optional depth in a collapsed `<details>` block. The visible part states the improvement, benefit and disposition, shows a compact example, and includes required constraints, behavior changes and unresolved risks. Opening the details should deepen understanding without changing the recommendation.
+For substantial findings, keep a self-contained suggestion visible and put optional depth in a collapsed `<details>` block. The visible part states the problem, proposed change, benefit and disposition, shows a compact example, and includes required constraints, behavior changes and unresolved risks. Opening the details should deepen understanding without changing the recommendation.
 
 Use this shape, replacing the placeholders with concrete content:
 
 ```markdown
 **Suggestion — [fix here / refactor first / non-blocking follow-up]: [improvement]**
 
-[Friendly recommendation, concrete benefit and compact code example.]
+[Current difficulty, friendly proposed change, concrete benefit and code illustrating that change.]
 [Essential constraints and risks, if any.]
 
 <details>
@@ -69,7 +72,7 @@ Both examples must express the same design. Label sketches as illustrative imple
 The coordinator owns the delivered comments, even when reviewers supplied good examples. Apply this check after merging findings and reconciling correctness, to the actual response or comments about to be sent.
 
 1. **Account for findings.** Map each retained style finding to its final comment. Merge duplicate findings with their useful examples and constraints; record reasons for omissions in the review notes. Supporting reports hold coverage and extra evidence, not missing recommendations.
-2. **Make each comment usable alone.** Include its anchor, friendly suggestion, concrete benefit, scope disposition and a focused code example. Use the latest reconciled example, adapting the reviewer's readable code rather than rewriting it into compressed shorthand. A substantial recommendation shows before/after or caller/owner logic; put the longer example in the same comment's `<details>` block. Links supplement these examples.
-3. **Review the examples as code.** Apply `CODINGSTYLE.md` to every delivered code block, including collapsed blocks. Preserve normal statement, field and JSX formatting, logical blank lines, and visible setup/execution/assertion phases. Shorten prose or narrow an example's scope to control length; keep its layout readable. A naturally one-line replacement stays small.
+2. **Make each comment usable alone.** Check it against the [comment contract](#finding-template), including its anchor, scope disposition and focused code example. Read the prose without the code: the problem and proposed change must still be clear. Then check that the example demonstrates that change. Use the latest reconciled example. A substantial recommendation shows before/after or caller/owner logic; put the longer example in the same comment's `<details>` block. Links supplement these examples.
+3. **Review the examples as code.** Apply `CODINGSTYLE.md` to all proposed code, including unchanged surrounding lines and collapsed blocks. An improvement to one property access does not endorse the compound expression around it; an extracted helper must earn its boundary. Clearly label existing code shown for comparison. Preserve normal statement, field and JSX formatting, logical blank lines, and visible setup/execution/assertion phases. Narrow an example's scope to keep it readable; if a convincing improvement cannot be demonstrated, revisit or drop the finding.
 4. **Preserve meaning.** Keep ordering, effects, deciding test inputs and necessary owner logic visible. Carry behavior caveats above the fold, label schematic omissions, and distinguish proposed checks from executed evidence. Reconciliation must update examples that a correctness finding invalidated.
 5. **Read the final draft as its recipient.** Can the author understand and act on each suggestion without opening a report or the style guide? Can they see both the design improvement and its limits? Completion requires yes for every retained comment. A presentation-only revision reuses the established findings and proof; it does not restart review rounds or tests.
