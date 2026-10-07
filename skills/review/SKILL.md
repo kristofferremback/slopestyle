@@ -41,7 +41,7 @@ The inventory is complete when every changed path has a row and every allowable 
 
 ## 2. Group
 
-With fewer than 4 reviewable files or fewer than 200 changed lines, make one group. Otherwise partition the reviewable files into groups of at most 10 that must be read together: interface and implementation, producer and consumer, schema and its callers, locale siblings, one feature's directory. Split any group whose diff exceeds about 1,500 changed lines. Record each file's group in the ledger. Build style groups around whole responsibilities and complexity hotspots, with the same size limits. Give major coordinators, migrations and large test files focused assignments with their relevant callers. Account for every reviewable path in both groupings.
+With fewer than 4 reviewable files or fewer than 200 changed lines, make one group. Otherwise partition the reviewable files into groups of at most 10 that must be read together: interface and implementation, producer and consumer, schema and its callers, locale siblings, one feature's directory. Split any group whose diff exceeds about 1,500 changed lines. Record each file's group in the ledger. Build style groups around whole responsibilities and complexity hotspots, with the same size limits. Give major coordinators, migrations and large test files focused assignments with their relevant callers. Account for every reviewable path in both groupings. Each brief separates assigned files and hotspots from supporting context; send only that group's hotspots. Findings outside an assignment are leads for the coordinator to route to the owning group, not a reason to expand the assignment or claim its coverage.
 
 ## 3. Run independent passes
 
@@ -62,7 +62,7 @@ Reviewers report coverage per file. Send a file a reviewer left uncovered to a f
 
 ### Style pass and reconciliation
 
-Dispatch one fresh style reviewer per style group using the [style brief](references/style-brief.md), not the correctness brief. Its completion requires file coverage, structural and local readability assessments, concrete alternatives for major hotspots, and self-contained examples for actionable findings. Follow up on missing coverage or incomplete hotspot comparisons before closing its style state. Correctness round limits and early stops do not close the style pass.
+Dispatch one fresh style reviewer per style group using the [style brief](references/style-brief.md), not the correctness brief. Its completion requires file coverage, structural and local readability assessments, concrete alternatives for major hotspots, and self-contained examples for actionable findings. Check returned coverage against the assignment and route any cross-group leads. Follow up on missing coverage or incomplete hotspot comparisons before closing its style state. Correctness round limits and early stops do not close the style pass.
 
 Capture and fact-check that independent assessment, then supply confirmed correctness findings to the relevant style reviewer for the workflow's bug-to-design reconciliation. When there are none, record that reconciliation had no new input. Retain style improvements without corresponding bugs. Reconciliation may add or revise a design suggestion; it cannot certify an untested refactor.
 
@@ -82,7 +82,7 @@ For code and PR reviews, include the ledger as supporting evidence after the sub
 
 Report findings by impact, blockers before considerations, each tagged `confirmed` or `unverified`. Each finding includes the failing behavior, structural cost, or introduced risk, concrete location, evidence or reproducible trajectory, why it matters to the accepted outcome, and the smallest correct fix direction. Filter tooling-enforced issues, unsupported preferences and duplicates here, never during fact-check. Concrete readability improvements, including meaningful blank lines, earn findings without a defect or large refactor. End code and PR reviews with the disproven findings, one line each, naming the source line that disproved the claim.
 
-Keep correctness and style assessments visible in the combined report. Style recommendations retain their embedded examples, fix-here/refactor-first/follow-up disposition, and brief hotspot outcomes, including grounded retentions. Merge duplicate recommendations without losing their design rationale; a clean correctness result cannot become a clean overall verdict while style work remains. Publication follows the user's authorization; draft-only comments stay in the response.
+Keep correctness and style assessments visible in the combined report, including brief hotspot outcomes and grounded retentions. Before delivering any code review, the coordinator runs the worksheet's [final-comment check](references/style-worksheet.md#final-comment-check) against the actual user-visible draft, including code inside details blocks. The review is complete only when retained style findings survive synthesis as self-contained comments with readable examples; a linked report does not discharge this check. Publication follows the user's authorization; draft-only comments stay in the response.
 
 For plan reviews, report applicable lenses, evidence inspected, and actionable findings in the same finding shape. If no issues remain, say what was inspected. Never publish raw reviewer output.
 

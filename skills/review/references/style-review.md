@@ -16,7 +16,7 @@ Use the [Review worksheet](style-worksheet.md) to make the scope, significance, 
 
 Read the applicable repository guidance and `CODINGSTYLE.md`, using a supplied guide when specified. If the guide is unavailable, report that limitation and distinguish observations from claims of compliance. The guide owns style rules; this skill owns the process.
 
-Within a larger review, share its scope and inventory while retaining a distinct style assessment. Its `review` workflow owns delegation and fact-checking; the style pass owns its design criteria and completion check below. A demonstrated reading or maintenance burden is evidence for a style finding, including a non-blocking one.
+Within a larger review, use the assigned portion of its inventory and retain a distinct style assessment. Read other paths as supporting context and return cross-group concerns to the coordinator; assignment boundaries still govern findings and coverage. Its `review` workflow owns delegation and fact-checking; the style pass owns its design criteria and completion check below. A demonstrated reading or maintenance burden is evidence for a style finding, including a non-blocking one.
 
 ## Understand before proposing
 
@@ -71,5 +71,7 @@ When fixes are authorized, continue with [Applying findings](style-fixes.md).
 ## Return a useful result
 
 Lead with whether meaningful changes are needed and why. Distinguish **fix here**, **refactor first**, and **non-blocking follow-up** recommendations. Prioritize by design and readability benefit, distinguish facts from uncertainty, and include examples, justified retentions and coverage gaps. Include a brief disposition of the major hotspots, including retained ones, so their assessment survives synthesis with correctness findings. A clean style result makes no claim about functional correctness; earn it through the concrete comparisons above. Findings have no quota.
+
+Before delivering the review, apply the worksheet's [final-comment check](style-worksheet.md#final-comment-check) to the actual comments. In a combined review, the coordinator owns this check after synthesis.
 
 For completed fixes, explain what callers no longer need to know, what behavior changed and what was verified.

@@ -9,7 +9,7 @@ Use this working template with the [style pass](style-review.md). Keep the revie
 3. **Design:** complete the finding template below. Compare the smallest local improvement with any broader refactor; select the one whose benefit justifies its reach and verification cost.
 4. **Reconcile:** when correctness findings are supplied, reconsider whether a design change could eliminate the reported failure. Preserve findings about readability and maintenance independently.
 5. **Verify:** inspect the proposed caller and owner together. In apply or offer-commit mode, implement and check the result using Applying findings. In suggest mode, distinguish source reasoning from unimplemented or untested proposals.
-6. **Deliver:** report fixes here, refactor-first options and non-blocking follow-ups. Include self-contained examples. For implemented work, include the actual delta and observed proof.
+6. **Deliver:** report fixes here, refactor-first options and non-blocking follow-ups, then apply the [final-comment check](#final-comment-check) below. For implemented work, include the actual delta and observed proof.
 
 ## Calibrate significance
 
@@ -63,3 +63,13 @@ Use this shape, replacing the placeholders with concrete content:
 ```
 
 Both examples must express the same design. Label sketches as illustrative implementations to adapt to existing conventions, so incidental details do not become requirements. Agents reading raw Markdown still receive the expanded text; collapse improves human scanning, not context usage. Keep small suggestions small and omit the block when it adds no useful context.
+
+## Final-comment check
+
+The coordinator owns the delivered comments, even when reviewers supplied good examples. Apply this check after merging findings and reconciling correctness, to the actual response or comments about to be sent.
+
+1. **Account for findings.** Map each retained style finding to its final comment. Merge duplicate findings with their useful examples and constraints; record reasons for omissions in the review notes. Supporting reports hold coverage and extra evidence, not missing recommendations.
+2. **Make each comment usable alone.** Include its anchor, friendly suggestion, concrete benefit, scope disposition and a focused code example. Use the latest reconciled example, adapting the reviewer's readable code rather than rewriting it into compressed shorthand. A substantial recommendation shows before/after or caller/owner logic; put the longer example in the same comment's `<details>` block. Links supplement these examples.
+3. **Review the examples as code.** Apply `CODINGSTYLE.md` to every delivered code block, including collapsed blocks. Preserve normal statement, field and JSX formatting, logical blank lines, and visible setup/execution/assertion phases. Shorten prose or narrow an example's scope to control length; keep its layout readable. A naturally one-line replacement stays small.
+4. **Preserve meaning.** Keep ordering, effects, deciding test inputs and necessary owner logic visible. Carry behavior caveats above the fold, label schematic omissions, and distinguish proposed checks from executed evidence. Reconciliation must update examples that a correctness finding invalidated.
+5. **Read the final draft as its recipient.** Can the author understand and act on each suggestion without opening a report or the style guide? Can they see both the design improvement and its limits? Completion requires yes for every retained comment. A presentation-only revision reuses the established findings and proof; it does not restart review rounds or tests.
