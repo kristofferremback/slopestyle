@@ -20,3 +20,7 @@ Take the steps in order for each finding and stop at the first that applies. Wri
 4. **Everything else.** Read and probe to confirm. What you cannot settle stays unverified.
 
 Before concluding step 2 or 3, search for what the finding describes, beyond the snippet it quotes. A finding that quotes the wrong line while describing code that exists is true and continues to step 4. When reaching a contradiction takes more than one inference, there is none. Continue to step 4.
+
+## Style evidence
+
+For style findings, confirm the claimed reading or maintenance burden against the fixed source and applicable guide: responsibilities a reader must track, repeated policy, hidden assumptions, or an expression that obscures intent. A runtime defect is unnecessary. Compare the proposed caller and owner, and test its preservation claims separately. Confirming the current burden does not certify the suggested refactor as behavior-preserving. Keep unimplemented examples labelled and check ordering, effects and contracts before recommending them.

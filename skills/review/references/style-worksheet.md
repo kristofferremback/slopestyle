@@ -1,11 +1,11 @@
 # Review worksheet
 
-Use this working template with the main skill. Keep the review comments short; retain coverage and supporting evidence in the shared review notes.
+Use this working template with the [style pass](style-review.md). Keep the review comments short; retain coverage and supporting evidence in the shared review notes.
 
 ## Run the pass
 
 1. **Frame:** record mode, reviewed base/head or module scope, guide path, authorship evidence and requested deliverable.
-2. **Read:** inventory and understand the scope as the main skill requires. Record concrete friction before proposing solutions. Account for each applicable guide area with findings, grounded retentions or an explicit coverage gap.
+2. **Read:** inventory and understand the scope as the [style pass](style-review.md) requires. Record concrete friction before proposing solutions. Account for each applicable guide area with findings, grounded retentions or an explicit coverage gap.
 3. **Design:** complete the finding template below. Compare the smallest local improvement with any broader refactor; select the one whose benefit justifies its reach and verification cost.
 4. **Reconcile:** when correctness findings are supplied, reconsider whether a design change could eliminate the reported failure. Preserve findings about readability and maintenance independently.
 5. **Verify:** inspect the proposed caller and owner together. In apply or offer-commit mode, implement and check the result using Applying findings. In suggest mode, distinguish source reasoning from unimplemented or untested proposals.
@@ -28,7 +28,7 @@ A structural change is worthwhile only when you can show the removed burden and 
 - **Suggestion:** friendly, specific recommendation and source location.
 - **Origin and disposition:** introduced/worsened here or pre-existing, with base evidence; fix here, refactor first or non-blocking follow-up.
 - **Scale and cost today:** affected responsibilities/callers and the concrete reading, maintenance or testing burden.
-- **What good looks like:** compact proposed code and explanation, following the main skill's example requirements.
+- **What good looks like:** compact proposed code and explanation, following the [style pass](style-review.md)'s example requirements.
 - **Why worth it:** what callers stop knowing, edits or special cases that disappear, and why a smaller alternative is insufficient. For refactor-first proposals, consider the combined work.
 - **Preservation and proof:** behavior/contracts to retain, how to verify them, what was actually checked and what remains uncertain.
 - **Delivery:** suggestion, direct fix or optional commit; identify any broader work as a separate proposal.

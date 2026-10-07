@@ -16,7 +16,7 @@ Name intentional behavior changes explicitly, including errors, timestamps, iden
 
 Use the repository's test workflow and the available `test` skill to select focused checks. Apply the guide's test design rules: visible assumptions, isolated fixtures and assertions on outcomes. For a reachable regression, establish failure before the fix and success afterward where feasible. Exercise changed failure/retry boundaries at the real local interface when practical; record which external systems remain faked.
 
-Run applicable formatting, lint, type and behavior checks. Report failures and evidence gaps honestly. Preserve valid earlier evidence, but identify the changed scope it does not cover. Revisit the main skill's responsibility audit against the final implementation.
+Run applicable formatting, lint, type and behavior checks. Report failures and evidence gaps honestly. Preserve valid earlier evidence, but identify the changed scope it does not cover. Revisit the [style pass](style-review.md)'s responsibility audit against the final implementation.
 
 Use the available `review` workflow for a fresh review of the completed change. Keep its coverage and fact-checking in one place. Resolve confirmed findings, verify their fixes and re-review the affected delta. Honor explicit limits on delegation and report the resulting review coverage.
 

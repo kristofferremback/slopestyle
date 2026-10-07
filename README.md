@@ -78,9 +78,11 @@ Invoke `daily-check-in` manually to review work commitments across projects, dis
 
 Before post-merge sync installs this managed skill, move the existing standalone `~/.codex/skills/daily-check-in` directory intact to a backup location **outside both** `~/.codex/skills` and `~/.agents/skills`. Codex discovers managed skills through the `.agents/skills` link; leaving the standalone copy creates duplicate discovery. `--replace` does not solve that shadowing case. Do not run the installer from a development checkout.
 
-## Coding style review
+## Code and coding style review
 
-`coding-style-review` reviews how code is written against the project's `CODINGSTYLE.md`. It includes a review worksheet, self-contained comment examples, and workflows for suggestions, direct fixes to Kris's own PRs, and optional cherry-pick commits for other authors. The skill is project-independent and enabled only on `kristoffer-mbp-galdera` through `hosts.json`.
+`review` includes independent correctness and coding-style passes for code and PRs, then reconciles their findings into one report. Style uses the project's `CODINGSTYLE.md`, gives major complexity hotspots focused attention, and includes concrete examples and local readability checks. Invoke just `$review`; an explicit one-pass request still limits the scope.
+
+`coding-style-review` remains a standalone entry point into the same canonical workflow under `skills/review/references/`. Its worksheet covers significance, comments, direct fixes to Kris's own PRs and optional cherry-pick commits for other authors. This standalone entry remains laptop-only through `hosts.json`; the combined workflow ships with `review` on every host that installs it.
 
 Before the first managed installation on that machine, move the standalone `~/.codex/skills/coding-style-review` directory intact to a backup outside all skill discovery directories. The managed Codex link lives under `~/.agents/skills`; leaving the standalone copy creates duplicate discovery. Install from the stable runtime after the change reaches `main`.
 
