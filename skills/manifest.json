@@ -41,6 +41,19 @@
       "provenance": "original"
     },
     {
+      "name": "coding-style-review",
+      "path": "skills/coding-style-review",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "daily-check-in",
       "path": "skills/daily-check-in",
       "targets": [

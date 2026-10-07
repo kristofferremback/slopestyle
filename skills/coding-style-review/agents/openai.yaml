@@ -1,0 +1,4 @@
+interface:
+  display_name: "Coding Style Review"
+  short_description: "Review code against CODINGSTYLE.md with an ownership audit"
+  default_prompt: "Use $coding-style-review to assess the selected code against CODINGSTYLE.md, select the mode from authorship and task instructions, and provide concrete examples and evidence for worthwhile improvements."

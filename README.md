@@ -78,6 +78,12 @@ Invoke `daily-check-in` manually to review work commitments across projects, dis
 
 Before post-merge sync installs this managed skill, move the existing standalone `~/.codex/skills/daily-check-in` directory intact to a backup location **outside both** `~/.codex/skills` and `~/.agents/skills`. Codex discovers managed skills through the `.agents/skills` link; leaving the standalone copy creates duplicate discovery. `--replace` does not solve that shadowing case. Do not run the installer from a development checkout.
 
+## Coding style review
+
+`coding-style-review` reviews how code is written against the project's `CODINGSTYLE.md`. It includes a review worksheet, self-contained comment examples, and workflows for suggestions, direct fixes to Kris's own PRs, and optional cherry-pick commits for other authors. The skill is project-independent and enabled only on `kristoffer-mbp-galdera` through `hosts.json`.
+
+Before the first managed installation on that machine, move the standalone `~/.codex/skills/coding-style-review` directory intact to a backup outside all skill discovery directories. The managed Codex link lives under `~/.agents/skills`; leaving the standalone copy creates duplicate discovery. Install from the stable runtime after the change reaches `main`.
+
 ## Host selection
 
 `hosts.json` registers `kristoffer-mbp-galdera` and `homelab`, using stable machine IDs. The installer matches the local OS hostname against those IDs and their aliases, ignoring case and a trailing dot. It does not contact Tailscale. The laptop uses the static macOS hostname `kristoffer-mbp-galdera`. Its previous macOS names remain aliases so sync can install this configuration before the machine is renamed.
