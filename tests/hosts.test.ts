@@ -73,6 +73,9 @@ test("should install each host and reconcile managed links after a pin change", 
   const { home, runtime } = fixture("pin-switch");
   expect(succeeds([resolve(runtime, "scripts/install.ts")], home).stdout).toContain("Selected host: kristoffer-mbp-galdera");
   expect(readlinkSync(resolve(home, ".agents/skills/datadog"))).toBe(resolve(runtime, "skills/datadog"));
+  for (const name of ["use-slack", "use-linear", "use-github"]) {
+    for (const root of [".claude/skills", ".agents/skills"]) expect(readlinkSync(resolve(home, root, name))).toBe(resolve(runtime, "skills", name));
+  }
   expect(succeeds([resolve(runtime, "scripts/check.ts"), "--installed"], home).stdout).toContain("Selected host: kristoffer-mbp-galdera");
 
   writeFileSync(resolve(home, ".agents/skills/unrelated"), "keep\n");
@@ -80,6 +83,9 @@ test("should install each host and reconcile managed links after a pin change", 
   pin(home, "homelab");
   expect(succeeds([resolve(runtime, "scripts/install.ts")], home).stdout).toContain("Selected host: homelab");
   for (const root of [".pi/agent/skills", ".claude/skills", ".agents/skills", ".hermes/skills"]) expect(existsSync(resolve(home, root, "datadog"))).toBe(false);
+  for (const name of ["use-slack", "use-linear", "use-github"]) {
+    for (const root of [".claude/skills", ".agents/skills"]) expect(existsSync(resolve(home, root, name))).toBe(false);
+  }
   expect(readFileSync(resolve(home, ".agents/skills/unrelated"), "utf8")).toBe("keep\n");
   expect(readFileSync(resolve(home, ".claude/agents/unrelated.md"), "utf8")).toBe("keep\n");
   succeeds([resolve(runtime, "scripts/check.ts"), "--installed"], home);

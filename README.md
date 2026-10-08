@@ -78,6 +78,10 @@ Invoke `daily-check-in` manually to review work commitments across projects, dis
 
 Before post-merge sync installs this managed skill, move the existing standalone `~/.codex/skills/daily-check-in` directory intact to a backup location **outside both** `~/.codex/skills` and `~/.agents/skills`. Codex discovers managed skills through the `.agents/skills` link; leaving the standalone copy creates duplicate discovery. `--replace` does not solve that shadowing case. Do not run the installer from a development checkout.
 
+## Daily work tools
+
+`use-slack`, `use-linear`, and `use-github` are laptop-only skills shared across all managed harnesses, including Claude Code and Codex through T3 Code. They use existing authenticated tools. Slack keeps an agent-updated, incomplete directory of verified people and channels in `~/.local/state/slopestyle/slack/cache.sqlite`; its Bun helper has no network client or scheduler. Cached identity never grants permission to send a message.
+
 ## Code and coding style review
 
 `review` includes independent correctness and coding-style passes for code and PRs, then reconciles their findings into one report. Style uses the project's `CODINGSTYLE.md`, gives major complexity hotspots focused attention, and includes concrete examples and local readability checks. Invoke just `$review`; an explicit one-pass request still limits the scope.

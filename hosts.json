@@ -4,6 +4,6 @@
     "kristoffer-mbp-galdera": { "aliases": ["kristoffer-mbp-galdera.local", "Kristoffers-MacBook-Pro", "Kristoffers-MacBook-Pro.local", "Kristoffers-MBP"] },
     "homelab": { "aliases": [] }
   },
-  "skills": { "coding-style-review": ["kristoffer-mbp-galdera"], "datadog": ["kristoffer-mbp-galdera"], "slopshare": ["homelab"] },
+  "skills": { "coding-style-review": ["kristoffer-mbp-galdera"], "datadog": ["kristoffer-mbp-galdera"], "slopshare": ["homelab"], "use-github": ["kristoffer-mbp-galdera"], "use-linear": ["kristoffer-mbp-galdera"], "use-slack": ["kristoffer-mbp-galdera"] },
   "subagents": {}
 }

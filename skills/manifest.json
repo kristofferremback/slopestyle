@@ -431,6 +431,53 @@
       "provenance": "forked"
     },
     {
+      "name": "use-github",
+      "path": "skills/use-github",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [
+        "gh with existing GitHub authentication",
+        "gh stack for stacked pull requests"
+      ],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
+      "name": "use-linear",
+      "path": "skills/use-linear",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [
+        "connected Linear tools with existing authentication"
+      ],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
+      "name": "use-slack",
+      "path": "skills/use-slack",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [
+        "Bun",
+        "connected Slack tools with existing authentication"
+      ],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "why",
       "path": "skills/why",
       "targets": [
