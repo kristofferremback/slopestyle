@@ -34,7 +34,6 @@ function fixture(name: string, host = "kristoffer-mbp-galdera"): { home: string;
     const local = relative(sourceRoot, path);
     return local !== ".git" && !local.startsWith(".git/") && local !== "node_modules" && !local.startsWith("node_modules/");
   } });
-  writeFileSync(resolve(runtime, "machines.json"), '{"agentMail":[]}\n');
   mkdirSync(resolve(runtime, ".git"));
   symlinkSync(resolve(sourceRoot, "node_modules"), resolve(runtime, "node_modules"));
   pin(home, host);

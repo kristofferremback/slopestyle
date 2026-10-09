@@ -73,8 +73,6 @@ function copySource(destination: string): void {
       return local !== ".git" && !local.startsWith(".git/") && local !== "node_modules" && !local.startsWith("node_modules/");
     },
   });
-  // These sync fixtures exercise a machine without optional integrations.
-  writeFileSync(resolve(destination, "machines.json"), JSON.stringify({ agentMail: [] }) + "\n");
 }
 
 mkdirSync(fakeBin, { recursive: true });

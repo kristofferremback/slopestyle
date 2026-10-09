@@ -206,7 +206,6 @@ Repository layout:
 - `hosts.json`: registered machines and restrictions for managed skills and subagents
 - `skills/`: canonical Slop(e)style skills and their target manifest. Hermes Agent skills install under `$HERMES_HOME/skills`, or `~/.hermes/skills` when `HERMES_HOME` is unset.
 - `subagents/`: generated Claude Code subagent definitions, one per model and effort
-- `machines.json`: machine allowlist for global agent-mail registration
 - `scripts/install.ts`: safe runtime installation
 - `scripts/heavy-check.ts`: user-wide serialization for resource-heavy local commands
 - `scripts/sync.ts`: validated fast-forward synchronization
@@ -231,6 +230,6 @@ GitHub Actions runs the same commands on Linux and macOS. Run `./scripts/check.t
 
 Unmodified vendor skills remain external dependencies. Patched skills live here as managed local forks with pinned provenance and a `PATCH.md` explaining every intentional delta. Seer stays a small pointer to its hosted skill.
 
-## Local agent mail
+## Thread communication
 
-[Agent mail](docs/agent-mail.md) connects Claude Code and Codex conversations through a local MCP mailbox, with persistent session addresses and inbox reminders. The installer registers it globally only on machines enabled in [machines.json](machines.json). The current allowlist enables Kris's MacBook Pro and leaves homelab disabled. The repository owns that decision. No machine-local opt-in flag is needed.
+Inside T3 Code, use its native thread tools to find conversations, read context, and send authorized messages. The [t3code-context skill](skills/t3code-context/SKILL.md) also provides a read-only local thread reader.
