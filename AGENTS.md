@@ -10,4 +10,5 @@ This repository is the source of truth for Kris's cross-machine agent setup.
 - Keep runtime skill descriptions short and trigger-first. Bodies own workflow details.
 - Before committing, run `bun run check`, `scripts/heavy-check.ts -- bun run typecheck`, and `scripts/heavy-check.ts -- bun test`. The full suite is intentional here because it is small and protects cross-platform installation and synchronization.
 - Run `scripts/install.ts` only when changing the active global installation.
+- This repository is public and MIT-licensed. Commits, branch names, and PR text are world-readable, so use synthetic data in fixtures and keep credentials and machine identifiers in the environment.
 - Stage only owned files. Never commit `.threa-attachments/`.
