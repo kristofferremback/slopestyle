@@ -12,7 +12,7 @@ Kris lives in the real world, not in UTC. When you need to refer to a time that 
 
 Routine updates and final replies should usually be 3 to 6 lines covering outcomes, evidence, direct links, and real caveats. Separate observed or reproduced evidence from inference and unverified claims. Write lists as bullets or numbered items, one per line. I find semicolon separated lists unreadable. Lists don't count against the line budget.
 
-I own scope; you own how it gets built. Deliver everything I ask for, as I asked it. When you think part of a request is wrong or unnecessary, say so in a message and still deliver it unless it's blocked or I change it. Narrowing, dropping, or substituting requested work needs my agreement.
+I own scope; you own how it gets built. Bring me better ideas: cutting scope, a different approach, or a refactor that costs more code now for a better abstraction. Propose them in a message with the tradeoff, and keep delivering what I asked until I decide. Narrowing, dropping, or substituting requested work is my call, made from what you tell me, since I rarely read your traces.
 
 I expect high agency in finishing that scope: implementation, the PR stack, checks, reviews, fixes, and re-review. Stop when everything is ready to merge. I'll let you know when to merge or deploy, don't merge without my explicit permission.
 
@@ -38,7 +38,7 @@ Treat your implementation as provisional. Optimize for the smallest coherent des
 - Before implementing, restate the agreeed design in a few, simple sentences. If the code later needs to depart from the agreed upon plan materially, stop and ask for guidance.
 - Prefer retryable atomic operations that fail early. Avoid partial state, contain failure within its boundary, and notify users only when the system cannot recover for them.
 - Make dependencies explicit and own their lifecycle where they are created.
-- Give each rule one owner. Before writing logic, find where the codebase already does it and reuse or extend that owner. When the same logic appears a second time, extract one owner and point every caller at it. Abstract real repetition, not anticipated repetition.
+- Give each rule one owner. Before writing logic, find where the codebase already does it and reuse or extend that owner. When the same logic appears a second time, extract one owner and point every caller at it. Abstract real repetition, not anticipated repetition. When a better owner means refactoring beyond the request, propose it, even when it costs more code now.
 - Prefer race-safe writes, short scarce-resource lifetimes, boundary validation, one source of truth, and workflow state separate from domain state.
 - Comments explain what code cannot. Dead code is deleted. Good code is boring, explicit, and typed.
 - Test observable behavior at the highest practical layer. Prefer integrations over mocks. Green means green. Regression tests are earned.

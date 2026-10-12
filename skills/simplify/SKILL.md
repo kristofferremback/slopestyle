@@ -9,7 +9,7 @@ Make the change smaller without changing what it proves. The tests that passed b
 
 ## Scope
 
-The diff in front of you, plus any code it made unreachable. Surrounding code stays as it is, even when it invites cleanup.
+The diff in front of you, plus any code it made unreachable. Surrounding code stays as it is. Report simplifications beyond it, such as an abstraction that would collapse surrounding code, as proposals for Kris.
 
 ## Cuts
 
