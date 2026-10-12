@@ -9,17 +9,17 @@ Make the change smaller without changing what it proves. The tests that passed b
 
 ## Scope
 
-The diff in front of you, plus any code it made unreachable. Surrounding code stays as it is, even when it invites cleanup.
+The diff in front of you, plus any code it made unreachable. Surrounding code stays as it is. Report simplifications beyond it, such as an abstraction that would collapse surrounding code, as proposals for Kris.
 
 ## Cuts
 
 Apply each and keep only what survives:
 
 - **Deletion test.** Remove a helper, layer, or abstraction. If callers grow no more complex, it stays removed.
-- **One caller.** Inline anything called once.
+- **Pass-through.** Inline a single-caller helper that only forwards, renames, or wraps. A function that owns a named concept or invariant stays.
 - **Speculative paths.** Delete configuration, flags, adapters, fallbacks, and error handling for situations the accepted scope does not name.
 - **Dead code.** Delete unreachable branches, unused parameters, exports nothing imports, and comments that restate the code.
-- **Restatement.** Collapse duplicated logic into the one place the codebase already has for it, when that place exists. Do not create one.
+- **Restatement.** Collapse logic the change repeats into one owner: the codebase's existing one when it exists, otherwise a new one beside its callers. Fewer lines across all callers beats a smaller diff.
 - **Naming.** A name says what the thing is. Rename only when the old name misleads.
 
 ## Proof

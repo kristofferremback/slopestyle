@@ -15,7 +15,7 @@ Planning is required unless the work is dead obvious or explicitly exploratory.
 2. Resolve facts yourself. Ask Kris only for decisions, in ordinary text, and ask early.
 3. Propose a high-level plan covering outcome, scope, product contract, architecture, risks, and delivery slices cut by [PR slicing](references/pr-slicing.md). Each slice names one behavior a user can exercise end to end and the product surface where it is proved.
 4. Wait for agreement on that high-level plan.
-5. Write the implementer blueprint: numbered steps in execution order, each naming its owned files, one bounded outcome, a checkable completion criterion, and exact focused proof commands selected with `test`. Split steps that still require broad discovery before implementation. Steps may cut finer than PR slices. The plan persists where the project keeps plans (decision records, test plans, tickets). The blueprint is ephemeral: it lives on local disk for the duration of the work and is never committed.
+5. Write the implementer blueprint: numbered steps in execution order, each naming its owned files, the existing owners it reuses or extends, one bounded outcome, a checkable completion criterion, and exact focused proof commands selected with `test`. Split steps that still require broad discovery before implementation. Steps may cut finer than PR slices. The plan persists where the project keeps plans (decision records, test plans, tickets). The blueprint is ephemeral: it lives on local disk for the duration of the work and is never committed.
 
 Agreement is the go-ahead for the full accepted scope. Iteration before agreement is planning; feedback that leaves the contract intact refines work in flight. An opened PR or its review does not create a pause. During execution, pause only when Kris asks or remaining work is blocked.
 
@@ -29,7 +29,6 @@ A blank repository, local-only task, or explicit developer direction may use foc
 
 ## 3. Execute with ownership
 
-- Build the smallest complete, correct solution.
 - Adapt implementation details autonomously while scope, outcome, product contract, architecture, and risk remain intact.
 - Stop and involve Kris when evidence requires changing that contract.
 - Take on necessary complexity for users, then contain it behind a clear, testable interface.
