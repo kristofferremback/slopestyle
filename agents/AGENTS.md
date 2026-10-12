@@ -12,7 +12,9 @@ Kris lives in the real world, not in UTC. When you need to refer to a time that 
 
 Routine updates and final replies should usually be 3 to 6 lines covering outcomes, evidence, direct links, and real caveats. Separate observed or reproduced evidence from inference and unverified claims. Write lists as bullets or numbered items, one per line. I find semicolon separated lists unreadable. Lists don't count against the line budget.
 
-I expect high agency through implementation, through the PR stack, checks, reviews, fixes, and re-review. Stop when everything is ready to merge. I'll let you know when to merge or deploy, don't merge without my explicit permission.
+I own scope; you own how it gets built. Deliver everything I ask for, as I asked it. When you think part of a request is wrong or unnecessary, say so in a message and still deliver it unless it's blocked or I change it. Narrowing, dropping, or substituting requested work needs my agreement.
+
+I expect high agency in finishing that scope: implementation, the PR stack, checks, reviews, fixes, and re-review. Stop when everything is ready to merge. I'll let you know when to merge or deploy, don't merge without my explicit permission.
 
 Don't speak *as me*. Never open issues, pull requests, comments, or contact maintainers in someone else's repository unless I explicitly ask while we're working on that repository. Finding an upstream bug or improvement does not authorize outreach.
 
@@ -26,9 +28,9 @@ Treat dependencies like source code. Prefer permissive licenses, and add one onl
 
 ## Engineering defaults
 
-Treat the implementation as provisional. Optimize for the smallest coherent design that satisfies the actual requirements. Challenge unnecessary behavior before repairing its edge cases. When additional machinery seems necessary, explain which requirement needs it and why a simpler ownership or data-flow model is insufficient.
+Treat your implementation as provisional. Optimize for the smallest coherent design that delivers the requested scope. Challenge behavior you introduced before repairing its edge cases. When additional machinery seems necessary, explain which requirement needs it and why a simpler ownership or data-flow model is insufficient.
 
-- Build the smallest complete, correct solution. Prefer correctness, simplicity, reuse, reversibility, then cost. More code means more maintenance.
+- Build the smallest complete, correct solution, measured across the whole codebase rather than the diff. Prefer correctness, simplicity, reuse, reversibility, then cost. More code means more maintenance.
 - Take on necessary complexity so users don't have to. Contain it inside a clear, testable boundary.
 - Avoid speculative features, configuration, abstractions, compatibility layers, and unrelated cleanup.
 - Seek prior art before designing. Read nearby code, history, docs, conventions, components, and dependencies. Reuse established paths unless evidence contradicts them.
@@ -36,7 +38,7 @@ Treat the implementation as provisional. Optimize for the smallest coherent desi
 - Before implementing, restate the agreeed design in a few, simple sentences. If the code later needs to depart from the agreed upon plan materially, stop and ask for guidance.
 - Prefer retryable atomic operations that fail early. Avoid partial state, contain failure within its boundary, and notify users only when the system cannot recover for them.
 - Make dependencies explicit and own their lifecycle where they are created.
-- Centralize behavior once it is shared, never in anticipation.
+- Give each rule one owner. Before writing logic, find where the codebase already does it and reuse or extend that owner. When the same logic appears a second time, extract one owner and point every caller at it. Abstract real repetition, not anticipated repetition.
 - Prefer race-safe writes, short scarce-resource lifetimes, boundary validation, one source of truth, and workflow state separate from domain state.
 - Comments explain what code cannot. Dead code is deleted. Good code is boring, explicit, and typed.
 - Test observable behavior at the highest practical layer. Prefer integrations over mocks. Green means green. Regression tests are earned.
