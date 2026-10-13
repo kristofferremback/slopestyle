@@ -117,6 +117,19 @@
       "provenance": "original"
     },
     {
+      "name": "describe-changes",
+      "path": "skills/describe-changes",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "frontend",
       "path": "skills/frontend",
       "targets": [
