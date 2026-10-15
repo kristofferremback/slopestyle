@@ -11,9 +11,9 @@ Own the accepted outcome from discovery through review-ready work. Stop before m
 
 Planning is required unless the work is dead obvious or explicitly exploratory.
 
-1. Investigate prior art in code, history, docs, components, conventions, and dependencies. Discovery is scoped to the first slice: read the files that slice touches yourself and dispatch one explorer per open question at medium breadth. Findings land in the blueprint; the explorer's transcript does not.
+1. Investigate prior art in code, history, docs, components, conventions, and dependencies. When continuing existing work, distinguish approved foundations, including unmerged stack parents, from proposals superseded by the current scope. Classify inherited work as retain, rework, remove, or defer; coordinate changes to work owned by others. Discovery is scoped to the first slice: read the files that slice touches yourself and dispatch one explorer per open question at medium breadth. Findings land in the blueprint; the explorer's transcript does not.
 2. Resolve facts yourself. Ask Kris only for decisions, in ordinary text, and ask early.
-3. Propose a high-level plan covering outcome, scope, product contract, architecture, risks, and delivery slices cut by [PR slicing](references/pr-slicing.md). Each slice names one behavior a user can exercise end to end and the product surface where it is proved.
+3. Propose a high-level plan covering outcome, scope, product contract, architecture, risks, and delivery slices cut by [PR slicing](references/pr-slicing.md). State the intended before and after behavior, including existing guarantees the change retains. Each slice names one behavior a user can exercise end to end, the product surface where it is proved, and its expected effort or size as a hypothesis to check. For each significant new state store, mechanism, service, or dependency, name the accepted requirement it serves and why an existing owner cannot serve it.
 4. Wait for agreement on that high-level plan.
 5. Write the implementer blueprint: numbered steps in execution order, each naming its owned files, the existing owners it reuses or extends, one bounded outcome, a checkable completion criterion, and exact focused proof commands selected with `test`. Split steps that still require broad discovery before implementation. Steps may cut finer than PR slices. The plan persists where the project keeps plans (decision records, test plans, tickets). The blueprint is ephemeral: it lives on local disk for the duration of the work and is never committed.
 
@@ -31,6 +31,8 @@ A blank repository, local-only task, or explicit developer direction may use foc
 
 - Adapt implementation details autonomously while scope, outcome, product contract, architecture, and risk remain intact.
 - Stop and involve Kris when evidence requires changing that contract.
+- Before accepting a step, reconcile its actual diff with the plan's behavior, owners, and justified additions. Resolve mismatches before continuing.
+- After a scope reset or substantial growth beyond the expected effort, re-check inherited work and additions against the latest agreement. A revised plan is complete only when its retain, rework, remove, and defer decisions are reflected in the remaining work.
 - Take on necessary complexity for users, then contain it behind a clear, testable interface.
 - Judge abstractions by caller leverage. Use the deletion test: a useful module's removal pushes complexity back into callers.
 - Introduce seams for real variation, not hypothetical adapters. Prefer tests and callers crossing the same public seam.
@@ -53,7 +55,7 @@ For long, ambitious, or unattended work, keep the decision trail described in [d
 
 At each completed review boundary:
 
-1. Run one fresh low-effort subagent with `simplify` over the complete PR diff, even for a small PR. This pass belongs to the PR, not each implementation step. Hand it the accumulated proof evidence. Later review fixes get focused simplification of their delta, not another full-PR pass unless they materially change the design.
+1. Run one fresh low-effort subagent with `simplify` over the complete PR diff, even for a small PR. This pass belongs to the PR, not each implementation step. Hand it the accepted scope and accumulated proof evidence. Later review fixes get focused simplification of their delta, not another full-PR pass unless they materially change the design.
 2. Load `review` for self-review and the completed PR's coverage ledger, grouped fresh review rounds, fact-check, anchoring, and report.
 3. Load `ship` to verify, commit owned work, push, and open or update the PR or stack.
 4. Start `shepherd` in the background for each opened PR.

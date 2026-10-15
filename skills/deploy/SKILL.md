@@ -18,7 +18,9 @@ If approval is ambiguous about any PR, environment, migration, or rollout step, 
 
 ## Merge and roll out
 
-- Preserve the reviewed order and stack relationships.
+- Treat the approved PR set or contiguous stack as the delivery unit. Preserve its reviewed order and relationships using the repository's stack or merge-queue workflow.
+- At a blocked gate, diagnose against the current heads first. Before a workaround, identify checks, approvals, or proof it invalidates across the delivery unit and the downstream work it creates. Choose the supported path that advances the whole outcome with the least avoidable rework. Partial merges and rebases can change downstream heads; inspect the tooling's behavior before using them as a workaround.
+- Explain a material change in delivery strategy and its downstream cost before acting. Continue within existing authorization; ask only when the change needs a decision beyond it. Routine steps in an approved merge queue or a necessary rebase follow repository guidance.
 - Record every merged commit and deployed revision.
 - Follow the repository's release path exactly. Do not improvise provider, environment, or migration behavior.
 - Keep operations retryable and observable. Stop on unknown partial state.
