@@ -12,6 +12,10 @@ The default. A slice is a tracer bullet: one representative behavior through eve
 
 Use for broad refactors or shared mechanisms. Introduce the new path through one representative real use. Review that mechanism deeply, then roll it out broadly in a follow-up reviewed for completeness.
 
+## Refactor first
+
+Keep an agreed enabling refactor separately reviewable from the behavior it enables, usually as a preceding commit in the same slice. Prove preserved behavior at that intermediate step before adding new behavior. Use a prerequisite PR when the refactor's reach, such as shared infrastructure or many unrelated callers, makes preservation a review question of its own. The existing behavior it preserves is what a reviewer exercises.
+
 ## Contract first
 
 The exception. Use only when an API, schema, document, or library contract needs independent agreement before its implementations or consumers proceed, and name that reason in the plan. Otherwise the contract lands inside the first slice that uses it.

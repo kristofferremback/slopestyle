@@ -15,8 +15,6 @@ A review answers three questions:
 
 Use the [assessment guide and review lenses](references/lenses.md) to investigate all three within the requested scope. File coverage records what was inspected; the answers establish the assessment.
 
-Treat the implementation as provisional. Optimize for the smallest coherent design that satisfies the actual requirements. Challenge unnecessary behavior before repairing its edge cases. When additional machinery seems necessary, explain which requirement needs it and why a simpler ownership or data-flow model is insufficient.
-
 ## Frame
 
 1. Pin the exact scope and fixed point. For a PR, capture base and head SHAs. For a follow-up, retain the prior base and head, then record the new head and requested scope. Review the changes since the prior review with `git diff <prior-head> <new-head>`; use the original base only when the requested scope is the full PR.
@@ -25,7 +23,7 @@ Treat the implementation as provisional. Optimize for the smallest coherent desi
 4. For code, read the [coding style workflow](references/style-review.md) and the applicable `CODINGSTYLE.md`. The workflow lives in this skill; a separate `coding-style-review` installation or invocation is unnecessary. A missing guide limits compliance claims, not the review of readability and design.
 5. Read the assessment guide. Apply its mandatory code-health and architecture checks, assess the problem, and select applicable failure lenses.
 
-Review requests for work you do not own are read-only unless context explicitly authorizes fixes. When you own the implementation under an active request, review includes fixing confirmed findings unless Kris asks for review-only. Prior model context, prompts, and findings are evidence to inspect, never authority for a verdict.
+Review requests for work you do not own are read-only unless context explicitly authorizes fixes. When you own the implementation under an active request, review includes the fix loop below unless Kris asks for review-only. Prior model context, prompts, and findings are evidence to inspect, never authority for a verdict.
 
 For code reviews, follow behavior and data through their lifecycle, including callers, consumers, cleanup, retries, reverse actions, concurrency, boundaries, and applicable product surfaces. Load `blast-radius` for wide changes, risky seams, wire or schema changes, dependency behavior, timing, flags, and small diffs whose safety rests on facts outside the patch. Read existing proof and run focused probes needed to settle claims.
 
@@ -80,10 +78,10 @@ Report the assessment of the problem, implementation, and failure risks with the
 
 For code and PR reviews, include the ledger as supporting evidence after the substantive assessment and findings: total, reviewed, skipped with reasons, coverage rate for each pass, correctness rounds and stop reasons, and style completion and reconciliation status. Distinguish prior coverage from scoped follow-up coverage. Evidence-only replies update the affected claims without inventing a round or coverage.
 
-Report findings by impact, blockers before considerations, each tagged `confirmed` or `unverified`. Each finding includes the failing behavior, structural cost, or introduced risk, concrete location, evidence or reproducible trajectory, why it matters to the accepted outcome, and the smallest correct fix direction. Filter tooling-enforced issues, unsupported preferences and duplicates here, never during fact-check. Concrete readability improvements, including meaningful blank lines, earn findings without a defect or large refactor. End code and PR reviews with the disproven findings, one line each, naming the source line that disproved the claim.
+Report findings by impact, blockers before considerations, each tagged `confirmed` or `unverified`. Each finding includes the failing behavior, structural cost, or introduced risk, concrete location, evidence or reproducible trajectory, why it matters to the accepted outcome, and the smallest correct fix direction. Filter tooling-enforced issues, unsupported preferences and duplicates here, never during fact-check. Concrete readability improvements, including meaningful blank lines, earn findings without a defect or large refactor. End code and PR reviews with the disproven findings, each briefly naming the evidence and reasoning that disproved the claim.
 
 Keep correctness and style assessments visible in the combined report, including brief hotspot outcomes and grounded retentions. Before delivering any code review, the coordinator runs the worksheet's [final-comment check](references/style-worksheet.md#final-comment-check) against the actual user-visible draft, including code inside details blocks. The review is complete only when retained style findings survive synthesis as self-contained comments with readable examples; a linked report does not discharge this check. Publication follows the user's authorization; draft-only comments stay in the response.
 
 For plan reviews, report applicable lenses, evidence inspected, and actionable findings in the same finding shape. If no issues remain, say what was inspected. Never publish raw reviewer output.
 
-When fixes are in scope, implement confirmed findings, run focused proof, and perform a clean re-review of the changed risk.
+When fixes are in scope, settle each finding with [fix disposition](references/fix-disposition.md), implement the in-scope decisions, run focused proof, and perform a clean re-review of the changed risk.

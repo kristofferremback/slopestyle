@@ -39,10 +39,7 @@ The owning agent handles each actionable report:
 
 - Reproduce failures with the repository's locked dependencies and CI command. For formatting failures, align the local formatter with CI before editing; temporary dependency installs can change the version used by commit hooks.
 - Distinguish repository failures from infrastructure flakes. Retry only known retryable failures and make retries visible.
-- Verify bot and human findings against source and accepted intent before changing code.
-- Fix correctness, product-contract, security, data, accessibility, and maintainability issues within scope.
-- Dismiss false positives and out-of-scope suggestions with a concise written reason.
-- Never let review feedback expand the accepted outcome. Necessary adjacent work gets its own boundary or returns to Kris when it changes the contract.
+- Verify bot and human findings against source and accepted intent, then settle them with [`review`'s fix disposition](../review/references/fix-disposition.md). Explain false positives and deferred proposals with their evidence or scope reason.
 - Keep the branch current with its base when repository workflow requires it.
 - If another PR makes this one obsolete or changes its assumptions, stop, report the evidence, and ask before closing.
 
