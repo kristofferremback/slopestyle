@@ -28,7 +28,7 @@ Review existing global guidance and skills, then install:
 
 The machine must match a host in `hosts.json`. See [host selection](#host-selection) when registering or renaming a machine.
 
-The installer automatically backs up and migrates the known unmodified external `unslop` installation and the [original Datadog directory](#host-selection). It refuses modified copies and other existing files or skill directories. After reviewing an ordinary installation conflict, allow a one-time backup and replacement with:
+The installer automatically backs up and migrates the known unmodified external `unslop` installation. It refuses modified copies and other existing files or skill directories. After reviewing an ordinary installation conflict, allow a one-time backup and replacement with:
 
 ```bash
 ./scripts/install.ts --replace

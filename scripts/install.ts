@@ -68,6 +68,7 @@ const hosts = loadHosts();
 validateManagedNames(hosts, manifest.skills.map((entry) => entry.name), subagentMatrix().map((entry) => entry.name));
 const selectedHost = resolveHost(home, hosts);
 console.log(`Selected host: ${selectedHost}`);
+
 const legacyThrea = [
   resolve(home, ".pi/agent/skills/threa-cli"),
   resolve(home, ".claude/skills/threa-cli"),
