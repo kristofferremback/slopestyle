@@ -201,13 +201,12 @@ test("synchronizes a stable runtime safely", () => {
 
   expect(sync().exitCode).toBe(0);
   const notificationsBeforePersistentFailure = readFileSync(notificationLog, "utf8").trim().split("\n").filter(Boolean).length;
-  git(runtime, "checkout", "-q", "-b", "non-main");
+  git(runtime, "remote", "remove", "origin");
   expect(sync().exitCode).not.toBe(0);
   expect(sync().exitCode).not.toBe(0);
   expect(readFileSync(resolve(state, "status"), "utf8")).toContain("failure phase=checking runtime checkout");
   expect(readFileSync(notificationLog, "utf8").trim().split("\n").filter(Boolean)).toHaveLength(notificationsBeforePersistentFailure + 1);
-  git(runtime, "checkout", "-q", "main");
-  git(runtime, "branch", "-q", "-D", "non-main");
+  git(runtime, "remote", "add", "origin", runtimeOrigin);
 
   const staleWorktree = resolve(state, "validate.stale/repo");
   git(runtime, "worktree", "add", "--detach", staleWorktree, "HEAD");
@@ -272,8 +271,11 @@ test("synchronizes a stable runtime safely", () => {
   commitAll(publisher, "Break fetched validation");
   git(publisher, "push", "-q");
   const beforeInvalid = git(runtime, "rev-parse", "HEAD").stdout.trim();
+  const localEdit = resolve(runtime, "local-edit");
+  writeFileSync(localEdit, "kept until validation passes\n");
   expect(sync().exitCode).not.toBe(0);
   expect(git(runtime, "rev-parse", "HEAD").stdout.trim()).toBe(beforeInvalid);
+  expect(readFileSync(localEdit, "utf8")).toBe("kept until validation passes\n");
   expect(readdirSync(state).filter((name) => name.startsWith("validate."))).toHaveLength(0);
   expect(git(runtime, "worktree", "list", "--porcelain").stdout.match(/^worktree /gm)).toHaveLength(1);
 
@@ -281,25 +283,53 @@ test("synchronizes a stable runtime safely", () => {
   commitAll(publisher, "Restore fetched validation");
   git(publisher, "push", "-q");
   expect(sync().exitCode).toBe(0);
+  expect(existsSync(localEdit)).toBe(false);
 
+  const untrackedDirectory = resolve(runtime, "skills/why/__pycache__");
   appendFileSync(resolve(runtime, "README.md"), "local change\n");
+  mkdirSync(untrackedDirectory, { recursive: true });
+  writeFileSync(resolve(untrackedDirectory, "cached.pyc"), "cached\n");
+  succeeds(["git", "init", "-q", resolve(runtime, "nested-clone")]);
   writeFileSync(resolve(publisher, "sync-test-marker"), "second update\n");
   commitAll(publisher, "Add second update");
   git(publisher, "push", "-q");
-  const beforeDirty = git(runtime, "rev-parse", "HEAD").stdout.trim();
-  expect(sync().exitCode).not.toBe(0);
-  expect(git(runtime, "rev-parse", "HEAD").stdout.trim()).toBe(beforeDirty);
-  git(runtime, "checkout", "-q", "--", "README.md");
-  expect(sync().exitCode).toBe(0);
 
+  const replacedChanges = sync();
+  expect(replacedChanges.exitCode).toBe(0);
+  expect(replacedChanges.stdout).toContain("Discarding local runtime changes:\n M README.md");
+  expect(git(runtime, "rev-parse", "HEAD").stdout.trim()).toBe(git(publisher, "rev-parse", "HEAD").stdout.trim());
+  expect(git(runtime, "status", "--porcelain").stdout).toBe("");
+  expect(readFileSync(resolve(runtime, "sync-test-marker"), "utf8")).toBe("second update\n");
+  expect(existsSync(untrackedDirectory)).toBe(false);
+  expect(existsSync(resolve(runtime, "nested-clone"))).toBe(false);
+  expect(existsSync(resolve(runtime, "node_modules"))).toBe(true);
+
+  const untrackedWithoutUpdate = resolve(runtime, "untracked-without-update");
+  git(runtime, "checkout", "-q", "--detach");
+  writeFileSync(untrackedWithoutUpdate, "untracked\n");
+
+  const replacedDetached = sync();
+  expect(replacedDetached.exitCode).toBe(0);
+  expect(replacedDetached.stdout).toContain("Replacing detached HEAD with main.");
+  expect(git(runtime, "symbolic-ref", "--short", "HEAD").stdout.trim()).toBe("main");
+  expect(existsSync(untrackedWithoutUpdate)).toBe(false);
+
+  git(runtime, "checkout", "-q", "-b", "local-work");
   writeFileSync(resolve(runtime, "runtime-only"), "runtime divergence\n");
   commitAll(runtime, "Create runtime divergence");
+  const localHead = git(runtime, "rev-parse", "HEAD").stdout.trim();
   writeFileSync(resolve(publisher, "remote-only"), "remote divergence\n");
   commitAll(publisher, "Create remote divergence");
   git(publisher, "push", "-q");
-  const beforeDivergence = git(runtime, "rev-parse", "HEAD").stdout.trim();
-  expect(sync().exitCode).not.toBe(0);
-  expect(git(runtime, "rev-parse", "HEAD").stdout.trim()).toBe(beforeDivergence);
+
+  const replacedDivergence = sync();
+  expect(replacedDivergence.exitCode).toBe(0);
+  expect(replacedDivergence.stdout).toContain("Replacing branch local-work with main.");
+  expect(replacedDivergence.stdout).toContain(`previous HEAD ${localHead} remains in the reflog`);
+  expect(git(runtime, "rev-parse", "HEAD").stdout.trim()).toBe(git(publisher, "rev-parse", "HEAD").stdout.trim());
+  expect(git(runtime, "symbolic-ref", "--short", "HEAD").stdout.trim()).toBe("main");
+  expect(existsSync(resolve(runtime, "runtime-only"))).toBe(false);
+  succeeds([resolve(runtime, "scripts/check.ts"), "--installed"]);
 }, 120_000);
 
 test("migrates the merged shell synchronizer and scheduler", () => {

@@ -50,9 +50,11 @@ Raise the minimum Bun version only after every machine can run it. CI reads the 
 
 ## Synchronization behavior
 
-`scripts/sync.ts` updates only a clean `main` checkout by fast-forwarding to `origin/main`. Before changing the runtime, it validates the fetched commit in a temporary worktree and checks local installation conflicts. It then fast-forwards the runtime, reconciles local links, and checks installed state.
+`scripts/sync.ts` keeps the runtime checkout identical to `origin/main`. Before changing the runtime, it validates the fetched commit in a temporary worktree and checks local installation conflicts. It then checks out `main` at that commit, removes untracked files that are not ignored, reconciles local links, and checks installed state.
 
-The sync refuses dirty, divergent, detached, or non-`main` checkouts. It never resets, rebases, stashes, or discards changes. A SQLite transaction prevents concurrent runs and releases automatically after a crash. Failures return a nonzero status, write `~/.local/state/slopestyle/status`, and append details to a bounded `~/.local/state/slopestyle/sync.log`. Failures that need intervention request a desktop notification when the platform supports one. Fetch failures notify only after four consecutive attempts and recover silently when the network returns.
+The runtime is a mirror, not a workspace. Sync discards local edits, untracked files, and local commits, switches a detached HEAD or another branch back to `main`, and logs what it replaced to `sync.log`. Replaced commits remain in the reflog. Ignored files such as `node_modules/` survive. A fetched commit that fails validation leaves the runtime unchanged.
+
+A SQLite transaction prevents concurrent runs and releases automatically after a crash. Failures return a nonzero status, write `~/.local/state/slopestyle/status`, and append details to a bounded `~/.local/state/slopestyle/sync.log`. Failures that need intervention request a desktop notification when the platform supports one. Fetch failures notify only after four consecutive attempts and recover silently when the network returns.
 
 `origin/main` is a full-trust boundary because validation executes its checked-in scripts. Pull request review and passing CI are the controls before merge. Point the runtime remote only at the canonical repository.
 
@@ -208,7 +210,7 @@ Repository layout:
 - `subagents/`: generated Claude Code subagent definitions, one per model and effort
 - `scripts/install.ts`: safe runtime installation
 - `scripts/heavy-check.ts`: user-wide serialization for resource-heavy local commands
-- `scripts/sync.ts`: validated fast-forward synchronization
+- `scripts/sync.ts`: validated mirror synchronization
 - `scripts/schedule-sync.ts`: Linux and macOS scheduler management
 - `scripts/check.ts`: source and installed-state validation
 - `scripts/ports.ts`: persistent local and Tailscale port allocation
