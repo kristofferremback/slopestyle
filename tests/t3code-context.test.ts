@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 const script = resolve(
     import.meta.dir,
-    "../skills/t3code-context/scripts/threads.py",
+    "../skills/t3code-context/scripts/threads.ts",
   ),
   dirs: string[] = [];
 function fixture(optional = true) {
@@ -182,7 +182,7 @@ INSERT INTO orchestration_v2_projection_turn_items VALUES('ti1','active',1,'user
   return f;
 }
 function cli(path: string, ...args: string[]) {
-  const r = Bun.spawnSync(["python3", script, "--db", path, ...args], {
+  const r = Bun.spawnSync([process.execPath, script, "--db", path, ...args], {
       stdout: "pipe",
       stderr: "pipe",
     }),
@@ -258,6 +258,18 @@ describe("t3code-context SQLite reader", () => {
     const capped = cli(f.path, "list", "--search", "e", "--matches", "1").json;
     expect(capped.items[0].matches.length).toBe(1);
     expect(capped.items[0].more_matches).toBe(true);
+    f.db.close();
+  });
+  test("should never split astral characters in search snippets", () => {
+    const f = fixture();
+    f.db
+      .query(
+        "UPDATE projection_thread_messages SET text=? WHERE message_id='m2'",
+      )
+      .run(`${"😀".repeat(81)} needle`);
+    const [match] = cli(f.path, "list", "--search", "needle").json.items[0]
+      .matches;
+    expect(match.snippet).toBe(`…${"😀".repeat(79)} needle`);
     f.db.close();
   });
   test("should filter threads by update window", () => {

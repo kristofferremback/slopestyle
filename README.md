@@ -28,7 +28,7 @@ Review existing global guidance and skills, then install:
 
 The machine must match a host in `hosts.json`. See [host selection](#host-selection) when registering or renaming a machine.
 
-The installer automatically backs up and migrates the known unmodified external `unslop` installation and the [original Datadog directory](#host-selection). It refuses modified copies and other existing files or skill directories. After reviewing an ordinary installation conflict, allow a one-time backup and replacement with:
+The installer automatically backs up and migrates the known unmodified external `unslop` installation. It refuses modified copies and other existing files or skill directories. After reviewing an ordinary installation conflict, allow a one-time backup and replacement with:
 
 ```bash
 ./scripts/install.ts --replace
@@ -119,8 +119,6 @@ The registry's `skills` and `subagents` maps restrict managed entries by name. A
 This example shows the two restriction maps. The checked-in registry restricts Datadog to the laptop and slopshare to homelab. Its `hosts` map defines machine IDs and their `aliases`. Unknown skill, subagent, or host names and ambiguous aliases fail validation.
 
 Installation, preflight, and `check.ts --installed` use the same host selection. Sync removes excluded Slopestyle symlinks and installs newly enabled entries. Unrelated local files, vendor skills, shared global guidance, and command-line tools remain outside these restrictions. Host selection controls discovery through managed installations, not filesystem access to skill sources.
-
-Datadog includes a one-time migration for the original `~/.codex/skills/datadog` directory. After installing the selected skills and subagents, installation backs up that exact known copy under `~/.slopestyle/backups`. This also removes the old copy from discovery on a host where Datadog is excluded. Extra entries, symlinks, or changed content stop migration, including with `--replace`. Review and move a changed copy outside the skills directories before retrying. The migrated skill resolves its helper relative to its own directory.
 
 ## Usage dashboard
 

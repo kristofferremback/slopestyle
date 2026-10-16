@@ -156,10 +156,6 @@ if (installed) {
     assert(isSymlink(target), `Expected installed symlink: ${target}`);
     assert(resolvedPath(target) === resolvedPath(source), `Wrong installed target: ${target}`);
   };
-  if (pathExists(resolve(home, ".codex/skills/datadog"))) {
-    throw new Error(`Legacy Datadog skill remains at ${resolve(home, ".codex/skills/datadog")}. Re-run installation to migrate it.`);
-  }
-
   checkLink(resolve(home, ".pi/agent/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(home, ".claude/CLAUDE.md"), resolve(repoRoot, "agents/CLAUDE.md"));

@@ -5,16 +5,16 @@ description: Use when finding, reading, or carrying context between T3 Code thre
 
 # T3 Code context
 
-Read a T3 Code thread and recover the context another thread needs. Run the bundled Python 3 reader from this skill's directory. It reads local SQLite state in a read-only transaction.
+Read a T3 Code thread and recover the context another thread needs. Run the bundled Bun reader from this skill's directory. It reads local SQLite state in a read-only transaction.
 
 ## Find and read
 
 Start with the supplied T3 thread ID. Inside T3, the connected `t3_thread_search`, `t3_thread_list`, and `t3_thread_read` tools answer quick lookups of active threads. Their search is capped and scoped to one project. Use this reader when a search must be exhaustive, reach archived threads, match tool output, or run outside T3:
 
 ```sh
-python3 scripts/threads.py list --search 'topic' --project '/path/to/project' --since 2026-10-01
-python3 scripts/threads.py inspect THREAD_ID
-python3 scripts/threads.py read THREAD_ID messages --limit 50 --offset 0
+bun scripts/threads.ts list --search 'topic' --project '/path/to/project' --since 2026-10-01
+bun scripts/threads.ts inspect THREAD_ID
+bun scripts/threads.ts read THREAD_ID messages --limit 50 --offset 0
 ```
 
 Search is literal and ignores ASCII case. It covers titles, messages, activities (tool calls and output), plans, and subagents; `--messages-only` narrows it. Each thread lists its first matches with section, item ID, timestamp, and snippet. `search.unavailable` names sections that could not be searched. Activity payloads are searched as stored JSON, so a phrase containing quotes or line breaks can miss; search a distinctive fragment such as an ID, path, or command. `--since` and `--until` filter by last update.
@@ -32,8 +32,8 @@ Current projections reflect edits and rewinds. Audit events and provider logs ca
 Create a portable export outside the repository:
 
 ```sh
-python3 scripts/threads.py export THREAD_ID --output /tmp/t3-thread-context.md
-python3 scripts/threads.py export THREAD_ID --format json --output /tmp/t3-thread-context.json
+bun scripts/threads.ts export THREAD_ID --output /tmp/t3-thread-context.md
+bun scripts/threads.ts export THREAD_ID --format json --output /tmp/t3-thread-context.json
 ```
 
 Markdown includes the conversation, plans, work metadata, and activity summaries. It identifies omitted tool payloads and audit events. JSON includes full available current projections, including activity payloads. Neither export reads attachment bytes or provider-log contents. Output paths must be new files. Exports can contain private conversation and tool data, so inspect the relevant material before sharing it.
