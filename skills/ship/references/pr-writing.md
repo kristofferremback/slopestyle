@@ -20,7 +20,7 @@ Adapt examples to the repository. Never reuse wording that does not describe the
 
 Follow the repository's PR template when it has one. Otherwise, open with what the change does in one to three plain sentences, so a reader who stops there knows the outcome. Say what a reviewer must get right before explaining how it works, and explain why last. Never lead with the problem, an implementation inventory, or a long plan.
 
-Use only sections the change earns, in this order:
+Use only the parts the change earns, in this order. Don't title them with headings: the order carries the structure, and a horizontal rule sets the why apart.
 
 - **Summary** (no heading): the resulting behavior
 - **Focal point:** the decision, invariant, risk, or deploy constraint a reviewer must get right, including anything unproven
