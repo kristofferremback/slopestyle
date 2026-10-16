@@ -18,13 +18,15 @@ Adapt examples to the repository. Never reuse wording that does not describe the
 
 ## Body
 
-Lead with the user's problem in plain language. Explain the solution second. Do not lead with an implementation inventory or paste a long plan.
+Follow the repository's PR template when it has one. Otherwise, open with what the change does in one to three plain sentences, so a reader who stops there knows the outcome. Say what a reviewer must get right before explaining how it works, and explain why last. Never lead with the problem, an implementation inventory, or a long plan.
 
-Use only sections the change earns:
+Use only the parts the change earns, in this order. Let the order carry the structure: the why is the only part with a heading, `Background`, and a horizontal rule closes the prose before proof and metadata.
 
-- **Problem:** what failed or was missing and why it mattered
-- **Solution:** the resulting behavior and important design choice
-- **Proof:** observed tests, screenshots, traces, or other evidence
+- **Summary** (no heading): the resulting behavior
+- **Focal point:** the decision, invariant, risk, or deploy constraint a reviewer must get right, including anything unproven
+- **How it works:** the mechanism, not a file list
+- **Why:** what was missing or failed, when the summary leaves it unclear. A bug fix states the root cause and why it surfaced now.
+- **Proof:** observed tests, screenshots, traces, or other evidence. Where the host renders `<details>`, collapse long proof under a summary line that states the headline result and the biggest gap.
 - **Caveats:** real limits, follow-up boundaries, or unverified claims
 
 Link tickets, stacked dependencies, artifacts, and relevant product context directly. Make every claim true at the pushed head.
