@@ -120,8 +120,6 @@ This example shows the two restriction maps. The checked-in registry restricts D
 
 Installation, preflight, and `check.ts --installed` use the same host selection. Sync removes excluded Slopestyle symlinks and installs newly enabled entries. Unrelated local files, vendor skills, shared global guidance, and command-line tools remain outside these restrictions. Host selection controls discovery through managed installations, not filesystem access to skill sources.
 
-Datadog includes a one-time migration for the original `~/.codex/skills/datadog` directory. After installing the selected skills and subagents, installation backs up that exact known copy under `~/.slopestyle/backups`. This also removes the old copy from discovery on a host where Datadog is excluded. Extra entries, symlinks, or changed content stop migration, including with `--replace`. Review and move a changed copy outside the skills directories before retrying. The migrated skill resolves its helper relative to its own directory.
-
 ## Usage dashboard
 
 `scripts/usage.ts` installs as `~/.local/bin/slopestyle-usage`. It indexes Claude Code transcripts under `~/.claude/projects` and active and archived Codex transcripts under `~/.codex` into `~/.local/state/slopestyle/usage.sqlite`. Claude requests use API list prices as a subscription proxy. Codex requests use the [OpenAI pricing documentation](https://learn.chatgpt.com/docs/pricing) credit rate card. The dashboard shows the corresponding API-equivalent dollars first and raw credits second. Credit purchase prices vary by plan, so the dollar figure is a comparison rather than an invoice. Limit events in the Codex transcripts supply the real shared allowance percentage and reset time.

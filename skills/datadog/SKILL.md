@@ -21,16 +21,16 @@ Select authentication by the credential type, not its environment variable name:
 
 The token currently stored as `DATADOG_API_KEY` is a PAT. PATs and SATs authenticate alone. `/api/v1/validate` validates an API key and rejects a PAT sent as `DD-API-KEY`. Prove PAT access with the intended read endpoint instead. Trace search requires `apm_read` permission.
 
-Keep credentials in process memory and request headers. The helper passes headers to curl through stdin, keeping values out of command arguments and files. Disable shell tracing before sourcing credentials. Inspect presence and type without printing values. If authentication fails, check the scheme and current official documentation before asking Kris to replace a key. New credentials may take a few seconds to propagate.
+Keep credentials in process memory and request headers, out of command arguments and files. Disable shell tracing before sourcing credentials. Inspect presence and type without printing values. If authentication fails, check the scheme and current official documentation before asking Kris to replace a key. New credentials may take a few seconds to propagate.
 
 ## Query spans
 
-Use [scripts/spans.py](scripts/spans.py), which requires Python 3 and curl. Run the example from this skill's directory. It reads `DATADOG_API_KEY` or `DD_API_KEY`. Legacy authentication also reads `DATADOG_APP_KEY`, `DATADOG_APPLICATION_KEY`, or `DD_APP_KEY`.
+Use [scripts/spans.ts](scripts/spans.ts), which requires Bun. Run the example from this skill's directory. It reads `DATADOG_API_KEY` or `DD_API_KEY`. Legacy authentication also reads `DATADOG_APP_KEY`, `DATADOG_APPLICATION_KEY`, or `DD_APP_KEY`.
 
 ```sh
 set +x
 source /Users/kristofferremback/dev/personal/dotfiles/secrets/shell-credentials
-python3 scripts/spans.py \
+bun scripts/spans.ts \
   --query 'env:dev service:galdera-api resource_name:api.startup*' \
   --from now-1h --to now \
   --output /tmp/datadog-startup-spans.json

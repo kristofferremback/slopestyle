@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, relative, resolve } from "node:path";
 import {
   assert,
@@ -68,26 +68,6 @@ const hosts = loadHosts();
 validateManagedNames(hosts, manifest.skills.map((entry) => entry.name), subagentMatrix().map((entry) => entry.name));
 const selectedHost = resolveHost(home, hosts);
 console.log(`Selected host: ${selectedHost}`);
-const datadogLegacy = resolve(home, ".codex/skills/datadog");
-const legacyInventory = JSON.parse(readFileSync(resolve(repoRoot, "skills/datadog/legacy-codex.json"), "utf8")) as Record<string, string>;
-function exactLegacyDatadog(path: string): boolean {
-  if (!existsSync(path) || isSymlink(path) || !statSync(path).isDirectory()) return false;
-  const entries = readdirSync(path, { recursive: true }).filter((entry): entry is string => typeof entry === "string");
-  const expectedEntries = new Set(Object.keys(legacyInventory));
-  for (const file of Object.keys(legacyInventory)) {
-    for (let directory = dirname(file); directory !== "."; directory = dirname(directory)) expectedEntries.add(directory);
-  }
-  if (entries.sort().join("\n") !== [...expectedEntries].sort().join("\n")) return false;
-  if (entries.some((entry) => {
-    const stat = lstatSync(resolve(path, entry));
-    return Object.hasOwn(legacyInventory, entry) ? !stat.isFile() : !stat.isDirectory();
-  })) return false;
-  return Object.entries(legacyInventory).every(([file, hash]) => sha256File(resolve(path, file)) === hash);
-}
-const migrateDatadog = pathExists(datadogLegacy);
-if (migrateDatadog && !exactLegacyDatadog(datadogLegacy)) {
-  throw new Error(`Legacy Datadog at ${datadogLegacy} is changed or contains unexpected entries. Review and move it outside the skills directories before installing.`);
-}
 const legacyThrea = [
   resolve(home, ".pi/agent/skills/threa-cli"),
   resolve(home, ".claude/skills/threa-cli"),
@@ -237,12 +217,6 @@ for (const name of readdirSync(agentsRoot)) {
     rmSync(candidate);
     console.log(`Removed retired Slop(e)style subagent link: ${candidate}`);
   }
-}
-
-if (migrateDatadog) {
-  assert(exactLegacyDatadog(datadogLegacy), `Legacy Datadog changed during install: ${datadogLegacy}`);
-  backupTarget(datadogLegacy);
-  console.log("Backed up the exact legacy Datadog skill outside the skills directories.");
 }
 
 const schedulerInstalled = process.platform === "linux"

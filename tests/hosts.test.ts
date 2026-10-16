@@ -44,15 +44,6 @@ type Registry = { schemaVersion: number; hosts: Record<string, { aliases: string
 const registry = (root: string): Registry => JSON.parse(readFileSync(resolve(root, "hosts.json"), "utf8"));
 const writeRegistry = (runtime: string, value: Registry): void => writeFileSync(resolve(runtime, "hosts.json"), `${JSON.stringify(value, null, 2)}\n`);
 
-function originalDatadog(runtime: string, destination: string): void {
-  cpSync(resolve(runtime, "skills/datadog"), destination, { recursive: true });
-  rmSync(resolve(destination, "legacy-codex.json"));
-  const skill = readFileSync(resolve(destination, "SKILL.md"), "utf8")
-    .replace(" Run the example from this skill's directory.", "")
-    .replace("python3 scripts/spans.py", "python3 /Users/kristofferremback/.codex/skills/datadog/scripts/spans.py");
-  writeFileSync(resolve(destination, "SKILL.md"), skill);
-}
-
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 test("should resolve canonical pins and normalized hostnames", () => {
@@ -163,47 +154,3 @@ test("should scope preflight conflicts to entries enabled for the host", () => {
   pin(home, "homelab");
   expect(execute([resolve(runtime, "scripts/install.ts"), "--preflight-for", runtime], home).exitCode).not.toBe(0);
 });
-
-test("should migrate only the exact legacy Datadog inventory", () => {
-  const exact = fixture("legacy-exact");
-  originalDatadog(exact.runtime, resolve(exact.home, ".codex/skills/datadog"));
-  expect(execute([resolve(exact.runtime, "scripts/check.ts"), "--installed"], exact.home).stderr).toContain("Legacy Datadog skill remains");
-  succeeds([resolve(exact.runtime, "scripts/install.ts"), "--preflight-for", exact.runtime], exact.home);
-  const conflict = resolve(exact.home, ".agents/skills/datadog");
-  mkdirSync(conflict, { recursive: true });
-  writeFileSync(resolve(conflict, "local"), "foreign\n");
-  expect(execute([resolve(exact.runtime, "scripts/install.ts")], exact.home).exitCode).not.toBe(0);
-  expect(existsSync(resolve(exact.home, ".codex/skills/datadog/SKILL.md"))).toBe(true);
-  expect(existsSync(resolve(exact.home, ".slopestyle/backups"))).toBe(false);
-  rmSync(conflict, { recursive: true });
-  expect(succeeds([resolve(exact.runtime, "scripts/install.ts")], exact.home).stdout).toContain("Backed up the exact legacy Datadog skill");
-  expect(readlinkSync(resolve(exact.home, ".agents/skills/datadog"))).toBe(resolve(exact.runtime, "skills/datadog"));
-  const backups = readdirSync(resolve(exact.home, ".slopestyle/backups"), { recursive: true }).filter((path) => typeof path === "string" && path.endsWith(".codex/skills/datadog/SKILL.md"));
-  expect(backups).toHaveLength(1);
-  succeeds([resolve(exact.runtime, "scripts/check.ts"), "--installed"], exact.home);
-
-  const excluded = fixture("legacy-excluded", "homelab");
-  originalDatadog(excluded.runtime, resolve(excluded.home, ".codex/skills/datadog"));
-  succeeds([resolve(excluded.runtime, "scripts/install.ts")], excluded.home);
-  expect(existsSync(resolve(excluded.home, ".codex/skills/datadog"))).toBe(false);
-  expect(existsSync(resolve(excluded.home, ".agents/skills/datadog"))).toBe(false);
-  succeeds([resolve(excluded.runtime, "scripts/check.ts"), "--installed"], excluded.home);
-
-  for (const variant of ["changed", "extra", "empty-directory", "symlink"] as const) {
-    const current = fixture(`legacy-${variant}`, variant === "extra" ? "homelab" : "kristoffer-mbp-galdera");
-    const legacy = resolve(current.home, ".codex/skills/datadog");
-    originalDatadog(current.runtime, legacy);
-    if (variant === "changed") writeFileSync(resolve(legacy, "SKILL.md"), "changed\n");
-    if (variant === "extra") writeFileSync(resolve(legacy, "extra"), "unexpected\n");
-    if (variant === "empty-directory") mkdirSync(resolve(legacy, "extra"));
-    if (variant === "symlink") symlinkSync("SKILL.md", resolve(legacy, "extra-link"));
-    const marker = resolve(current.home, ".pi/agent/AGENTS.md");
-    mkdirSync(resolve(current.home, ".pi/agent"), { recursive: true });
-    writeFileSync(marker, "unchanged\n");
-    const rejected = execute([resolve(current.runtime, "scripts/install.ts"), "--replace"], current.home);
-    expect(rejected.exitCode).not.toBe(0);
-    expect(rejected.stderr).toContain("changed or contains unexpected entries");
-    expect(readFileSync(marker, "utf8")).toBe("unchanged\n");
-    expect(existsSync(resolve(current.home, ".slopestyle/backups"))).toBe(false);
-  }
-}, 120_000);

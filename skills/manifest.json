@@ -80,8 +80,7 @@
         "hermes"
       ],
       "requires": [
-        "Python 3",
-        "curl",
+        "Bun",
         "local Galdera Datadog credentials"
       ],
       "source": "slopestyle",
@@ -407,7 +406,7 @@
         "hermes"
       ],
       "requires": [
-        "Python 3 with sqlite3",
+        "Bun",
         "read access to the selected T3 Code state database"
       ],
       "source": "slopestyle",
