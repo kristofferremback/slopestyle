@@ -10,6 +10,7 @@ import {
   resolvedPath,
   run,
   runOrThrow,
+  type RunResult,
   stableRoot,
   stateRoot,
 } from "./lib/core.ts";
@@ -95,6 +96,10 @@ function git(args: string[], quiet = false): string {
   return runOrThrow(["git", "-C", runtimeRoot, ...args], { ...commandOptions, quiet }).stdout.trim();
 }
 
+function gitProbe(args: string[]): RunResult {
+  return run(["git", "-C", runtimeRoot, ...args], { quiet: true });
+}
+
 function script(path: string, args: string[] = [], quiet = false) {
   return run([process.execPath, path, ...args], { ...commandOptions, env: process.env, quiet });
 }
@@ -108,20 +113,17 @@ try {
   assert(existsSync(resolve(runtimeRoot, ".git")) && resolvedPath(runtimeRoot) === repoRoot, `Sync must run from the stable runtime checkout at ${runtimeRoot}.`);
   assert(git(["rev-parse", "--show-toplevel"], true) === repoRoot, "Sync must run from the root of its Slop(e)style checkout.");
   git(["worktree", "prune"], true);
-  assert(git(["symbolic-ref", "--quiet", "--short", "HEAD"], true) === "main", `Runtime checkout must be on main: ${runtimeRoot}`);
-  assert(git(["status", "--porcelain"], true) === "", `Runtime checkout is dirty; refusing to update: ${runtimeRoot}`);
-  assert(run(["git", "-C", runtimeRoot, "remote", "get-url", "origin"], { quiet: true }).exitCode === 0, `Runtime checkout has no origin remote: ${runtimeRoot}`);
+  assert(gitProbe(["remote", "get-url", "origin"]).exitCode === 0, `Runtime checkout has no origin remote: ${runtimeRoot}`);
+  const branch = gitProbe(["symbolic-ref", "--quiet", "--short", "HEAD"]).stdout.trim() || undefined;
+  const localChanges = runOrThrow(["git", "-C", runtimeRoot, "status", "--porcelain"], { quiet: true }).stdout.trimEnd();
 
   phase = "fetching origin/main";
   git(["fetch", "--prune", "origin", "main"]);
-  assert(run(["git", "-C", runtimeRoot, "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"], { quiet: true }).exitCode === 0, "origin/main is unavailable after fetch.");
+  assert(gitProbe(["show-ref", "--verify", "--quiet", "refs/remotes/origin/main"]).exitCode === 0, "origin/main is unavailable after fetch.");
 
   const current = git(["rev-parse", "HEAD"], true);
   const target = git(["rev-parse", "origin/main"], true);
   if (current !== target) {
-    phase = "checking fast-forward";
-    assert(run(["git", "-C", runtimeRoot, "merge-base", "--is-ancestor", current, target], { quiet: true }).exitCode === 0, "Runtime checkout has diverged from origin/main; refusing to update.");
-
     phase = "validating fetched main";
     validationDirectory = mkdtempSync(resolve(state, "validate."));
     const validationRepo = resolve(validationDirectory, "repo");
@@ -131,13 +133,24 @@ try {
     git(["worktree", "remove", "--force", validationRepo], true);
     rmSync(validationDirectory, { recursive: true, force: true });
     validationDirectory = undefined;
+  }
 
-    phase = "fast-forwarding runtime checkout";
-    git(["merge", "--ff-only", target]);
+  // The runtime mirrors origin/main. Local edits and commits are replaced, not preserved.
+  const onMain = branch === "main";
+  const hasLocalChanges = localChanges !== "";
+  const fastForward = gitProbe(["merge-base", "--is-ancestor", current, target]).exitCode === 0;
+  if (current !== target || !onMain || hasLocalChanges) {
+    phase = "replacing runtime checkout";
+    if (!onMain) log(`Replacing ${branch === undefined ? "detached HEAD" : `branch ${branch}`} with main.\n`);
+    if (!fastForward) log(`Replacing local commits; previous HEAD ${current} remains in the reflog.\n`);
+    if (hasLocalChanges) log(`Discarding local runtime changes:\n${localChanges}\n`);
+
+    git(["checkout", "--force", "-B", "main", target]);
+    git(["clean", "-ffd"]);
+
     phase = "installing fetched main";
     scriptOrThrow(resolve(runtimeRoot, "scripts/install.ts"));
   } else {
-    phase = "checking installed state";
     phase = "validating runtime";
     scriptOrThrow(resolve(runtimeRoot, "scripts/check.ts"));
     phase = "checking installed state";
@@ -171,7 +184,7 @@ try {
 } finally {
   if (validationDirectory) {
     const validationRepo = resolve(validationDirectory, "repo");
-    run(["git", "-C", runtimeRoot, "worktree", "remove", "--force", validationRepo], { quiet: true });
+    gitProbe(["worktree", "remove", "--force", validationRepo]);
     rmSync(validationDirectory, { recursive: true, force: true });
   }
   try {
