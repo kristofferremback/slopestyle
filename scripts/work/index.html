@@ -11,19 +11,25 @@
     <header class="bar">
       <div class="bar-row">
         <h1>Work</h1>
-        <ul id="sources" class="sources-strip" aria-label="Source freshness"></ul>
-        <button id="refresh" type="button">
-          <svg aria-hidden="true" viewBox="0 0 20 20" width="18" height="18"><path d="M16 10a6 6 0 1 1-1.76-4.24M16 3.5V6h-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
-          <span id="refresh-label">Refresh</span>
-        </button>
+        <nav aria-label="Work views">
+          <a href="?view=mine"><span>My PRs</span><span class="count" data-count="mine"></span></a><a href="?view=reviews"><span>Reviews</span><span class="count" data-count="reviews"></span></a><a href="?view=slack"><span>Slack</span></a><a href="?view=prompts"><span>Prompts</span></a>
+        </nav>
+        <div class="tools">
+          <button id="dispatch" class="delivery" type="button" aria-expanded="false" aria-controls="dispatch-text" aria-describedby="dispatch-text" hidden><span class="dot" aria-hidden="true"></span>Morning delivery</button>
+          <button id="refresh" type="button">
+            <svg aria-hidden="true" viewBox="0 0 20 20" width="18" height="18"><path d="M16 10a6 6 0 1 1-1.76-4.24M16 3.5V6h-2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            <span id="refresh-label">Refresh</span>
+          </button>
+        </div>
       </div>
-      <nav aria-label="Work views">
-        <a href="?view=mine">My PRs<span class="count" data-count="mine"></span></a><a href="?view=reviews">Reviews<span class="count" data-count="reviews"></span></a><a href="?view=slack">Slack</a><a href="?view=prompts">Prompts</a>
-      </nav>
+      <p id="dispatch-text" hidden></p>
     </header>
     <div class="page">
-      <p id="notice" role="status" aria-live="polite">Loading…</p>
-      <p id="dispatch" class="callout" hidden></p>
+      <p id="notice" class="loading" role="status" aria-live="polite">Loading…</p>
+      <div id="source" class="source-line" hidden>
+        <p class="source"><span id="source-name"></span><span id="source-time"></span></p>
+        <details id="gap" class="coverage" hidden><summary></summary><p></p></details>
+      </div>
       <main id="content"></main>
     </div>
     <script type="module" src="./app.ts"></script>

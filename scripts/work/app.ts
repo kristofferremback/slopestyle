@@ -11,8 +11,9 @@ type Status = {
 const content = document.querySelector<HTMLElement>("#content")!;
 const facts = document.createElement("div");
 const notice = document.querySelector<HTMLElement>("#notice")!;
-const dispatch = document.querySelector<HTMLElement>("#dispatch")!;
-const sources = document.querySelector<HTMLElement>("#sources")!;
+const dispatch = document.querySelector<HTMLButtonElement>("#dispatch")!;
+const dispatchText = document.querySelector<HTMLElement>("#dispatch-text")!;
+const freshness = document.querySelector<HTMLElement>("#source")!;
 const refresh = document.querySelector<HTMLButtonElement>("#refresh")!;
 const refreshLabel = document.querySelector<HTMLElement>("#refresh-label")!;
 const views = ["mine", "reviews", "slack", "prompts"];
@@ -50,8 +51,11 @@ function link(label: string, href: string): HTMLAnchorElement {
   } catch { /* Invalid source URLs remain readable text. */ }
   return node;
 }
-function chip(label: string, tone: string): HTMLElement {
-  return element("span", label, `chip tone-${tone}`);
+// Shape and color both carry the state, so it reads without color too.
+function state(label: string, tone: string, shape: string): HTMLElement {
+  const node = element("span", label, `state tone-${tone}`);
+  node.dataset.shape = shape;
+  return node;
 }
 async function request<T>(path: string, input?: unknown): Promise<T> {
   const response = await fetch(path, input === undefined ? { cache: "no-store" } : {
@@ -67,26 +71,19 @@ function coverage(health: SourceHealth): { tone: string; text: string | null } {
     ? { tone: "info", text: "Bounded coverage" }
     : { tone: "warn", text: "Collection gap; showing last available data" };
 }
-function renderSources(data: Status): void {
-  sources.replaceChildren(...(["github", "slack"] as const).map((source) => {
-    const health = data.health[source];
-    const state = coverage(health);
-    const item = element("li", undefined, `source tone-${state.tone}`);
-    item.append(element("span", source === "github" ? "GitHub" : "Slack", "source-name"));
-    if (health.succeededAt) item.append(time(health.succeededAt));
-    if (state.text) item.append(element("span", `, ${state.text}`, "visually-hidden"));
-    return item;
-  }));
+// The freshness line lives outside the re-rendered facts, so its disclosure keeps state and focus.
+function renderSource(health: SourceHealth): void {
+  const cover = coverage(health);
+  freshness.className = `source-line tone-${cover.tone}`;
+  freshness.hidden = false;
+  freshness.querySelector("#source-time")!.replaceChildren(health.succeededAt ? time(health.succeededAt) : health.gap ? "" : cover.text ?? "");
+  const gap = freshness.querySelector<HTMLDetailsElement>("#gap")!;
+  gap.hidden = !health.gap || !cover.text;
+  gap.querySelector("summary")!.textContent = cover.text;
+  gap.querySelector("p")!.textContent = health.gap;
 }
 function empty(health: SourceHealth, message: string): HTMLElement {
   return element("p", health.gap && health.succeededAt !== health.attemptedAt ? "Collection incomplete or unavailable. Refresh to try again." : health.succeededAt ? message : "Waiting for the first source check.", "empty");
-}
-function renderHealth(health: SourceHealth): void {
-  const state = coverage(health);
-  if (!health.gap || !state.text) return;
-  const details = element("details", undefined, `coverage tone-${state.tone}`);
-  details.append(element("summary", state.text), element("p", health.gap));
-  facts.append(details);
 }
 function excerpt(text: string): HTMLElement {
   const preview = element("p", text.slice(0, 140) + (text.length > 140 ? "…" : ""), "excerpt");
@@ -107,27 +104,34 @@ function section(title: string, count?: number, note?: string): HTMLElement {
 }
 const prRows = (data: Status, which: string) => data.records.github.map((row) => row.data as unknown as GithubRecord)
   .filter((row) => which === "mine" ? row.owned : row.requested && !row.owned && !row.hidden);
+// Repository groups keep source order; nothing is ranked.
 function renderPRs(data: Status): void {
   const health = data.health.github;
-  renderHealth(health);
+  renderSource(health);
   const rows = prRows(data, view);
   if (!rows.length) { facts.append(empty(health, view === "mine" ? "No open PRs." : "No reviews requested.")); return; }
-  const list = element("ul", undefined, "rows");
-  for (const row of rows) {
-    const item = element("li", undefined, "row");
-    item.dataset.key = row.url;
-    const main = element("div", undefined, "row-main");
-    const title = element("h3");
-    title.append(link(row.title, row.url));
-    const meta = element("p", undefined, "meta");
-    meta.append(element("span", `${row.repository}#${row.number}`, "ref"));
-    if (row.draft && row.status !== "draft") meta.append(chip("Draft", "quiet"));
-    if (row.threadUrl) meta.append(link("T3 review", row.threadUrl));
-    main.append(title, meta);
-    item.append(chip(row.status.charAt(0).toUpperCase() + row.status.slice(1).replaceAll("-", " "), statusTones[row.status] ?? "quiet"), main);
-    list.append(item);
+  const groups = Map.groupBy(rows, (row) => row.repository);
+  for (const [repository, prs] of groups) {
+    const group = element("section", undefined, "group");
+    group.dataset.key = repository;
+    group.append(element("h2", repository, "repo"));
+    const list = element("ul", undefined, "ledger");
+    for (const row of prs) {
+      const item = element("li", undefined, "pr");
+      item.dataset.key = row.url;
+      const title = element("h3");
+      title.append(link(row.title, row.url));
+      const label = row.status.charAt(0).toUpperCase() + row.status.slice(1).replaceAll("-", " ");
+      item.append(element("span", `#${row.number}`, "num"), state(label, statusTones[row.status] ?? "quiet", row.status), title);
+      const meta = element("p", undefined, "meta");
+      if (row.draft && row.status !== "draft") meta.append(element("span", "Draft"));
+      if (row.threadUrl) meta.append(link("T3 review", row.threadUrl));
+      if (meta.childElementCount) item.append(meta);
+      list.append(item);
+    }
+    group.append(list);
+    facts.append(group);
   }
-  facts.append(list);
 }
 function parsePermalink(value: string): { channel: string; rootTs: string } {
   const url = new URL(value);
@@ -176,25 +180,19 @@ function followForm(): HTMLFormElement {
   return form;
 }
 function renderSlack(data: Status): void {
-  renderHealth(data.health.slack);
+  renderSource(data.health.slack);
   facts.append(section("Followed threads", data.followed.length));
-  const list = element("ul", undefined, "rows");
+  const list = element("ul", undefined, "ledger");
   for (const subscription of data.followed) {
     const record = data.records.slack.find((row) => row.key === `thread:${subscription.channel}:${subscription.rootTs}`);
     const thread = record?.data as unknown as SlackThread | undefined;
-    const item = element("li", undefined, "row");
+    const item = element("li", undefined, "thread");
     item.dataset.key = `thread:${subscription.channel}:${subscription.rootTs}`;
-    const main = element("div", undefined, "row-main");
-    const title = element("h3");
-    title.append(thread ? link(subscription.channel, thread.url) : element("span", subscription.channel), " · ", slackTime(subscription.rootTs));
-    title.title = subscription.rootTs;
-    main.append(title);
-    if (thread) main.append(excerpt(thread.text));
-    const checked = element("span", record ? "Checked " : "Refresh to collect");
-    if (record) checked.append(time(record.observedAt));
-    const meta = element("p", undefined, "meta");
-    meta.append(checked);
-    main.append(meta);
+    const origin = thread ? link("", thread.url) : element("span");
+    origin.append(element("span", subscription.channel, "channel"), " ", slackTime(subscription.rootTs));
+    origin.title = subscription.rootTs;
+    const heading = element("h3", undefined, "origin");
+    heading.append(origin);
     const unfollow = element("button", "Unfollow", "quiet");
     unfollow.type = "button";
     unfollow.addEventListener("click", async () => {
@@ -208,23 +206,28 @@ function renderSlack(data: Status): void {
       } catch { notice.textContent = "Could not unfollow. Try again."; }
       finally { mutations--; unfollow.disabled = false; }
     });
-    item.append(thread ? chip(thread.complete ? "Complete" : "Incomplete", thread.complete ? "good" : "warn") : chip("Pending", "quiet"), main, unfollow);
+    const mark = thread ? thread.complete ? state("Complete", "good", "complete") : state("Incomplete", "warn", "incomplete") : state("Pending", "quiet", "pending");
+    item.append(heading, mark, unfollow);
+    if (thread) item.append(excerpt(thread.text));
+    const checked = element("p", record ? "Checked " : "Refresh to collect", "checked");
+    if (record) checked.append(time(record.observedAt));
+    item.append(checked);
     list.append(item);
   }
   if (data.followed.length) facts.append(list);
   else facts.append(element("p", "No followed threads.", "empty"));
   const candidates = data.records.slack.filter((row) => (row.data as unknown as SlackMessage).kind === "message").slice(0, 20);
   facts.append(section("Recent candidates", candidates.length, "Discovery only. Open a message to find its parent before following."));
-  const recent = element("ul", undefined, "rows");
+  const recent = element("ul", undefined, "ledger");
   for (const row of candidates) {
     const message = row.data as unknown as SlackMessage;
-    const item = element("li", undefined, "row candidate");
+    const item = element("li", undefined, "message");
     item.dataset.key = row.key;
-    const main = element("div", undefined, "row-main");
-    const meta = element("p", undefined, "meta");
-    meta.append(link(`${message.channel} · ${message.author}`, message.url), slackTime(message.messageTs));
-    main.append(meta, excerpt(message.text));
-    item.append(main);
+    const origin = link("", message.url);
+    origin.append(element("span", message.author, "author"), " ", element("span", message.channel, "channel"));
+    const heading = element("h3", undefined, "origin");
+    heading.append(origin, slackTime(message.messageTs));
+    item.append(heading, excerpt(message.text));
     recent.append(item);
   }
   if (candidates.length) facts.append(recent);
@@ -232,9 +235,10 @@ function renderSlack(data: Status): void {
 }
 function render(): void {
   if (!status) return;
-  dispatch.hidden = !status.runtime?.dispatchGap;
-  dispatch.textContent = status.runtime?.dispatchGap ? `Morning delivery: ${status.runtime.dispatchGap}` : "";
-  renderSources(status);
+  const gap = status.runtime?.dispatchGap;
+  dispatch.hidden = !gap;
+  dispatchText.textContent = gap ? `Morning delivery: ${gap}` : "";
+  if (!gap) showDispatch(false);
   for (const count of document.querySelectorAll<HTMLElement>("[data-count]")) count.textContent = String(prRows(status, count.dataset.count!).length);
   if (view === "prompts") return;
   // Factual panels refresh independently of the persistent follow form.
@@ -255,11 +259,15 @@ function render(): void {
     replacement?.focus({ preventScroll: true });
   }
 }
+function showDispatch(open: boolean): void {
+  dispatch.ariaExpanded = String(open);
+  dispatchText.hidden = !open;
+}
 function renderPrompts(): void {
   facts.append(element("p", "Edit the Markdown source files in your editor or ask in chat. Each new run loads the current prompt and workflow files.", "muted lede"));
-  const list = element("ul", undefined, "rows");
+  const list = element("ul", undefined, "ledger");
   for (const [type, name] of [["morning", "Morning check-in"], ["pr-triage", "PR triage"], ["slack-follow-up", "Slack follow-up"]]) {
-    const item = element("li", undefined, "row prompt");
+    const item = element("li", undefined, "prompt");
     const details = element("details");
     details.append(element("summary", name));
     let loaded = false;
@@ -308,21 +316,24 @@ async function readStatus(collect = false): Promise<void> {
     notice.textContent = status ? "Unable to refresh. Showing last available data." : "Unable to load work. Refresh to try again.";
     if (!status && view !== "prompts") facts.replaceChildren();
   }
-  finally { reading = false; busy = false; refresh.disabled = false; refresh.removeAttribute("aria-busy"); refreshLabel.textContent = "Refresh"; }
+  finally { notice.classList.remove("loading"); reading = false; busy = false; refresh.disabled = false; refresh.removeAttribute("aria-busy"); refreshLabel.textContent = "Refresh"; }
 }
 for (const anchor of document.querySelectorAll<HTMLAnchorElement>("nav a")) {
   if (new URL(anchor.href).searchParams.get("view") === view) anchor.setAttribute("aria-current", "page");
 }
+freshness.querySelector("#source-name")!.textContent = view === "slack" ? "Slack" : "GitHub";
 if (view === "slack") content.append(followForm());
 content.append(facts);
 if (view === "prompts") renderPrompts();
 else {
-  const skeleton = element("ul", undefined, "rows skeleton");
+  const skeleton = element("ul", undefined, "ledger skeleton");
   skeleton.setAttribute("aria-hidden", "true");
-  for (let index = 0; index < 3; index++) skeleton.append(element("li", undefined, "row"));
+  for (let index = 0; index < 4; index++) skeleton.append(element("li"));
   facts.append(skeleton);
 }
 refresh.addEventListener("click", () => void readStatus(true));
+dispatch.addEventListener("click", () => showDispatch(dispatch.ariaExpanded !== "true"));
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") showDispatch(false); });
 window.addEventListener("focus", () => void readStatus());
 document.addEventListener("visibilitychange", () => { if (!document.hidden) void readStatus(); });
 setInterval(() => { if (!document.hidden) void readStatus(); }, 30_000);
