@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Work</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <header><h1>Work</h1><button id="refresh" type="button">Refresh</button></header>
+    <nav aria-label="Work views">
+      <a href="?view=mine">My PRs</a><a href="?view=reviews">Reviews requested</a><a href="?view=slack">Slack</a><a href="?view=prompts">Prompts</a>
+    </nav>
+    <p id="notice" role="status" aria-live="polite">Loading…</p>
+    <p id="dispatch" class="muted" hidden></p>
+    <main id="content"></main>
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>

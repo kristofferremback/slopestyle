@@ -19,6 +19,7 @@ import {
   type Target,
 } from "./lib/core.ts";
 import { serviceInstalled } from "./lib/usage/service.ts";
+import { serviceInstalled as workServiceInstalled } from "./lib/work/service.ts";
 import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
 import { loadHosts, resolveHost, selected, validateManagedNames } from "./lib/hosts.ts";
 
@@ -111,6 +112,7 @@ if (mode === "preflight") {
   canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".codex/AGENTS.md"));
   canLink(resolve(preflightRoot!, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
   canLink(resolve(preflightRoot!, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
+  canLink(resolve(preflightRoot!, "scripts/work.ts"), resolve(binRoot(home), "slopestyle-work"));
   for (const skill of manifest.skills) {
     if (!selected(skill.name, selectedHost, hosts.skills)) continue;
     for (const target of skill.targets) canLink(resolve(preflightRoot!, skill.path), resolve(targetRoot(home, target), skill.name));
@@ -178,6 +180,7 @@ linkOwned(resolve(repoRoot, "scripts/heavy-check.ts"), heavyCheckTarget);
 linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".codex/AGENTS.md"));
 linkOwned(resolve(repoRoot, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
 linkOwned(resolve(repoRoot, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
+linkOwned(resolve(repoRoot, "scripts/work.ts"), resolve(binRoot(home), "slopestyle-work"));
 
 // slopestyle-usage bundles its page from node_modules, so the runtime checkout
 // needs the pinned dependencies installed.
@@ -228,6 +231,10 @@ if (schedulerInstalled) {
 }
 if (serviceInstalled(home)) {
   runOrThrow([process.execPath, resolve(repoRoot, "scripts/usage.ts"), "service", "refresh"]);
+}
+
+if (workServiceInstalled(home)) {
+  runOrThrow([process.execPath, resolve(repoRoot, "scripts/work.ts"), "service", "refresh"]);
 }
 
 console.log("Slop(e)style installation complete. Start fresh Pi, Claude Code, Codex, and Hermes Agent sessions to load it.");

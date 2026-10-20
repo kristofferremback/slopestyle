@@ -47,6 +47,7 @@ const entryPoints = [
   "scripts/subagents.ts",
   "scripts/sync.ts",
   "scripts/usage.ts",
+  "scripts/work.ts",
 ];
 for (const relative of entryPoints) {
   const path = resolve(repoRoot, relative);
@@ -163,6 +164,7 @@ if (installed) {
   checkLink(resolve(home, ".codex/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
   checkLink(resolve(binRoot(home), "slopestyle-ports"), resolve(repoRoot, "scripts/ports.ts"));
   checkLink(resolve(binRoot(home), "slopestyle-usage"), resolve(repoRoot, "scripts/usage.ts"));
+  checkLink(resolve(binRoot(home), "slopestyle-work"), resolve(repoRoot, "scripts/work.ts"));
   assert(existsSync(resolve(repoRoot, "node_modules/echarts/package.json")), "Missing installed dependencies; run bun install --frozen-lockfile in the runtime checkout.");
 
   const expected = new Map<Target, Set<string>>(targets.map((target) => [target, new Set()]));

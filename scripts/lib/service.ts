@@ -19,6 +19,11 @@ export function systemdQuote(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("%", "%%");
 }
 
+// ExecStart expands dollar variables even inside quoted arguments.
+export function systemdArgument(value: string): string {
+  return systemdQuote(value).replaceAll("$", () => "$$");
+}
+
 export function systemdPath(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll(" ", "\\x20").replaceAll("\t", "\\x09").replaceAll("%", "%%");
 }

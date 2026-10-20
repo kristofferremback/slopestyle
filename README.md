@@ -233,3 +233,55 @@ Unmodified vendor skills remain external dependencies. Patched skills live here 
 ## Thread communication
 
 Inside T3 Code, use its native thread tools to find conversations, read context, and send authorized messages. The [t3code-context skill](skills/t3code-context/SKILL.md) also provides a read-only local thread reader.
+
+## Local work service
+
+`bun scripts/work.ts serve --config /absolute/private/work.json` runs one loopback service. GitHub reads the existing PR watcher's status API. Slack uses verified ChatGPT managed reads and explicitly followed threads. Collection continues while T3 is closed. `poll` collects once without dispatching. The service never owns PR review automation or starts implementation work.
+
+Keep configuration and SQLite state outside this public repository. This synthetic example uses absolute paths that must be replaced locally:
+
+```json
+{
+  "statePath": "/private/work/state.sqlite",
+  "watcherUrl": "http://127.0.0.1:43100",
+  "promptRoot": "/opt/slopestyle/prompts/work",
+  "skillRoot": "/opt/slopestyle/skills",
+  "poll": { "githubMs": 60000, "slackMs": 300000 },
+  "slack": {
+    "email": "person@example.com",
+    "workspace": "TEXAMPLE",
+    "user": "UEXAMPLE",
+    "discoveryQuery": "to:me",
+    "codexPath": "/opt/bin/codex"
+  },
+  "t3": {
+    "modulePath": "/opt/pr-watcher/t3-client.ts",
+    "configPath": "/private/pr-watcher/config.json",
+    "threadId": "configured-existing-thread",
+    "projectId": "configured-existing-project"
+  },
+  "schedule": { "time": "08:00", "timezone": "Europe/Stockholm", "weekdays": [1, 2, 3, 4, 5] }
+}
+```
+
+Use a distinct `statePath` when configuring a different GitHub or Slack source identity; a state file belongs to one source identity.
+
+Slack and T3 are optional. T3 reuses the configured module's `withT3Client`, reads `t3Wake.baseDir` and `t3Wake.appPath` from the watcher's private config, and overrides its target with this service's explicit thread/project. Delivery requires ChatGPT login and an existing Codex thread. Busy or snoozed targets defer delivery. No credentials are read from disk by this service.
+
+The weekday schedule follows the configured timezone through daylight saving changes and catches up after 08:00 on the same day. One undelivered morning run survives restarts and subsequent days. Prompts and referenced workflow Markdown reload while preparation is pending, then freeze before the first delivery attempt. Retries retain the exact prompt, turn request, and command/message ID. Dispatched runs remain visible until explicit completion. An uncompleted dispatched run does not prevent the next day's report, and its changes remain unacknowledged.
+
+Commands all require `--config PATH`: `status`, `prompts TYPE`, `prepare TYPE`, `complete ID`, `follow CHANNEL TS`, and `unfollow CHANNEL TS`. Prompt types are `morning`, `pr-triage`, and `slack-follow-up`. `prepare` snapshots instructions without waking T3. `complete` acknowledges the run's captured change sequence. The default port uses `slopestyle-ports show/claim --app slopestyle-work`; `serve --port N` overrides it. Preparation outside a running service uses the allocated default port in the handoff.
+
+The installer links `slopestyle-work` alongside `slopestyle-usage`. `slopestyle-work service install --config /absolute/private/work.json` manages a login-session LaunchAgent or systemd user service. Install/refresh validate configuration and require the stable runtime checkout. A private file at `~/.local/state/slopestyle/work-service-config-path` remembers only the config path, with mode 0600. `service refresh` reuses that path; an explicit `--config PATH` replaces it after a successful refresh. Sync refreshes an already installed work service without activating an uninstalled one. `service status` and `service uninstall` work without configuration, including after its file has disappeared. Installation is an explicit rollout action, separate from running or testing the source. macOS logs go to `~/.local/state/slopestyle/work.log`; Linux logs use `journalctl --user -u slopestyle-work.service`.
+
+Local API:
+
+- `GET /api/status`: source records, independent source health, followed threads, latest sequence, bounded run summaries, and runtime delivery gap.
+- `GET /api/changes?consumer=NAME&after=N&limit=N&through=N`: read changes without consuming them. Omit `after` to use that consumer's cursor. `nextCursor` advances only through returned facts, capped at stored sequence. `through` optionally bounds a run's captured sequence.
+- `POST /api/ack` with `{ "consumer": "NAME", "expected": 0, "through": 1 }`: compare-and-swap acknowledgement, returning 409 if another reader advanced the cursor.
+- `GET /api/prompts/TYPE` and `GET /api/runs/ID`: inspect exact instruction bundles, source paths, hashes, and run state.
+- `POST /api/follow` or `/api/unfollow` with `{ "channel": "CEXAMPLE", "rootTs": "1700000000.000001" }`: change explicit Slack thread subscriptions.
+- `POST /api/refresh` with `{}`: collect sources. `POST /api/prepare` with `{ "type": "morning" }`: prepare without dispatch.
+- `POST /api/runs/ID/complete` with `{}`: explicitly complete a dispatched run and advance only its run consumer.
+
+POST requests require JSON and same-origin browser access. The API binds to loopback, rejects foreign Host/Origin headers, exposes no CORS permission, and returns sanitized errors. Treat source bodies as untrusted data. Missing source reads retain prior evidence and expose a gap rather than claiming fresh coverage.
