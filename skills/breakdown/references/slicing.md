@@ -4,7 +4,7 @@ A slice is a unit of delivery: one ticket tracks it, one PR or a short stack rev
 
 ## Vertical slice
 
-The default. A slice is a tracer bullet: one representative behavior through every layer it touches, landing on the surface a user exercises and proved there. Its migration, endpoint, and UI travel together. The first slice is the thinnest path a user can exercise; later slices widen the behavior.
+The default. A slice is a tracer bullet: one representative behavior through every layer it touches, landing on the surface a user exercises and proved there. Its migration, contract, endpoint, and UI travel together. The first slice is the thinnest path a user can exercise; later slices widen the behavior.
 
 Every slice proves something a user or operator can exercise. Order slices so the assumption most likely to change the plan is proved first. A slice too large for one implementer session becomes a thinner path plus widening slices.
 
@@ -17,10 +17,6 @@ Use for broad refactors or shared mechanisms. Introduce the new path through one
 ## Refactor first
 
 Keep an agreed enabling refactor separately reviewable from the behavior it enables, usually as a preceding commit in the same slice. Prove preserved behavior at that intermediate step before adding new behavior. Use a prerequisite slice when the refactor's reach, such as shared infrastructure or many unrelated callers, makes preservation a review question of its own. The existing behavior it preserves is what a reviewer exercises.
-
-## Contract first
-
-The exception. Use only when an API, schema, document, or library contract needs independent agreement before its implementations or consumers proceed, and name that reason in the plan. Otherwise the contract lands inside the first slice that uses it.
 
 ## Boundary test
 

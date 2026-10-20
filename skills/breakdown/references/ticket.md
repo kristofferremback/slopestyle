@@ -8,10 +8,10 @@ A ticket is a contract a capable engineer, human or agent, could pick up cold. I
 <Title: the outcome in product vocabulary, e.g. "Members can rename a workspace">
 
 ## Outcome
-<Before and after, as a user or operator sees it. One to three sentences.>
+<What a user or operator can do or see once this lands. One to three sentences.>
 
 ## Why
-<One or two sentences, or a link to the parent or scope it serves.>
+<The problem today and who has it, in one or two sentences, or a link to the parent or scope it serves.>
 
 ## Done when
 - [ ] <On <surface>, <action> shows <result>.>
@@ -23,7 +23,7 @@ A ticket is a contract a capable engineer, human or agent, could pick up cold. I
 - <Agreed constraints the implementer must honor: chosen approach, contract, interface or type by name, edge behavior. Omit the section when none exist.>
 ```
 
-A bug ticket's before is the observed behavior with reproduction steps; its after is the expected behavior. Its done when includes a check that fails before the fix.
+A bug ticket's why is the observed behavior with reproduction steps; its outcome is the expected behavior. Its done when includes a check that fails before the fix.
 
 ## Decision ticket
 

@@ -5,7 +5,7 @@ description: Use when Kris asks to break down a project or large change into tic
 
 # Breakdown
 
-Turn agreed work into slices that each prove something on their own, and tickets that say exactly that.
+Split agreed work into slices and write a ticket for each.
 
 1. **Start from agreed scope.** The outcome, boundary, done evidence, tracker, and parent come from Kris's request or `scope`. Use `scope` when any of them is unclear. Without a tracker, the tickets are returned in the reply.
 2. **Find the seams.** Trace the current behavior and owners the slices will cut through, so they follow real seams.
