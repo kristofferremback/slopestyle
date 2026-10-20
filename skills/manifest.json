@@ -28,6 +28,19 @@
       "provenance": "adapted"
     },
     {
+      "name": "breakdown",
+      "path": "skills/breakdown",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "build",
       "path": "skills/build",
       "targets": [
