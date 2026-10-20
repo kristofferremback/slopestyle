@@ -1,6 +1,6 @@
 # Ticket writing
 
-A ticket is a contract for an agent steered by a human. It states the outcome and how to prove it. The implementer finds the code and chooses the implementation when the work starts, against the codebase as it is then.
+A ticket is a contract a capable engineer, human or agent, could pick up cold. It states the outcome and how to prove it. The implementer finds the code and chooses the implementation when the work starts, holding the full picture.
 
 ## Build ticket
 
@@ -50,8 +50,8 @@ The parent (project, epic, or issue) holds the destination, the agreed scope, co
 ## Rules
 
 - Every sentence changes what the implementer does or how they prove it. Link context.
-- Name behaviors, contracts, interfaces, types, and domain concepts. A file path appears only when the ticket is about that file. Procedure appears only as an agreed decision.
+- Name behaviors, contracts, interfaces, and domain concepts. Where and how to build stays with the implementer unless it is an agreed decision. Evidence that points at code, such as a stack trace or a bug narrowed to a function, belongs in the ticket as evidence.
 - Each criterion is checkable on its own by someone who did not write the code. Name what an observer sees, the way a reviewer would verify it, in the ticket itself.
 - Metadata lives in the tracker's fields: parent, blocking relations, labels, estimate.
-- The body is the current contract. Progress, rulings, and evidence go in comments and PRs; when scope changes, rewrite the body.
+- The body is the current contract. Progress, rulings, and delivery evidence go in comments and PRs; when scope changes, rewrite the body.
 - A ticket fits on a phone screen. One that needs more is two slices or is restating its parent.
