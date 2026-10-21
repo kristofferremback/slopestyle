@@ -8,6 +8,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { digest } from "./prompts.ts";
 import type {
+  PRSnooze,
   Change,
   Json,
   PromptSnapshot,
@@ -61,6 +62,7 @@ export class WorkStore {
     this.db = new Database(path, { create: true });
     if (path !== ":memory:") chmodSync(path, 0o600);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
+      CREATE TABLE IF NOT EXISTS pr_snoozes(key TEXT PRIMARY KEY, version INTEGER NOT NULL, until INTEGER, durationHours INTEGER);
       CREATE TABLE IF NOT EXISTS records(source TEXT, key TEXT, data TEXT NOT NULL, digest TEXT NOT NULL, observedAt TEXT NOT NULL, PRIMARY KEY(source,key));
       CREATE TABLE IF NOT EXISTS changes(seq INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL, key TEXT NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL, observedAt TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS health(source TEXT PRIMARY KEY, attemptedAt TEXT, succeededAt TEXT, gap TEXT);
@@ -92,6 +94,22 @@ export class WorkStore {
           )
           .all();
     return rows.map((r) => ({ ...r, data: JSON.parse(r.data) }));
+  }
+  // Expiry is a read-time interpretation. Retain versions and restore tombstones.
+  snoozes(): PRSnooze[] {
+    return this.db.query<PRSnooze, []>("SELECT * FROM pr_snoozes ORDER BY key").all();
+  }
+  setSnooze(key: string, expected: number, durationHours: 1 | 24 | null, now = Date.now()): boolean {
+    bounded(key);
+    if (!Number.isSafeInteger(expected) || expected < 0 || ![null, 1, 24].includes(durationHours) || !Number.isSafeInteger(now)) throw new Error("Invalid snooze");
+    return this.db.transaction(() => {
+      if (!this.db.query("SELECT 1 FROM records WHERE source='github' AND key=?").get(key)) throw new Error("Invalid snooze");
+      const previous = this.db.query<PRSnooze, [string]>("SELECT * FROM pr_snoozes WHERE key=?").get(key);
+      if ((previous?.version ?? 0) !== expected) return false;
+      this.db.query("INSERT INTO pr_snoozes VALUES(?,?,?,?) ON CONFLICT(key) DO UPDATE SET version=excluded.version,until=excluded.until,durationHours=excluded.durationHours")
+        .run(key, expected + 1, durationHours === null ? null : now + durationHours * 3_600_000, durationHours);
+      return true;
+    }).immediate();
   }
   health(source: Source): SourceHealth {
     return (

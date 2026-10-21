@@ -139,3 +139,28 @@ test("should report follow capacity as conflict and allow repeated follows", asy
   ).toBe(400);
   expect(store.followed()).toHaveLength(100);
 });
+
+test("should constrain local snoozes and return coherent status without source changes", async () => {
+  const { store, base, post } = fixture();
+  store.applySnapshot("github", [{ key: "pr:1", data: { title: "literal" } }], "a", true);
+  const before = store.records();
+  for (const durationHours of [0, 2, "24", null]) expect((await post("/api/snooze", { key: "pr:1", expected: 0, durationHours })).status).toBe(400);
+  expect((await post("/api/snooze", { key: "missing", expected: 0, durationHours: 1 })).status).toBe(400);
+  expect((await post("/api/snooze", { key: "pr:1", expected: 0, durationHours: 1 }, { Origin: "https://evil.example" })).status).toBe(403);
+  expect((await post("/api/snooze", { key: "pr:1", expected: 0, durationHours: 1 }, { "Sec-Fetch-Site": "cross-site" })).status).toBe(403);
+  const result = await (await post("/api/snooze", { key: "pr:1", expected: 0, durationHours: 24 })).json();
+  expect(result.snoozes[0]).toMatchObject({ key: "pr:1", version: 1, durationHours: 24 });
+  expect(result.records.github).toEqual(before);
+  expect((await post("/api/restore", { key: "pr:1", expected: 0 })).status).toBe(409);
+  for (const path of ["/api/snooze", "/api/restore"]) {
+    for (const expected of [-1, 0.5, "1", null]) expect((await post(path, { key: "pr:1", expected, durationHours: 1 })).status).toBe(400);
+    for (const key of ["", null, "missing"]) expect((await post(path, { key, expected: 1, durationHours: 1 })).status).toBe(400);
+    expect((await post(path, { key: "pr:1", expected: 1, durationHours: 1 }, { Origin: "https://evil.example" })).status).toBe(403);
+  }
+  // Restore owns its meaning even when a client supplies a snooze duration.
+  expect((await post("/api/restore", { key: "pr:1", expected: 1, durationHours: 24 })).status).toBe(200);
+  const status = await (await fetch(base + "/api/status")).json();
+  expect(status.snoozes).toEqual([{ key: "pr:1", version: 2, until: null, durationHours: null }]);
+  expect(status.latestSeq).toBe(1);
+  expect(store.records()).toEqual(before);
+});

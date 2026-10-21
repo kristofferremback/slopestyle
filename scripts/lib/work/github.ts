@@ -1,3 +1,8 @@
+import type { GithubFacts } from "./github-facts.ts";
+// Shared by collection and presentation: cached watcher evidence expires after missed cycles.
+export const GITHUB_MAX_AGE_MS = 15 * 60_000;
+// Unlike a failed collection, partial coverage leaves other verified PRs usable.
+export const GITHUB_PARTIAL_GAP = "Some PR details are unavailable; affected PRs are marked individually.";
 export interface GithubRecord {
   kind: "pr";
   title: string;
@@ -11,12 +16,18 @@ export interface GithubRecord {
   status: string;
   head: string;
   threadUrl: string;
+  expectedHead?: string;
+  facts?: GithubFacts;
+  factsGap?: string;
 }
 export interface GithubSnapshot {
   records: { key: string; data: GithubRecord }[];
   succeededAt: string;
 }
-export type GithubFetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+export type GithubFetcher = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
 const invalid = () =>
   new Error("PR watcher returned invalid or unavailable evidence");
 function string(value: unknown, max = 4096): string {
@@ -61,11 +72,28 @@ export function parseGithub(raw: unknown): GithubSnapshot {
         if (typeof item[field] !== "boolean") throw invalid();
       const key = string(item.key);
       if (!key || rows.has(key)) throw invalid();
+      const prUrl = url(item.url);
+      const parsedUrl = new URL(prUrl);
+      const identity = /^\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)\/?$/.exec(
+        parsedUrl.pathname,
+      );
+      if (
+        parsedUrl.protocol !== "https:" ||
+        parsedUrl.hostname !== "github.com" ||
+        parsedUrl.port ||
+        !identity ||
+        Number(identity[3]) !== item.number
+      )
+        throw invalid();
+      // The watcher may expose only the display name; the PR URL owns repository identity.
+      const repository = `${identity[1]}/${identity[2]}`;
+      const displayRepository = string(item.repository).toLowerCase();
+      if (![repository.toLowerCase(), identity[2]!.toLowerCase()].includes(displayRepository)) throw invalid();
       rows.set(key, {
         kind: "pr",
         title: string(item.title),
-        url: url(item.url),
-        repository: string(item.repository),
+        url: prUrl,
+        repository,
         number: item.number,
         owned: item.owned,
         requested: item.requested,
@@ -73,6 +101,10 @@ export function parseGithub(raw: unknown): GithubSnapshot {
         draft: item.draft,
         status: string(item.status),
         head: string(item.head),
+        ...(typeof item.expectedHead === "string" &&
+        /^[a-f0-9]{40}$/.test(item.expectedHead)
+          ? { expectedHead: item.expectedHead }
+          : {}),
         threadUrl: url(item.review?.threadUrl ?? "", true),
       });
     }

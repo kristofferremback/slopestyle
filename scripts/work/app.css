@@ -35,7 +35,7 @@ summary::-webkit-details-marker { display: none; }
 button, input { font: inherit; color: inherit; }
 button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); cursor: pointer; white-space: nowrap; }
 button:hover { border-color: color-mix(in oklab, var(--ink) 30%, var(--line)); }
-button:disabled { cursor: wait; opacity: .6; }
+button:is(:disabled, [aria-disabled="true"]) { cursor: wait; opacity: .6; }
 button.primary { background: var(--ink); border-color: var(--ink); color: var(--bg); font-weight: 600; }
 button.quiet { padding: 0 10px; border-color: transparent; background: none; color: var(--muted); font-size: .85rem; }
 button.quiet:hover { border-color: var(--line); color: var(--ink); }
@@ -95,7 +95,7 @@ nav a[aria-current]::after { content: ""; position: absolute; inset: auto 0 -1px
 .group { margin-top: 26px; }
 .repo, .section-head { padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
 .repo { font: 600 .84rem var(--mono); letter-spacing: -.01em; overflow-wrap: anywhere; }
-.pr { position: relative; display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 10.5rem; grid-template-areas: "num title state" ". meta state"; column-gap: 16px; row-gap: 2px; padding: 13px 0; }
+.pr { position: relative; display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); grid-template-areas: "num title" ". state" ". meta"; column-gap: 16px; row-gap: 2px; padding: 13px 0; }
 .num { grid-area: num; padding-top: 2px; font: 500 .84rem var(--mono); color: var(--muted); }
 h3 { font-size: 1.04rem; font-weight: 600; line-height: 1.4; letter-spacing: -.008em; }
 .pr h3 { grid-area: title; }
@@ -189,3 +189,18 @@ pre { margin: 8px 0 0; padding: 12px 14px; max-height: 60vh; overflow: auto; bor
   .follow { padding: 14px; }
 }
 @media (prefers-reduced-motion: reduce) { *, ::before, ::after { animation: none !important; transition: none !important; } }
+
+/* Actions retain the ledger; stack controls have their own touch target. */
+.pr .state { white-space: normal; }
+.pr .meta a { z-index: 1; }
+.stack-members > summary { display: flex; align-items: center; min-height: 44px; color: var(--accent); font-size: .84rem; }
+.stack-members > summary::before { content: "›"; margin-right: 8px; }
+.stack-members[open] > summary::before { transform: rotate(90deg); }
+.stack-members > .ledger { padding-left: 18px; border-left: 1px solid var(--line); }
+.repo-filter { margin-top: 12px; overflow-wrap: anywhere; }
+
+.snooze { grid-column: 2; position: relative; z-index: 1; justify-self: start; }
+.snooze > summary, .snooze button, .snooze-visibility { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; color: var(--accent); }
+.snooze button { margin-right: 6px; }
+.snooze p { margin: 0 10px; }
+@media (max-width: 600px) { .snooze { grid-column: 1 / -1; } }

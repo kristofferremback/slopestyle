@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { WorkStore } from "../scripts/lib/work/store.ts";
 import { collectGithub, collectSlack } from "../scripts/lib/work/collect.ts";
+import { GITHUB_PARTIAL_GAP, parseGithub } from "../scripts/lib/work/github.ts";
 import {
   SLACK_APP,
   SLACK_TOOLS,
@@ -48,10 +49,28 @@ function watcher(at = now.toISOString()) {
     hidden: [],
   };
 }
+test("should resolve short watcher repository names from the canonical PR URL", () => {
+  const response = watcher();
+  response.myPullRequests[0]!.repository = "repo";
+  expect(parseGithub(response).records[0]!.data.repository).toBe("org/repo");
+
+  response.myPullRequests[0]!.url = "https://github.com/another/repo/pull/1";
+  expect(parseGithub(response).records[0]!.data.repository).toBe("another/repo");
+  response.myPullRequests[0]!.repository = "org/repo";
+  expect(() => parseGithub(response)).toThrow();
+  response.myPullRequests[0]!.repository = "repo";
+  response.myPullRequests[0]!.url = "https://github.com/org/repo/pull/2";
+  expect(() => parseGithub(response)).toThrow();
+  response.myPullRequests[0]!.url = "https://example.com/org/repo/pull/1";
+  expect(() => parseGithub(response)).toThrow();
+});
 test("should preserve watcher evidence and upstream success when response is stale", async () => {
   const store = new WorkStore(":memory:");
   await collectGithub(store, cfg, {
     now,
+    githubCommand: async () => {
+      throw new Error("offline fixture");
+    },
     fetcher: async (_url, init) => {
       expect(init?.method).toBe("GET");
       expect(init?.redirect).toBe("error");
@@ -62,6 +81,9 @@ test("should preserve watcher evidence and upstream success when response is sta
   const seq = store.latestSeq();
   await collectGithub(store, cfg, {
     now,
+    githubCommand: async () => {
+      throw new Error("offline fixture");
+    },
     fetcher: async () => Response.json(watcher("2026-10-18T00:00:00Z")),
   });
   expect(store.latestSeq()).toBe(seq);
@@ -238,9 +260,21 @@ test("should allow upstream watcher cadence independently of consumer polling", 
   const store = new WorkStore(":memory:");
   await collectGithub(store, cfg, {
     now,
+    githubCommand: async () => {
+      throw new Error("offline fixture");
+    },
     fetcher: async () => Response.json(watcher("2026-10-19T09:50:00Z")),
   });
   expect(store.health("github").succeededAt).toBe("2026-10-19T09:50:00Z");
+  expect(store.health("github").gap).toBe(GITHUB_PARTIAL_GAP);
+  await collectGithub(store, cfg, {
+    now,
+    githubCommand: async () => {
+      throw new Error("offline fixture");
+    },
+    fetcher: async () => Response.json(watcher("2026-10-19T09:50:00Z")),
+  });
+  expect(store.health("github").gap).toBe(GITHUB_PARTIAL_GAP);
   expect(store.records("github")).toHaveLength(1);
   store.close();
 });

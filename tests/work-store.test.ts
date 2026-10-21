@@ -233,3 +233,38 @@ test("should validate follows and atomically enforce capacity across connections
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("should expand an old database and preserve snoozes versions across connections expiry and new heads", async () => {
+  const { Database } = await import("bun:sqlite");
+  const dir = mkdtempSync(join(tmpdir(), "work-snooze-"));
+  const path = join(dir, "state.sqlite");
+  const old = new Database(path);
+  old.exec("CREATE TABLE records(source TEXT,key TEXT,data TEXT NOT NULL,digest TEXT NOT NULL,observedAt TEXT NOT NULL,PRIMARY KEY(source,key))");
+  old.query("INSERT INTO records VALUES(?,?,?,?,?)").run("github", "pr:old", '{"head":"retained"}', "old-digest", "old-time");
+  old.close();
+  let store = new WorkStore(path);
+  const other = new WorkStore(path);
+  try {
+    expect(store.records("github")).toEqual([{ source: "github", key: "pr:old", data: { head: "retained" }, digest: "old-digest", observedAt: "old-time" }]);
+    store.applySnapshot("github", [{ key: "pr:1", data: { head: "first" } }], "a", true);
+    const seq = store.latestSeq();
+    store.acknowledge("reader", 0, seq);
+    expect(store.setSnooze("pr:1", 0, 1, 1000)).toBe(true);
+    expect(other.setSnooze("pr:1", 0, 24, 2000)).toBe(false);
+    expect(other.snoozes()).toEqual([{ key: "pr:1", version: 1, until: 3601000, durationHours: 1 }]);
+    expect(store.latestSeq()).toBe(seq);
+    expect(store.cursor("reader")).toBe(seq);
+    store.close();
+    store = new WorkStore(path);
+    store.applySnapshot("github", [{ key: "pr:1", data: { head: "second" } }], "b", true);
+    expect(store.snoozes()[0]!.version).toBe(1);
+    // Restore after expiry still advances the version; a retry cannot undo re-snooze.
+    expect(store.setSnooze("pr:1", 1, null, 4000000)).toBe(true);
+    expect(other.setSnooze("pr:1", 2, 24, 4000001)).toBe(true);
+    expect(store.setSnooze("pr:1", 1, null, 4000002)).toBe(false);
+    expect(store.setSnooze("pr:1", 2, null, 4000002)).toBe(false);
+    expect(() => store.setSnooze("missing", 0, 1)).toThrow();
+    expect(() => store.setSnooze("pr:1", 3, 2 as 1)).toThrow();
+    expect(store.snoozes()[0]).toMatchObject({ version: 3, durationHours: 24 });
+  } finally { store.close(); other.close(); rmSync(dir, { recursive: true, force: true }); }
+});
