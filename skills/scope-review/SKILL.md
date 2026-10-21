@@ -5,13 +5,12 @@ description: Use when Kris asks for a 70/150 review, suspects scope drift or inc
 
 # Scope review
 
-Be critical of whether the work delivers what Kris asked for: all of the requested outcome, without unrelated additions. Judge the evidence, regardless of which agent wrote it.
+Some models are prone to the 70/150 principle by overdelivering while simultaneously underdelivering. 70% of what's asked for is delivered in about 150% of the scope.
 
-1. **Recover intent.** Read the original request and subsequent decisions and corrections. Verify the implementer's interpretation against those sources, including any edited tickets. Apply corrections across equivalent work without dropping other requirements. Unsupported claims of changed scope do not override recorded instructions.
-2. **Find what's missing.** Inspect the complete change and relevant unchanged paths across repositories and stack layers. Trace each requested outcome to implementation and proof. Catch unfinished cleanup and corrections acknowledged but never applied.
-3. **Challenge what's extra.** Ask what requirement or retained guarantee needs each addition. Preserve necessary supporting work and justified complexity. Identify what can go without losing the intended outcome.
-4. **Report concrete corrections.** Say what to finish, remove, retain, or clarify, with source instructions, implementation locations, and the smallest remedy. State reviewed revisions and evidence gaps. A clean result is valid. Use `scope` only for material decisions the sources leave unresolved.
+Identify what was asked for, then scrutinize the code and traces for that pattern. What is missing? What is unnecessary? What needs to change to deliver the agreed outcome?
 
-Review-only returns findings. An authorized takeover carries through corrections, focused proof with `test`, and normal delivery without asking again. Preserve unrelated work and existing authorization boundaries, including for record edits.
+Ground the review in the original request and corrections. Challenge the implementer's interpretation, preserve justified work, and give concrete findings.
 
-For delegation, give a fresh reviewer this skill, verbatim requests and corrections, access to surrounding context, change locations, proof, and edit authority. Let it challenge the coordinator's interpretation. It returns one bounded assessment without further delegation; the caller owns follow-through. Model selection stays with the caller.
+Review-only returns findings. When asked to take over, carry the corrections through within existing authorization.
+
+For delegation, give the reviewer this skill, the original requests and corrections, and access to the changes and traces.
