@@ -319,6 +319,19 @@
       "provenance": "original"
     },
     {
+      "name": "scope-review",
+      "path": "skills/scope-review",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "seer",
       "path": "skills/seer",
       "targets": [
