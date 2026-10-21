@@ -56,3 +56,10 @@ export interface WorkConfig {
   };
   schedule: { time: string; timezone: string; weekdays: number[] };
 }
+
+export interface PRSnooze {
+  key: string;
+  version: number;
+  until: number | null;
+  durationHours: 1 | 24 | null;
+}

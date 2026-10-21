@@ -1,10 +1,11 @@
-import type { GithubRecord } from "../lib/work/github.ts";
+import { visiblePRs, githubHealthCurrent, actionSections, projectPRs, type PRAction, type PRView } from "../lib/work/pr-actions.ts";
 import type { SlackMessage, SlackThread } from "../lib/work/slack.ts";
-import type { SourceHealth, WorkRecord } from "../lib/work/types.ts";
+import type { PRSnooze, SourceHealth, WorkRecord } from "../lib/work/types.ts";
 
 type Status = {
   records: { github: WorkRecord[]; slack: WorkRecord[] };
   health: { github: SourceHealth; slack: SourceHealth };
+  snoozes: PRSnooze[];
   followed: { channel: string; rootTs: string }[];
   runtime: { dispatchGap?: string | null } | null;
 };
@@ -24,9 +25,6 @@ let busy = false;
 let reading = false;
 let mutations = 0;
 let revision = 0;
-const statusTones: Record<string, string> = {
-  approved: "good", "changes-requested": "warn", failing: "bad", "needs-review": "info", requested: "accent", draft: "quiet",
-};
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, className?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -36,6 +34,7 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, c
 // Short local time for scanning; the full timestamp stays available on hover and to assistive tech.
 function time(value: string | number): HTMLTimeElement {
   const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return element("time", "Time unavailable");
   const today = date.toDateString() === new Date().toDateString();
   const node = element("time", date.toLocaleString(undefined, today ? { hour: "2-digit", minute: "2-digit" } : { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }));
   node.dateTime = date.toISOString();
@@ -102,32 +101,113 @@ function section(title: string, count?: number, note?: string): HTMLElement {
   if (note) header.append(element("p", note, "muted"));
   return header;
 }
-const prRows = (data: Status, which: string) => data.records.github.map((row) => row.data as unknown as GithubRecord)
-  .filter((row) => which === "mine" ? row.owned : row.requested && !row.owned && !row.hidden);
-// Repository groups keep source order; nothing is ranked.
+const repositoryFilter = new URL(location.href).searchParams.get("repo");
+const showSnoozed = new URL(location.href).searchParams.get("snoozed") === "show";
+const prRows = (data: Status, which: string) => visiblePRs(projectPRs(data.records.github, data.health.github, which as PRView, repositoryFilter), data.snoozes).rows;
+function renderPRRow(row: PRAction): HTMLLIElement {
+  const record = row.record;
+  const item = element("li", undefined, "pr");
+  item.dataset.key = row.key;
+  const title = element("h3");
+  title.append(link(record.title, record.url));
+  const tone = row.section === "Ready to merge" || row.section === "Reviewed" ? "good" : row.section === "Needs attention" ? "warn" : row.section === "Status unavailable" || row.section === "Drafts" ? "quiet" : "info";
+  item.append(element("span", `#${record.number}`, "num"), state(row.reason, tone, row.section === "Drafts" ? "draft" : "pending"), title);
+  const meta = element("p", undefined, "meta");
+  const repoURL = new URL(location.href);
+  repoURL.searchParams.set("repo", record.repository);
+  const repo = element("a", record.repository);
+  repo.href = repoURL.href;
+  repo.setAttribute("aria-label", `Filter repository ${record.repository}`);
+  meta.append(repo);
+  if (row.parent) meta.append(link(`Parent #${row.parent.number}`, row.parent.url));
+  if (record.threadUrl) meta.append(link("T3 review", record.threadUrl));
+  item.append(meta);
+  const snooze = status?.snoozes.find(s => s.key === row.key);
+  const controls = element("details", undefined, "snooze");
+  controls.dataset.key = `${row.key}:snooze`;
+  const summary = element("summary", "Snooze");
+  summary.setAttribute("aria-label", `Snooze PR #${record.number}`);
+  controls.append(summary);
+  const act = (label: string, durationHours: 1 | 24 | null) => {
+    const button = element("button", label, "quiet");
+    button.type = "button";
+    button.addEventListener("click", async () => {
+      if (mutations || busy) { notice.textContent = "Wait for the current update, then try again."; return; }
+      mutations++;
+      revision++;
+      // Keep keyboard focus until render can transfer it if this row disappears.
+      button.setAttribute("aria-disabled", "true");
+      try {
+        const next = await request<Status>(durationHours === null ? "/api/restore" : "/api/snooze", { key: row.key, expected: snooze?.version ?? 0, durationHours });
+        status = next;
+        notice.textContent = "";
+        render();
+      } catch { notice.textContent = "Could not update snooze. Refresh to get the latest decision, then try again."; }
+      finally { mutations--; button.removeAttribute("aria-disabled"); }
+    });
+    controls.append(button);
+  };
+  act("1 hour", 1);
+  act("24 hours", 24);
+  if (showSnoozed && snooze?.until !== null && snooze?.until !== undefined) {
+    act("Restore", null);
+    const until = element("p", `${snooze.until > Date.now() ? "Snoozed" : "Expired"} · ${snooze.durationHours}h · until `, "muted");
+    until.append(time(snooze.until));
+    controls.append(until);
+  }
+  item.append(controls);
+  return item;
+}
 function renderPRs(data: Status): void {
   const health = data.health.github;
-  renderSource(health);
-  const rows = prRows(data, view);
-  if (!rows.length) { facts.append(empty(health, view === "mine" ? "No open PRs." : "No reviews requested.")); return; }
-  const groups = Map.groupBy(rows, (row) => row.repository);
-  for (const [repository, prs] of groups) {
+  renderSource(!health.gap && health.succeededAt && !githubHealthCurrent(health) ? { ...health, gap: "GitHub status expired; refresh to verify current actions" } : health);
+  const all = projectPRs(data.records.github, health, view as PRView, repositoryFilter);
+  const projection = visiblePRs(all, data.snoozes, showSnoozed);
+  const activeCount = all.rows.length - visiblePRs(all, data.snoozes).rows.length;
+  const toggle = element("a", showSnoozed ? `Hide snoozed (${activeCount})` : `Show snoozed (${activeCount})`);
+  const toggleURL = new URL(location.href);
+  if (showSnoozed) toggleURL.searchParams.delete("snoozed");
+  else toggleURL.searchParams.set("snoozed", "show");
+  toggle.href = toggleURL.href;
+  toggle.id = "snooze-visibility";
+  toggle.className = "snooze-visibility";
+  facts.append(toggle);
+  if (repositoryFilter) {
+    const filter = element("p", undefined, "meta repo-filter");
+    const url = new URL(location.href);
+    url.searchParams.delete("repo");
+    const clear = element("a", "All repositories");
+    clear.href = url.href;
+    filter.append(element("span", repositoryFilter), clear);
+    facts.append(filter);
+  }
+  if (!projection.rows.length) {
+    facts.append(activeCount
+      ? element("p", "All matching PRs are snoozed. Show snoozed to restore them.", "empty")
+      : empty(health, view === "mine" ? "No open PRs." : "No reviews requested."));
+    return;
+  }
+  for (const sectionName of actionSections) {
+    const groups = projection.groups.filter(group => group.section === sectionName);
+    if (!groups.length) continue;
     const group = element("section", undefined, "group");
-    group.dataset.key = repository;
-    group.append(element("h2", repository, "repo"));
+    group.dataset.key = sectionName;
+    group.append(section(sectionName, groups.length));
     const list = element("ul", undefined, "ledger");
-    for (const row of prs) {
-      const item = element("li", undefined, "pr");
-      item.dataset.key = row.url;
-      const title = element("h3");
-      title.append(link(row.title, row.url));
-      const label = row.status.charAt(0).toUpperCase() + row.status.slice(1).replaceAll("-", " ");
-      item.append(element("span", `#${row.number}`, "num"), state(label, statusTones[row.status] ?? "quiet", row.status), title);
-      const meta = element("p", undefined, "meta");
-      if (row.draft && row.status !== "draft") meta.append(element("span", "Draft"));
-      if (row.threadUrl) meta.append(link("T3 review", row.threadUrl));
-      if (meta.childElementCount) item.append(meta);
-      list.append(item);
+    for (const stack of groups) {
+      if (stack.members.length === 1) { list.append(renderPRRow(stack.primary)); continue; }
+      const container = element("li", undefined, "stack");
+      container.dataset.key = stack.key;
+      const primary = element("ul", undefined, "ledger");
+      primary.append(renderPRRow(stack.primary));
+      const details = element("details", undefined, "stack-members");
+      details.dataset.key = `${stack.key}:disclosure`;
+      details.append(element("summary", `Stack · ${stack.members.length} PRs`));
+      const members = element("ul", undefined, "ledger");
+      for (const member of stack.members) if (member.key !== stack.primary.key) members.append(renderPRRow(member));
+      details.append(members);
+      container.append(primary, details);
+      list.append(container);
     }
     group.append(list);
     facts.append(group);
@@ -239,13 +319,17 @@ function render(): void {
   dispatch.hidden = !gap;
   dispatchText.textContent = gap ? `Morning delivery: ${gap}` : "";
   if (!gap) showDispatch(false);
-  for (const count of document.querySelectorAll<HTMLElement>("[data-count]")) count.textContent = String(prRows(status, count.dataset.count!).length);
+  for (const count of document.querySelectorAll<HTMLElement>("[data-count]")) {
+    count.textContent = String(prRows(status, count.dataset.count!).length);
+    count.title = `${count.textContent} unsnoozed PRs`;
+    count.setAttribute("aria-label", count.title);
+  }
   if (view === "prompts") return;
   // Factual panels refresh independently of the persistent follow form.
   const identity = (node: Element) => {
     const owner = node.closest<HTMLElement>("[data-key]") ?? facts;
     const peers = [...owner.querySelectorAll(node.tagName)];
-    return JSON.stringify([owner.dataset.key ?? "health", node.tagName, peers.indexOf(node)]);
+    return JSON.stringify([owner.dataset.key ?? "health", node.tagName, node instanceof HTMLAnchorElement ? node.href : peers.indexOf(node)]);
   };
   const focused = facts.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = focused ? identity(focused) : null;
@@ -256,7 +340,7 @@ function render(): void {
   for (const details of facts.querySelectorAll("details")) details.open = opened.has(identity(details));
   if (focusKey) {
     const replacement = [...facts.querySelectorAll<HTMLElement>("a, button, summary")].find((node) => identity(node) === focusKey);
-    replacement?.focus({ preventScroll: true });
+    (replacement ?? facts.querySelector<HTMLElement>("#snooze-visibility") ?? refresh).focus({ preventScroll: true });
   }
 }
 function showDispatch(open: boolean): void {
@@ -319,6 +403,12 @@ async function readStatus(collect = false): Promise<void> {
   finally { notice.classList.remove("loading"); reading = false; busy = false; refresh.disabled = false; refresh.removeAttribute("aria-busy"); refreshLabel.textContent = "Refresh"; }
 }
 for (const anchor of document.querySelectorAll<HTMLAnchorElement>("nav a")) {
+  if (repositoryFilter || showSnoozed) {
+    const url = new URL(anchor.href);
+    if (showSnoozed) url.searchParams.set("snoozed", "show");
+    if (repositoryFilter) url.searchParams.set("repo", repositoryFilter);
+    anchor.href = url.href;
+  }
   if (new URL(anchor.href).searchParams.get("view") === view) anchor.setAttribute("aria-current", "page");
 }
 freshness.querySelector("#source-name")!.textContent = view === "slack" ? "Slack" : "GitHub";

@@ -1,10 +1,12 @@
+import { enrichGithub, type GithubCommand } from "./github-facts.ts";
+import type { GithubRecord } from "./github.ts";
 import {
   SLACK_DISCOVERY_LIMIT,
   SLACK_FOLLOW_LIMIT,
   SLACK_THREAD_PAGES,
   SLACK_THREAD_PAGE_LIMIT,
 } from "./validation.ts";
-import { readGithub, type GithubFetcher } from "./github.ts";
+import { GITHUB_MAX_AGE_MS, GITHUB_PARTIAL_GAP, readGithub, type GithubFetcher } from "./github.ts";
 import {
   openManagedSession,
   type ManagedSession,
@@ -13,27 +15,39 @@ import {
 import { parseSlackSearch, readFollowedThread } from "./slack.ts";
 import type { WorkStore } from "./store.ts";
 import type { Json, WorkConfig } from "./types.ts";
-// The watcher owns a five-minute polling cycle; allow missed cycles and latency
-// independently of how frequently this service reads its cached status.
-const WATCHER_MAX_AGE_MS = 15 * 60_000;
 export async function collectGithub(
   store: WorkStore,
   cfg: WorkConfig,
-  options: { now?: Date; fetcher?: GithubFetcher } = {},
+  options: {
+    now?: Date;
+    fetcher?: GithubFetcher;
+    githubCommand?: GithubCommand;
+  } = {},
 ): Promise<void> {
   const now = options.now ?? new Date(),
     at = now.toISOString();
-  store.attempt("github", at);
+  // A concurrent status read must not mistake an in-flight attempt for success.
+  store.fail("github", at, "GitHub collection in progress");
   try {
     const snapshot = await readGithub(cfg.watcherUrl, options.fetcher);
     const last = Date.parse(snapshot.succeededAt),
       previous = store.health("github").succeededAt;
     if (
       last > now.getTime() + 60_000 ||
-      now.getTime() - last > WATCHER_MAX_AGE_MS ||
+      now.getTime() - last > GITHUB_MAX_AGE_MS ||
       (previous && last < Date.parse(previous))
     )
       throw new Error("stale");
+    const gap = await enrichGithub(
+      snapshot.records,
+      new Map(
+        store
+          .records("github")
+          .map((r) => [r.key, r.data as unknown as GithubRecord]),
+      ),
+      at,
+      options.githubCommand,
+    );
     store.applySnapshot(
       "github",
       snapshot.records.map((r) => ({
@@ -42,7 +56,12 @@ export async function collectGithub(
       })),
       at,
       true,
-      { succeededAt: snapshot.succeededAt },
+      {
+        succeededAt: snapshot.succeededAt,
+        ...(gap
+          ? { gap: GITHUB_PARTIAL_GAP }
+          : { gap: "" }),
+      },
     );
   } catch {
     store.fail(

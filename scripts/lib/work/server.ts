@@ -71,6 +71,7 @@ export function workStatus(store: WorkStore, runtime?: unknown) {
         ...slack.filter((row) => followed.has(row.key)),
       ],
     },
+    snoozes: store.snoozes(),
     health: { github: store.health("github"), slack: store.health("slack") },
     followed: store.followed(),
     latestSeq: store.latestSeq(),
@@ -177,6 +178,11 @@ export function createWorkServer(options: {
             if (path === "/api/follow") store.follow(channel, rootTs);
             else store.unfollow(channel, rootTs);
             data = { followed: store.followed() };
+          } else if (path === "/api/snooze" || path === "/api/restore") {
+            const duration = path === "/api/restore" ? null : input.durationHours;
+            if ((path === "/api/snooze" && duration === null) || (duration !== null && duration !== 1 && duration !== 24)) throw new HttpError(400, "Invalid snooze");
+            if (!store.setSnooze(text(input.key), integer(input.expected), duration)) throw new HttpError(409, "Snooze changed; refresh and try again");
+            data = workStatus(store, options.runtimeStatus?.());
           } else if (path === "/api/refresh") {
             if (!options.refresh)
               throw new HttpError(503, "Refresh unavailable");
