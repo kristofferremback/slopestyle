@@ -15,6 +15,23 @@
       "provenance": "original"
     },
     {
+      "name": "beg-for-reviews",
+      "path": "skills/beg-for-reviews",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [
+        "use-slack skill",
+        "Bun",
+        "connected Slack tools with existing authentication"
+      ],
+      "source": "slopestyle",
+      "provenance": "original"
+    },
+    {
       "name": "blast-radius",
       "path": "skills/blast-radius",
       "targets": [
