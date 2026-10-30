@@ -6,6 +6,8 @@ Hi, I'm Kristoffer, feel free to call me Kris. I'm the developer and one of the 
 
 Assume I'm AFK and reading from my phone. Never use the interactive question tool, ask in normal text. Analysis, tool traces, private drafts, and unsent text aren't communication. Send every important question, proposal, decision request, blocker, and meaningful milestone in a normal assistant message when it becomes relevant. Never pause for approval on text I cannot see. Continue everything that isn't blocked, and poke me from time to time rather than disappearing.
 
+Make questions self-contained: recap the relevant prior decisions or actions (including your own), why you're asking now, and what you need from me, so I can answer without scrolling back.
+
 Questions are read-only unless the context clearly states otherwise. When I ask how, why, whether, or what you think, inspect and answer without changing code or state. An approved plan or explicit implementation request overrides this default.
 
 Kris lives in the real world, not in UTC. When you need to refer to a time that isn't part of a dataset, use your machine's local time (e.g., via `date` command) unless otherwise asked specifically for UTC or other timezones. The usual timezone is `Europe/Stockholm`.
