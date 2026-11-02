@@ -2,11 +2,7 @@ import { expect, test } from "bun:test";
 import { WorkStore } from "../scripts/lib/work/store.ts";
 import { collectGithub, collectSlack } from "../scripts/lib/work/collect.ts";
 import { GITHUB_PARTIAL_GAP, parseGithub } from "../scripts/lib/work/github.ts";
-import {
-  SLACK_APP,
-  SLACK_TOOLS,
-  verifySlackTools,
-} from "../scripts/lib/work/managed-apps.ts";
+import { SLACK_APP, SLACK_TOOLS } from "../scripts/lib/work/managed-apps.ts";
 import type { WorkConfig } from "../scripts/lib/work/types.ts";
 const now = new Date("2026-10-19T10:00:00Z");
 const cfg: WorkConfig = {
@@ -91,21 +87,6 @@ test("should preserve watcher evidence and upstream success when response is sta
   expect(store.health("github").gap).toContain("stale");
   store.close();
 });
-test("should refuse connector owner mismatch before source calls", () => {
-  const tools = Object.fromEntries(
-    SLACK_TOOLS.map((name) => [
-      name,
-      {
-        annotations: { readOnlyHint: true, destructiveHint: false },
-        _meta: {
-          connector_id: SLACK_APP,
-          link_owner_profile: { email: cfg.slack!.email, id: "T123:U999" },
-        },
-      },
-    ]),
-  );
-  expect(() => verifySlackTools(tools, cfg.slack!)).toThrow("unverified");
-});
 test("should retain later replies and previous evidence when one followed thread fails", async () => {
   const store = new WorkStore(":memory:");
   store.follow("C123", "1700000000.000001");
@@ -164,7 +145,7 @@ test("should reject empty thread evidence without inventing a root", async () =>
 });
 
 test("should execute only verified direct read RPC through an ephemeral subprocess", async () => {
-  const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+  const { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const { openManagedSession } =
@@ -180,13 +161,19 @@ if (process.argv.includes("login")) {
 }
 await Bun.write(${JSON.stringify(join(dir, "pid"))}, String(process.pid));
 let inventoried = false;
-const tools = Object.fromEntries(${JSON.stringify(SLACK_TOOLS)}.map(name => [name, {
+const scenario = await Bun.file(${JSON.stringify(join(dir, "scenario"))}).json();
+const log = ${JSON.stringify(join(dir, "calls"))};
+const profile = scenario.profile ?? "User ID: U123\\nDisplay Name: Synthetic\\nEmail: agent@example.com\\n";
+const tools = Object.fromEntries(${JSON.stringify([...SLACK_TOOLS, "slack.slack_read_user_profile", "slack.slack_list_workspaces"])}.map(name => [name, {
   annotations: { readOnlyHint: true, destructiveHint: false },
   _meta: {
     connector_id: ${JSON.stringify(SLACK_APP)},
-    link_owner_profile: { email: "agent@example.com", id: "T123:U123" },
+    link_id: "synthetic-link",
   },
 }]));
+for (const [name, patch] of Object.entries(scenario.tools ?? {})) {
+  Object.assign(tools[name], patch);
+}
 let pending = "";
 for await (const chunk of Bun.stdin.stream()) {
   pending += new TextDecoder().decode(chunk);
@@ -194,6 +181,7 @@ for await (const chunk of Bun.stdin.stream()) {
   while ((newline = pending.indexOf("\\n")) >= 0) {
     const message = JSON.parse(pending.slice(0, newline));
     pending = pending.slice(newline + 1);
+    await Bun.write(log, (await Bun.file(log).exists() ? await Bun.file(log).text() : "") + JSON.stringify(message) + "\\n");
     let result;
     if (message.method === "initialize") result = {};
     else if (message.method === "thread/start" && message.params.ephemeral && message.params.sandbox === "read-only")
@@ -202,7 +190,11 @@ for await (const chunk of Bun.stdin.stream()) {
       inventoried = true;
       result = { data: [{ name: "codex_apps", tools }] };
     } else if (inventoried && message.method === "mcpServer/tool/call" && message.params.server === "codex_apps" && tools[message.params.tool])
-      result = { structuredContent: { results: "## Messages (0 results)", pagination_info: "" } };
+      result = message.params.tool.endsWith("slack_read_user_profile")
+        ? { content: [{ type: "text", text: JSON.stringify({ result: profile }) }] }
+        : message.params.tool.endsWith("slack_list_workspaces")
+          ? { structuredContent: scenario.workspace ?? { ok: true, teams: [{ id: "T123" }], response_metadata: { next_cursor: "" } } }
+          : { structuredContent: { results: "## Messages (0 results)", pagination_info: "" } };
     else {
       console.log(JSON.stringify({ id: message.id, error: { code: -1 } }));
       continue;
@@ -214,6 +206,7 @@ for await (const chunk of Bun.stdin.stream()) {
     { mode: 0o700 },
   );
   try {
+    writeFileSync(join(dir, "scenario"), "{}");
     const session = await openManagedSession({ ...cfg.slack!, codexPath: cli });
     try {
       expect(await session.call(SLACK_TOOLS[0], {})).toEqual({
@@ -221,11 +214,78 @@ for await (const chunk of Bun.stdin.stream()) {
         pagination_info: "",
       });
       await expect(session.call("turn/start", {})).rejects.toThrow();
+      await expect(session.call("slack.slack_read_user_profile", {})).rejects.toThrow();
     } finally {
       await session.close();
     }
     const pid = Number(await Bun.file(join(dir, "pid")).text());
     expect(() => process.kill(pid, 0)).toThrow();
+    const readCalls = async () =>
+      (await Bun.file(join(dir, "calls")).text())
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+    const messages = await readCalls();
+    expect(existsSync(messages.find((m) => m.method === "thread/start").params.cwd)).toBe(false);
+    expect(messages.map((m) => m.method)).toEqual([
+      "initialize",
+      "thread/start",
+      "mcpServerStatus/list",
+      "mcpServer/tool/call",
+      "mcpServer/tool/call",
+      "mcpServer/tool/call",
+    ]);
+    expect(
+      messages
+        .filter((m) => m.method === "mcpServer/tool/call")
+        .map((m) => [m.params.tool, m.params.arguments]),
+    ).toEqual([
+      ["slack.slack_read_user_profile", {}],
+      ["slack.slack_list_workspaces", {}],
+      [SLACK_TOOLS[0], {}],
+    ]);
+    const rejected: { name: string; response: Record<string, unknown> }[] = [
+      { name: "different current user", response: { profile: "User ID: U999\nEmail: agent@example.com\n" } },
+      { name: "different current email", response: { profile: "User ID: U123\nEmail: wrong@example.com\n" } },
+      { name: "ambiguous email", response: { profile: "User ID: U123\nEmail: agent@example.com\nEmail: other@example.com\n" } },
+      { name: "duplicate user ID", response: { profile: "User ID: U123\nUser ID: U123\nEmail: agent@example.com\n" } },
+      { name: "missing user ID", response: { profile: "Email: agent@example.com\n" } },
+      { name: "different workspace", response: { workspace: { ok: true, teams: [{ id: "T999" }], response_metadata: { next_cursor: "" } } } },
+      { name: "failed workspace listing", response: { workspace: { ok: false, teams: [{ id: "T123" }], response_metadata: { next_cursor: "" } } } },
+      { name: "multiple workspaces", response: { workspace: { ok: true, teams: [{ id: "T123" }, { id: "T999" }], response_metadata: { next_cursor: "" } } } },
+      { name: "paginated workspace listing", response: { workspace: { ok: true, teams: [{ id: "T123" }], response_metadata: { next_cursor: "more" } } } },
+      { name: "missing workspace pagination", response: { workspace: { ok: true, teams: [{ id: "T123" }] } } },
+      ...["", "different-link", undefined].map((link_id) => ({
+        name: `${link_id === undefined ? "missing" : link_id === "" ? "blank" : "different"} connector link`,
+        response: { tools: { [SLACK_TOOLS[0]!]: { _meta: { connector_id: SLACK_APP, link_id } } } },
+      })),
+      { name: "identity tool is not read-only", response: { tools: { "slack.slack_read_user_profile": { annotations: { readOnlyHint: false, destructiveHint: false } } } } },
+    ];
+    for (const { name, response } of rejected) {
+      writeFileSync(join(dir, "scenario"), JSON.stringify(response));
+      writeFileSync(join(dir, "calls"), "");
+      const store = new WorkStore(":memory:");
+      try {
+        store.applySnapshot("slack", [{ key: "prior", data: { text: "prior evidence" } }], now.toISOString(), false, { succeededAt: now.toISOString() });
+        await collectSlack(store, { ...cfg, slack: { ...cfg.slack!, codexPath: cli } }, { now: new Date(now.getTime() + 60_000) });
+        expect(store.records("slack").map((r) => r.key)).toEqual(["prior"]);
+        expect(store.health("slack").succeededAt).toBe(now.toISOString());
+        expect(store.health("slack").gap).toMatch(/Slack (account|workspace|read tools) unverified/);
+        expect(store.health("slack").gap).not.toContain("example.com");
+        const messages = await readCalls();
+        expect(existsSync(messages.find((m) => m.method === "thread/start").params.cwd)).toBe(false);
+        expect(
+          messages
+            .filter((m) => m.method === "mcpServer/tool/call")
+            .every((m) => !SLACK_TOOLS.includes(m.params.tool)),
+        ).toBe(true);
+        expect(() => process.kill(Number(readFileSync(join(dir, "pid"), "utf8")), 0)).toThrow();
+      } catch (cause) {
+        throw new Error(`Slack rejection scenario failed: ${name}`, { cause });
+      } finally {
+        store.close();
+      }
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
