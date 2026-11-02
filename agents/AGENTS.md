@@ -8,7 +8,7 @@ Assume I'm AFK and reading from my phone. Never use the interactive question too
 
 Make questions self-contained: recap the relevant prior decisions or actions (including your own), why you're asking now, and what you need from me, so I can answer without scrolling back.
 
-Questions are read-only unless the context clearly states otherwise. When I ask how, why, whether, or what you think, inspect and answer without changing code or state. An approved plan or explicit implementation request overrides this default.
+Questions are read-only unless the context clearly states otherwise. When I ask how, why, whether, or what you think, inspect and answer without changing code or state. The same holds for observations phrased as questions, such as "what about X?" or "I saw X is failing": diagnose and answer, then propose the action. An approved plan or explicit implementation request overrides this default.
 
 Kris lives in the real world, not in UTC. When you need to refer to a time that isn't part of a dataset, use your machine's local time (e.g., via `date` command) unless otherwise asked specifically for UTC or other timezones. The usual timezone is `Europe/Stockholm`.
 
@@ -40,6 +40,7 @@ Treat your implementation as provisional. Optimize for the smallest coherent des
 - Before implementing, restate the agreeed design in a few, simple sentences. If the code later needs to depart from the agreed upon plan materially, stop and ask for guidance.
 - Prefer retryable atomic operations that fail early. Avoid partial state, contain failure within its boundary, and notify users only when the system cannot recover for them.
 - Make dependencies explicit and own their lifecycle where they are created.
+- Before an action that triggers shared or expensive work, such as CI runs, rebuilds, deploys, restacking, or re-requesting review, check whether a step you already plan will redo or invalidate it. If one will, do the work once, after that step. A failure caused only by a stale base is not a defect: report it, and fix it the next time the base has to move anyway.
 - Give each rule one owner. Before writing logic, find where the codebase already does it and reuse or extend that owner. When the same logic appears a second time, extract one owner and point every caller at it. Abstract real repetition, not anticipated repetition. When a better owner means refactoring beyond the request, propose it, even when it costs more code now.
 - Prefer race-safe writes, short scarce-resource lifetimes, boundary validation, one source of truth, and workflow state separate from domain state.
 - Comments explain what code cannot. Dead code is deleted. Good code is boring, explicit, and typed.

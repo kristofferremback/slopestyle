@@ -40,7 +40,7 @@ The owning agent handles each actionable report:
 - Reproduce failures with the repository's locked dependencies and CI command. For formatting failures, align the local formatter with CI before editing; temporary dependency installs can change the version used by commit hooks.
 - Distinguish repository failures from infrastructure flakes. Retry only known retryable failures and make retries visible.
 - Verify bot and human findings against source and accepted intent, then settle them with [`review`'s fix disposition](../review/references/fix-disposition.md). Explain false positives and deferred proposals with their evidence or scope reason.
-- Keep the branch current with its base when repository workflow requires it.
+- Update a branch from its base only when merging requires it, the base carries a fix the branch needs, or a conflict blocks review. An update reruns CI for every PR above it in a stack, so batch updates and make one after any planned parent merges.
 - If another PR makes this one obsolete or changes its assumptions, stop, report the evidence, and ask before closing.
 
 Use `ship` for owned follow-up commits and PR updates. Re-run focused proof and request re-review when needed.
@@ -57,7 +57,7 @@ The PR or contiguous stack is ready when:
 - actionable review threads are resolved,
 - requested re-reviews or approvals have landed where required,
 - the diff still matches the accepted scope,
-- base and stack relationships are current,
+- stack relationships are correct,
 - proof and caveats are reflected in the PR.
 
 Send milestone updates for failures, meaningful fixes, and ready state. End at ready. Never merge or deploy.
