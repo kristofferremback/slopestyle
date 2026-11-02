@@ -9,6 +9,7 @@ import {
 import { GITHUB_MAX_AGE_MS, GITHUB_PARTIAL_GAP, readGithub, type GithubFetcher } from "./github.ts";
 import {
   openManagedSession,
+  SlackManagedError,
   type ManagedSession,
   type SlackConfig,
 } from "./managed-apps.ts";
@@ -153,11 +154,11 @@ export async function collectSlack(
       ...(!failed && !incomplete ? { succeededAt: at } : {}),
       gap,
     });
-  } catch {
+  } catch (error) {
     store.fail(
       "slack",
       at,
-      "Slack managed read unavailable or unverified; previous evidence retained",
+      `${error instanceof SlackManagedError ? error.message : "Slack managed read unavailable or unverified"}; previous evidence retained`,
     );
   } finally {
     try {

@@ -12,23 +12,64 @@ export const SLACK_TOOLS = [
   "slack.slack_search_public_and_private",
   "slack.slack_read_thread",
 ];
-const failure = () => new Error("Slack managed read unavailable or unverified");
-export function verifySlackTools(
-  tools: Record<string, any>,
-  cfg: SlackConfig,
-): void {
-  for (const name of SLACK_TOOLS) {
-    const t = tools[name],
-      owner = t?._meta?.link_owner_profile;
+type FailureStage = "login" | "connection" | "catalog" | "account" | "workspace";
+const diagnostics: Record<FailureStage, string> = {
+  login: "Slack login unverified; sign in to Codex using ChatGPT",
+  connection: "Slack connection unavailable; check the Slack app connection",
+  catalog: "Slack read tools unverified; check connector compatibility",
+  account: "Slack account unverified; check the configured Slack user and email",
+  workspace: "Slack workspace unverified; connect exactly the configured workspace",
+};
+export class SlackManagedError extends Error {
+  constructor(stage: FailureStage) {
+    super(diagnostics[stage]);
+  }
+}
+const failure = (stage: FailureStage = "connection") => new SlackManagedError(stage);
+const IDENTITY_TOOLS = ["slack.slack_read_user_profile", "slack.slack_list_workspaces"];
+function verifySlackTools(tools: Record<string, any>): void {
+  let link: string | undefined;
+  for (const name of [...SLACK_TOOLS, ...IDENTITY_TOOLS]) {
+    const t = tools[name];
+    const candidate = t?._meta?.link_id;
     if (
       t?.annotations?.readOnlyHint !== true ||
       t?.annotations?.destructiveHint !== false ||
       t?._meta?.connector_id !== SLACK_APP ||
-      owner?.email?.toLowerCase() !== cfg.email.toLowerCase() ||
-      owner?.id !== `${cfg.workspace}:${cfg.user}`
+      typeof candidate !== "string" ||
+      !candidate.trim() ||
+      (link !== undefined && candidate !== link)
     )
-      throw failure();
+      throw failure("catalog");
+    link = candidate;
   }
+}
+function verifyAccount(raw: any, cfg: SlackConfig): void {
+  const profile = raw?.result;
+  if (typeof profile !== "string" || profile.length > 16_384 || profile.includes("\r"))
+    throw failure("account");
+  const lines = profile.split("\n");
+  const ids = lines.filter((line) => line.startsWith("User ID:"));
+  const emails = lines.filter((line) => line.startsWith("Email:"));
+  if (
+    ids.length !== 1 ||
+    emails.length !== 1 ||
+    ids[0] !== `User ID: ${cfg.user}` ||
+    emails[0]!.toLowerCase() !== `Email: ${cfg.email}`.toLowerCase()
+  )
+    throw failure("account");
+}
+function verifyWorkspace(raw: any, cfg: SlackConfig): void {
+  if (
+    raw?.ok !== true ||
+    !Array.isArray(raw.teams) ||
+    raw.teams.length !== 1 ||
+    raw.teams[0]?.id !== cfg.workspace ||
+    raw.response_metadata?.next_cursor !== "" ||
+    (raw.has_more !== undefined && raw.has_more !== false) ||
+    (raw.next_cursor !== undefined && raw.next_cursor !== "")
+  )
+    throw failure("workspace");
 }
 export function managedPayload(result: any): unknown {
   if (result?.isError) throw failure();
@@ -52,11 +93,16 @@ function managedEnvironment(): Record<string, string> {
 }
 export async function verifyChatGPTLogin(path: string): Promise<void> {
   const env = managedEnvironment();
-  const login = Bun.spawn([path, "login", "status"], {
-    env,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  let login;
+  try {
+    login = Bun.spawn([path, "login", "status"], {
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+  } catch {
+    throw failure("login");
+  }
   const loginTimer = setTimeout(() => login.kill("SIGKILL"), 5000);
   try {
     let length = 0;
@@ -66,7 +112,7 @@ export async function verifyChatGPTLogin(path: string): Promise<void> {
         length += chunk.length;
         if (length > 4096) {
           login.kill("SIGKILL");
-          throw failure();
+          throw failure("login");
         }
         output += new TextDecoder().decode(chunk);
       }
@@ -76,7 +122,9 @@ export async function verifyChatGPTLogin(path: string): Promise<void> {
       await Promise.all([bounded(login.stdout), bounded(login.stderr)])
     ).join("\n");
     if ((await login.exited) !== 0 || !/Logged in using ChatGPT/i.test(output))
-      throw failure();
+      throw failure("login");
+  } catch {
+    throw failure("login");
   } finally {
     clearTimeout(loginTimer);
   }
@@ -84,39 +132,45 @@ export async function verifyChatGPTLogin(path: string): Promise<void> {
 function openReadOnlyRpc(cfg: SlackConfig) {
   const env = managedEnvironment();
   const work = mkdtempSync(join(tmpdir(), "work-slack-"));
-  const child = Bun.spawn(
-    [
-      cfg.codexPath,
-      "--enable",
-      "apps",
-      ...[
-        "plugins",
-        "shell_tool",
-        "multi_agent",
-        "computer_use",
-        "browser_use",
-        "image_generation",
-      ].flatMap((k) => ["--disable", k]),
-      "app-server",
-      "--stdio",
-      "-c",
-      "mcp_servers={}",
-      "-c",
-      "apps._default.enabled=false",
-      "-c",
-      `apps.${SLACK_APP}.enabled=true`,
-      "-c",
-      `apps.${SLACK_APP}.default_tools_enabled=false`,
-    ],
-    {
-      env,
-      cwd: work,
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-      detached: true,
-    },
-  );
+  let child;
+  try {
+    child = Bun.spawn(
+      [
+        cfg.codexPath,
+        "--enable",
+        "apps",
+        ...[
+          "plugins",
+          "shell_tool",
+          "multi_agent",
+          "computer_use",
+          "browser_use",
+          "image_generation",
+        ].flatMap((k) => ["--disable", k]),
+        "app-server",
+        "--stdio",
+        "-c",
+        "mcp_servers={}",
+        "-c",
+        "apps._default.enabled=false",
+        "-c",
+        `apps.${SLACK_APP}.enabled=true`,
+        "-c",
+        `apps.${SLACK_APP}.default_tools_enabled=false`,
+      ],
+      {
+        env,
+        cwd: work,
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+        detached: true,
+      },
+    );
+  } catch {
+    rmSync(work, { recursive: true, force: true });
+    throw failure();
+  }
   let next = 0,
     closed = false,
     size = 0;
@@ -204,7 +258,13 @@ export async function openManagedSession(
   cfg: SlackConfig,
 ): Promise<ManagedSession> {
   await verifyChatGPTLogin(cfg.codexPath);
-  const { request, close, work } = openReadOnlyRpc(cfg);
+  let rpc;
+  try {
+    rpc = openReadOnlyRpc(cfg);
+  } catch {
+    throw failure();
+  }
+  const { request, close, work } = rpc;
   try {
     await request("initialize", {
       clientInfo: { name: "work-slack-collector", version: "1" },
@@ -223,16 +283,36 @@ export async function openManagedSession(
     });
     const threadId = thread?.thread?.id;
     if (typeof threadId !== "string") throw failure();
-    const inventory = await request("mcpServerStatus/list", {
-      threadId,
-      serverName: "codex_apps",
-      detail: "toolsAndAuthOnly",
-      limit: 1,
-    });
+    let inventory;
+    try {
+      inventory = await request("mcpServerStatus/list", {
+        threadId,
+        serverName: "codex_apps",
+        detail: "toolsAndAuthOnly",
+        limit: 1,
+      });
+    } catch {
+      throw failure("catalog");
+    }
     verifySlackTools(
       inventory?.data?.find((s: any) => s.name === "codex_apps")?.tools ?? {},
-      cfg,
     );
+    const identityRead = async (tool: string, stage: FailureStage) => {
+      try {
+        return managedPayload(
+          await request("mcpServer/tool/call", {
+            threadId,
+            server: "codex_apps",
+            tool,
+            arguments: {},
+          }),
+        );
+      } catch {
+        throw failure(stage);
+      }
+    };
+    verifyAccount(await identityRead(IDENTITY_TOOLS[0]!, "account"), cfg);
+    verifyWorkspace(await identityRead(IDENTITY_TOOLS[1]!, "workspace"), cfg);
     return {
       async call(tool, args) {
         if (!SLACK_TOOLS.includes(tool)) throw failure();
@@ -247,8 +327,8 @@ export async function openManagedSession(
       },
       close,
     };
-  } catch {
+  } catch (error) {
     await close();
-    throw failure();
+    throw error instanceof SlackManagedError ? error : failure();
   }
 }
