@@ -7,7 +7,7 @@ description: Use when the user asks to review, challenge, stress-test, or indepe
 
 Routine self-review always. Use the coverage process and fresh independent reviewers for code diffs and pull requests. Every code and PR review includes an independent correctness pass and a capped coding-style pass, followed by reconciliation. For plans, use the framing and applicable lenses without a file ledger or a separate code-style pass. An explicit request for only one pass limits the scope; report that limit.
 
-A finding blocks when it is **proved**: a run shows the failure. Reviews spend their effort breaking the change at the real code, and the report keeps reasoning-only claims visible without turning them into work.
+A finding blocks when it is **proved** and breaks the accepted outcome once the change runs as intended. Traced findings in a few risk classes block as decisions for Kris; [fact-check](references/fact-check.md) owns those outcomes. Reviews spend their effort breaking the change at the real code, and the report keeps reasoning-only claims visible without turning them into work.
 
 A review answers three questions:
 
@@ -53,8 +53,8 @@ Launch correctness and style reviewers independently against the same fixed sour
 
 Run one round per group, in parallel:
 
-1. Give each group's reviewer its own worktree at the fixed head, created with `git worktree add`, plus the uncommitted snapshot when one is under review. Remove the worktrees after the round.
-2. Dispatch a fresh reviewer with the [reviewer brief](references/reviewer-brief.md). The reviewer tries to break the change and runs what it claims, following `test` for radius and the heavy-command guard.
+1. Give each reviewer that writes repros its own worktree at the fixed head, plus the uncommitted snapshot when one is under review. Use `git worktree add`, or the harness's checkout isolation when it owns checkouts. Reviewers that only read may share one worktree. Remove the worktrees after the round.
+2. Dispatch a fresh reviewer, never a fork of your own context, with the [reviewer brief](references/reviewer-brief.md). The reviewer tries to break the change and runs what it claims, following `test` for radius and the heavy-command guard.
 3. Fact-check the round's findings with [fact-check](references/fact-check.md).
 
 A later full round runs only when the change gains new behavior, a redesign, or a large new diff. A rebase, conflict resolution, or fix delta gets one fresh verifier that reruns the affected findings' commands and probes the delta at the new head.
@@ -65,7 +65,7 @@ Reviewers report coverage per file. Send a file a reviewer left uncovered to a f
 
 Dispatch one fresh style reviewer per style group using the [style brief](references/style-brief.md), not the correctness brief. Its completion requires file coverage, structural and local readability assessments, concrete alternatives for major hotspots, and self-contained examples for actionable findings. Check returned coverage against the assignment and route any cross-group leads. Follow up on missing coverage or incomplete hotspot comparisons before closing its style state.
 
-The review reports at most five style findings, ranked by the reading or maintenance cost they remove. Rank first new code that repeats a weak pattern already present in the codebase, since agents copy what they see. Keep the rest in the style assessment as one line each. A finding that a lint rule, type, test, or formatter could enforce moves to the report's constraint candidates.
+The review reports at most five style findings, ranked by the reading or maintenance cost they remove. Each names the weak pattern it stops from spreading or the future edit it makes cheaper; fewer than five is usual, and zero is a complete result. Rank first new code that repeats a weak pattern already present in the codebase, since agents copy what they see. Keep the rest in the style assessment as one line each. A style finding that a lint rule, type, or formatter could enforce moves to the report's constraint candidates.
 
 Capture and fact-check that independent assessment, then supply proved correctness findings to the relevant style reviewer for the workflow's bug-to-design reconciliation. When there are none, record that reconciliation had no new input. Retain style improvements without corresponding bugs. Reconciliation may add or revise a design suggestion; it cannot certify an untested refactor.
 
@@ -79,21 +79,24 @@ Locate each surviving finding by its quoted `code` in the new version of its `pa
 
 ## Report
 
-Report the assessment of the problem, implementation, and failure risks with the evidence and unresolved gaps that support it. Explain the implementation mechanism sufficiently to judge its fit. Use the calling workflow's presentation structure when provided.
+Write the report for Kris reading on a phone. It opens with the verdict: the blocker count and what was run to reach it. An empty blocker list is a valid result.
 
-For code and PR reviews, include the ledger as supporting evidence after the substantive assessment and findings: total, reviewed, skipped with reasons, coverage rate for each pass, rounds run and why, and style completion and reconciliation status. Distinguish prior coverage from scoped follow-up coverage. Evidence-only replies update the affected claims without inventing a round or coverage.
+Then, in this order:
 
-Report in this order:
+1. **Blockers:** proved findings whose impact reaches the accepted outcome once the change runs as intended, including behind its flag. Each gives the command, its output, and the output the intent requires. Then traced findings in the risk classes [fact-check](references/fact-check.md) names, as decisions for Kris.
+2. **Considerations:** at most three architecture findings and at most five style findings, per the caps above and in the assessment guide, plus proved findings with trivial impact, such as a cosmetic rebuild or a stale comment.
+3. **Assessment:** a few sentences per question on the problem, the implementation mechanism and its fit, and the failure risks, with the evidence and unresolved gaps behind each.
 
-1. **Blockers:** proved findings, each with the command, its output, and the output the intent requires; then traced findings in the risk classes [fact-check](references/fact-check.md) names, as decisions for Kris.
-2. **Considerations:** at most three architecture findings and at most five style findings, per the caps above and in the assessment guide.
-3. **Unproved:** remaining traced and unverified findings, one line each with the missing evidence. These inform; they leave the code as it is.
-4. **Constraint candidates:** each finding a machine could enforce, with the lint rule, type, test, or guidance line that would make it impossible.
-5. **Disproven:** each claim with the evidence and reasoning that disproved it.
+Each finding is one short paragraph: location, what fails or what it costs, the evidence, why it matters to the accepted outcome, and the smallest correct fix direction. Correctness findings carry a code example only when the fix is unclear from that paragraph; retained style findings keep the worksheet's example. Filter tooling-enforced issues, unsupported preferences and duplicates here, never during fact-check.
 
-Each finding includes the failing behavior, structural cost, or introduced risk, concrete location, evidence, why it matters to the accepted outcome, and the smallest correct fix direction. Filter tooling-enforced issues, unsupported preferences and duplicates here, never during fact-check. An empty blocker list is a valid result; say what was run to reach it.
+An appendix follows, or a linked file when the harness delivers files:
 
-Keep correctness and style assessments visible in the combined report, including brief hotspot outcomes and grounded retentions. Before delivering any code review, the coordinator runs the worksheet's [final-comment check](references/style-worksheet.md#final-comment-check) against the actual user-visible draft, including code inside details blocks. The review is complete only when retained style findings survive synthesis as self-contained comments with readable examples; a linked report does not discharge this check. Publication follows the user's authorization; draft-only comments stay in the response.
+- **Unproved:** remaining traced and unverified findings, one line each with the missing evidence. These inform; they leave the code as it is.
+- **Constraint candidates:** each style finding a machine could enforce, with the lint rule, type, or guidance line that would make it impossible, and each proved bug's regression test.
+- **Disproven:** each claim with the evidence that disproved it, one line each.
+- **Ledger:** total, reviewed, skipped with reasons, coverage rate for each pass, rounds run and why, style completion and reconciliation status, and brief hotspot outcomes. Distinguish prior coverage from scoped follow-up coverage. Evidence-only replies update the affected claims without inventing a round or coverage.
+
+Use the calling workflow's presentation structure when provided. Before delivering any code review, the coordinator runs the worksheet's [final-comment check](references/style-worksheet.md#final-comment-check) against the actual user-visible draft, including code inside details blocks. The review is complete only when retained style findings survive synthesis as self-contained comments with readable examples; a linked report does not discharge this check. Publication follows the user's authorization; draft-only comments stay in the response.
 
 For plan reviews, report the questions settled by probes, applicable lenses, evidence inspected, and actionable findings in the same finding shape. If no issues remain, say what was inspected. Never publish raw reviewer output.
 

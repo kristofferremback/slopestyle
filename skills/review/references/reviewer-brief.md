@@ -1,10 +1,19 @@
 # Reviewer brief
 
-Fill every section and send the result as the reviewer's whole prompt. Leave out the plan section when the group's largest file changed fewer than 50 lines and the group changed fewer than 100 lines in total.
+Fill every section and send the result as the reviewer's whole prompt.
 
 ## Task
 
 Break this change. Run what you claim in your worktree: a failing test, a repro script, or a command whose output differs from what the intent requires. Report a finding when it breaks the intent at this head. An empty finding list is a valid result.
+
+Start where changes like this break:
+
+- **Replay the trigger:** twice in a row, overlapping, out of order, and retried after a partial failure. Watch what a later run sees, waits for, or overwrites.
+- **Run it where it executes:** the branch, environment, and deploy order that will run it, which can differ from the head.
+- **Feed the readers:** when the change writes a file, message, record, or configuration that other code reads, run that reader on what the change writes, including readers in another language or repository.
+- **Diff the guarantees:** list what the base did for this trigger, including side effects, records, notifications, environments, and checks, and confirm each survives at the head or is an accepted removal.
+
+Prefer the most production-like run the repository supports, such as its sandbox, emulators, or integration suite, over a test of your own model of the code.
 
 ## Context
 
@@ -46,7 +55,7 @@ Then each finding, fields in this order:
 5. `claim`: the behavior that fails, the structural cost, or the risk introduced.
 6. `fix`: the smallest correct direction.
 7. `category`: bug, security, performance, maintainability, test, or other.
-8. `severity`:
+8. `severity`, following the impact once the change runs as intended, including behind its flag:
    - critical: data loss, security breach, or an outage on a common path.
    - high: incorrect behavior, crash, or a broken contract on a reachable path.
    - medium: edge-case failure, performance regression, or a maintainability cost with a concrete consequence.

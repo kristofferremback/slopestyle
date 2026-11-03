@@ -20,9 +20,9 @@ Within a larger review, use the assigned portion of its inventory and retain a d
 
 ## Understand before proposing
 
-Inventory the scope and read every source, test and fixture in full. For a diff, read each changed file and its relevant context. Record unread paths and reasons, including generated or vendored exclusions. Sampling key files is not a complete module review.
+For a module review, inventory the scope and read every source, test and fixture in full; sampling key files is not a complete module review. For a diff, read each changed hunk with the function or type that contains it, plus the callers and tests it affects; read the whole file when the change reshapes its structure. Record unread paths and reasons, including generated or vendored exclusions.
 
-Start with the complexity hotspots. Rank the largest changed files and functions alongside mixed responsibilities, repeated policies, nested cases, mutable bookkeeping and opaque test setup. Size directs attention; the responsibilities and reading burden establish the problem. Record each hotspot's location and concrete friction before proposing edits, then complete the rest of the scope.
+Start with the complexity hotspots. Rank the largest changed files and functions alongside mixed responsibilities, repeated policies, nested cases, mutable bookkeeping and opaque test setup. Size directs attention; the responsibilities and reading burden establish the problem. In a diff, a hotspot is code the change creates or adds a responsibility to; a large file the diff only calls into, or touches with a one-line edit, is context. Record each hotspot's location and concrete friction before proposing edits, then complete the rest of the scope.
 
 When delegating, give each major hotspot a focused assignment with its relevant callers and tests. Keep a large coordinator or migration out of a catch-all style assignment spanning the entire PR. Use the requested model and effort; structural design comparisons need reasoning capacity appropriate to that task.
 
