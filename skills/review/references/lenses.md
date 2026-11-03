@@ -20,6 +20,8 @@ Explain the mechanism from entry point through state changes to observable outco
 
 Ground architectural findings in a concrete structural cost, such as duplicated policy, leaked implementation knowledge, or coordinated edits across unrelated modules. These are valid findings without a reproduced functional defect or an invented future failure. Distinguish observed structure from predicted consequences. Suggest the smallest coherent improvement connected to the change, preserve accepted requirements, and name the tradeoff; keep unrelated redesign outside the review.
 
+Report at most three architecture findings, ranked by the structural cost they remove. Each names machinery this change introduced or worsened. They are considerations, and become blockers only when a proved finding shares their root cause.
+
 State whether the change improves, preserves, or worsens code health and architecture, with source evidence and any unresolved gaps. Explain mixed effects when boundaries improve in one place and deteriorate in another. Correct behavior alone does not establish a sound implementation.
 
 ## 3. Where can it fail, and what evidence supports our confidence?

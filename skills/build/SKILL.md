@@ -60,10 +60,11 @@ For long, ambitious, or unattended work, keep the decision trail described in [d
 At each completed review boundary:
 
 1. Run one fresh low-effort subagent with `simplify` over the complete PR diff, even for a small PR. This pass belongs to the PR, not each implementation step. Hand it the accepted scope and accumulated proof evidence. Later review fixes get focused simplification of their delta, not another full-PR pass unless they materially change the design.
-2. Load `review` for self-review and the completed PR's coverage ledger, grouped fresh review rounds, fact-check, anchoring, and report.
-3. Load `ship` to verify, commit owned work, push, and open or update the PR or stack.
-4. Start `shepherd` in the background for each opened PR.
-5. Continue the next unblocked slice while shepherding runs. Opened PRs are reviewed in parallel, not used as checkpoints between slices. A dependent slice stacks on its unmerged parent; waiting for the parent to merge is not a blocker.
+2. Load `review` for self-review and the completed PR's coverage ledger, grouped fresh review, fact-check, anchoring, and report.
+3. Run one fresh verifier that wrote none of the change. It drives the change the way a user would, parent against head, with `test` and the repository's `verify-<app>` skill when one exists, and records `PASS` or `FAIL` with its evidence. Green checks and an approving review are inputs to that verdict, never the verdict.
+4. Load `ship` to verify, commit owned work, push, and open or update the PR or stack. Put the verifier's verdict and evidence in the PR.
+5. Start `shepherd` in the background for each opened PR.
+6. Continue the next unblocked slice while shepherding runs. Opened PRs are reviewed in parallel, not used as checkpoints between slices. A dependent slice stacks on its unmerged parent; waiting for the parent to merge is not a blocker.
 
 Background shepherding is part of the contract. If the harness cannot run it concurrently, report that limitation. Do not silently turn the workflow into a blocking watch loop.
 

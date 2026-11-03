@@ -25,4 +25,4 @@ For each major hotspot, record responsibilities, a concrete alternative and the 
 
 ## Reconciliation follow-up
 
-After the independent result is recorded, the coordinator may provide confirmed correctness findings. Apply the style workflow's bug-to-design step and return additions, revisions or justified retentions. Preserve independent style findings; distinguish source evidence of a burden from proof that a proposed implementation preserves behavior.
+After the independent result is recorded, the coordinator may provide proved correctness findings. Apply the style workflow's bug-to-design step and return additions, revisions or justified retentions. Preserve independent style findings; distinguish source evidence of a burden from proof that a proposed implementation preserves behavior.

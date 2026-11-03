@@ -70,7 +70,7 @@ When fixes are authorized, continue with [Applying findings](style-fixes.md).
 
 ## Return a useful result
 
-Lead with whether meaningful changes are needed and why. Distinguish **fix here**, **refactor first**, and **non-blocking follow-up** recommendations. Prioritize by design and readability benefit, distinguish facts from uncertainty, and include examples, justified retentions and coverage gaps. Include a brief disposition of the major hotspots, including retained ones, so their assessment survives synthesis with correctness findings. A clean style result makes no claim about functional correctness; earn it through the concrete comparisons above. Findings have no quota.
+Lead with whether meaningful changes are needed and why. Distinguish **fix here**, **refactor first**, and **non-blocking follow-up** recommendations. Prioritize by design and readability benefit, distinguish facts from uncertainty, and include examples, justified retentions and coverage gaps. Include a brief disposition of the major hotspots, including retained ones, so their assessment survives synthesis with correctness findings. A clean style result makes no claim about functional correctness; earn it through the concrete comparisons above. A standalone style review has no finding quota; inside `review`, its cap applies.
 
 Before delivering the review, apply the worksheet's [final-comment check](style-worksheet.md#final-comment-check) to the actual comments. In a combined review, the coordinator owns this check after synthesis.
 

@@ -5,7 +5,9 @@ description: Use when the user asks to review, challenge, stress-test, or indepe
 
 # Review
 
-Routine self-review always. Use the coverage process and fresh independent reviewers for code diffs and pull requests. Every code and PR review includes independent correctness and coding-style passes, followed by reconciliation. For plans, use the framing and applicable lenses without a file ledger or a separate code-style pass. An explicit request for only one pass limits the scope; report that limit.
+Routine self-review always. Use the coverage process and fresh independent reviewers for code diffs and pull requests. Every code and PR review includes an independent correctness pass and a capped coding-style pass, followed by reconciliation. For plans, use the framing and applicable lenses without a file ledger or a separate code-style pass. An explicit request for only one pass limits the scope; report that limit.
+
+A finding blocks when it is **proved**: a run shows the failure. Reviews spend their effort breaking the change at the real code, and the report keeps reasoning-only claims visible without turning them into work.
 
 A review answers three questions:
 
@@ -27,6 +29,8 @@ Review requests for work you do not own are read-only unless context explicitly 
 
 For code reviews, follow behavior and data through their lifecycle, including callers, consumers, cleanup, retries, reverse actions, concurrency, boundaries, and applicable product surfaces. Load `blast-radius` for wide changes, risky seams, wire or schema changes, dependency behavior, timing, flags, and small diffs whose safety rests on facts outside the patch. Read existing proof and run focused probes needed to settle claims.
 
+For plans, list the open questions a prototype or probe can settle and settle them with `prototype` before judging the design. Raise risks the accepted design makes reachable; a plan review that finds none says so.
+
 ## 1. Build the ledger
 
 Write `ledger.md` in the scratchpad or a temporary directory. For an initial PR review, add one row per changed path from `git diff --numstat -M <base>...<head>`. For a scoped follow-up, use `git diff --numstat -M <prior-head> <new-head>` so the ledger covers the actual delta. Columns: path, status, added/deleted lines, correctness group, style group, correctness state, style state.
@@ -35,7 +39,7 @@ Before committing, review a fixed snapshot of the owned workspace patch. `git di
 
 Each in-scope pass starts `pending` and ends `reviewed` or `skipped: <reason>`. A row is fully reviewed only when both passes are complete; record an explicitly excluded pass as `out of scope`. Skip only with a concrete reason: deleted, binary, generated (name the marker or generator), lockfile, vendored, snapshot, or secret path. Tests and fixtures are reviewed.
 
-The inventory is complete when every changed path has a row and every allowable skip has its reason. Close the ledger after the review rounds, when no row is `pending`; end it with total, reviewed, skipped, and coverage rate. A scoped delta follow-up retains the prior ledger and records which paths and claims are in its new scope. Do not claim fresh coverage outside that scope.
+The inventory is complete when every changed path has a row and every allowable skip has its reason. Close the ledger after the review passes, when no row is `pending`; end it with total, reviewed, skipped, and coverage rate. A scoped delta follow-up retains the prior ledger and records which paths and claims are in its new scope. Do not claim fresh coverage outside that scope.
 
 ## 2. Group
 
@@ -45,28 +49,29 @@ With fewer than 4 reviewable files or fewer than 200 changed lines, make one gro
 
 Launch correctness and style reviewers independently against the same fixed source and requirements. Keep correctness findings out of the initial style brief. Use the requested model and effort; style work requires design judgement, so use at least medium reasoning when available and explain that choice in its brief. If delegation is unavailable, perform the passes separately and report the independence limitation.
 
-### Correctness rounds
+### Correctness pass
 
-Pick effort from the request: low runs 1 round, medium runs 2, high runs 3. Default to medium for an initial explicit review and a completed PR under `build`, unless the requested effort is low. An existing scoped follow-up may use one round. A reply limited to existing evidence may verify those claims without claiming a new round or new coverage.
+Run one round per group, in parallel:
 
-Run groups in parallel. Within a group, rounds are sequential:
+1. Give each group's reviewer its own worktree at the fixed head, created with `git worktree add`, plus the uncommitted snapshot when one is under review. Remove the worktrees after the round.
+2. Dispatch a fresh reviewer with the [reviewer brief](references/reviewer-brief.md). The reviewer tries to break the change and runs what it claims, following `test` for radius and the heavy-command guard.
+3. Fact-check the round's findings with [fact-check](references/fact-check.md).
 
-1. Round 1 dispatches a fresh reviewer with the [reviewer brief](references/reviewer-brief.md). Include the plan section when the group's largest file changed 50 or more lines, or the group changed 100 or more lines in total.
-2. Fact-check the round's findings with [fact-check](references/fact-check.md). Only confirmed findings join the group's confirmed list. Retain unverified findings separately for the report and further investigation.
-3. Each later round dispatches a new fresh reviewer with the brief, the confirmed list, and no plan. Dropping the plan stops round 1's risk list from capping what later rounds read.
-4. Stop the group early when a round confirms nothing new or the group reaches 30 confirmed findings. An unverified finding does not count as confirmed.
+A later full round runs only when the change gains new behavior, a redesign, or a large new diff. A rebase, conflict resolution, or fix delta gets one fresh verifier that reruns the affected findings' commands and probes the delta at the new head.
 
-Reviewers report coverage per file. Send a file a reviewer left uncovered to a follow-up reviewer in the same round. Mark only its correctness state `reviewed` once a correctness reviewer covered it. Do not hardcode model names, spawn a reviewer per minor lens, or let reviewers delegate. The orchestrator verifies every material claim against source and owns the verdict.
+Reviewers report coverage per file. Send a file a reviewer left uncovered to a follow-up reviewer in the same round. Mark only its correctness state `reviewed` once a correctness reviewer covered it. Do not hardcode model names, spawn a reviewer per minor lens, or let reviewers delegate. The orchestrator reruns every proved finding's command and owns the verdict.
 
 ### Style pass and reconciliation
 
-Dispatch one fresh style reviewer per style group using the [style brief](references/style-brief.md), not the correctness brief. Its completion requires file coverage, structural and local readability assessments, concrete alternatives for major hotspots, and self-contained examples for actionable findings. Check returned coverage against the assignment and route any cross-group leads. Follow up on missing coverage or incomplete hotspot comparisons before closing its style state. Correctness round limits and early stops do not close the style pass.
+Dispatch one fresh style reviewer per style group using the [style brief](references/style-brief.md), not the correctness brief. Its completion requires file coverage, structural and local readability assessments, concrete alternatives for major hotspots, and self-contained examples for actionable findings. Check returned coverage against the assignment and route any cross-group leads. Follow up on missing coverage or incomplete hotspot comparisons before closing its style state.
 
-Capture and fact-check that independent assessment, then supply confirmed correctness findings to the relevant style reviewer for the workflow's bug-to-design reconciliation. When there are none, record that reconciliation had no new input. Retain style improvements without corresponding bugs. Reconciliation may add or revise a design suggestion; it cannot certify an untested refactor.
+The review reports at most five style findings, ranked by the reading or maintenance cost they remove. Rank first new code that repeats a weak pattern already present in the codebase, since agents copy what they see. Keep the rest in the style assessment as one line each. A finding that a lint rule, type, test, or formatter could enforce moves to the report's constraint candidates.
+
+Capture and fact-check that independent assessment, then supply proved correctness findings to the relevant style reviewer for the workflow's bug-to-design reconciliation. When there are none, record that reconciliation had no new input. Retain style improvements without corresponding bugs. Reconciliation may add or revise a design suggestion; it cannot certify an untested refactor.
 
 After both passes finish, the orchestrator traces material behavior across group boundaries and reconciles their assessments against the whole requested change. Group findings alone cannot establish that the parts work together.
 
-Done when correctness groups finished their rounds or recorded their stop reasons, style groups met their completion checks, both ledger states have no `pending` row, reconciliation is recorded, and all three questions have an evidence-backed answer or an explicit unresolved gap. Unresolved gaps remain limits on the verdict.
+Done when every correctness group finished its round, style groups met their completion checks, both ledger states have no `pending` row, reconciliation is recorded, and all three questions have an evidence-backed answer or an explicit unresolved gap. Unresolved gaps remain limits on the verdict.
 
 ## 4. Anchor
 
@@ -76,12 +81,20 @@ Locate each surviving finding by its quoted `code` in the new version of its `pa
 
 Report the assessment of the problem, implementation, and failure risks with the evidence and unresolved gaps that support it. Explain the implementation mechanism sufficiently to judge its fit. Use the calling workflow's presentation structure when provided.
 
-For code and PR reviews, include the ledger as supporting evidence after the substantive assessment and findings: total, reviewed, skipped with reasons, coverage rate for each pass, correctness rounds and stop reasons, and style completion and reconciliation status. Distinguish prior coverage from scoped follow-up coverage. Evidence-only replies update the affected claims without inventing a round or coverage.
+For code and PR reviews, include the ledger as supporting evidence after the substantive assessment and findings: total, reviewed, skipped with reasons, coverage rate for each pass, rounds run and why, and style completion and reconciliation status. Distinguish prior coverage from scoped follow-up coverage. Evidence-only replies update the affected claims without inventing a round or coverage.
 
-Report findings by impact, blockers before considerations, each tagged `confirmed` or `unverified`. Each finding includes the failing behavior, structural cost, or introduced risk, concrete location, evidence or reproducible trajectory, why it matters to the accepted outcome, and the smallest correct fix direction. Filter tooling-enforced issues, unsupported preferences and duplicates here, never during fact-check. Concrete readability improvements, including meaningful blank lines, earn findings without a defect or large refactor. End code and PR reviews with the disproven findings, each briefly naming the evidence and reasoning that disproved the claim.
+Report in this order:
+
+1. **Blockers:** proved findings, each with the command, its output, and the output the intent requires; then traced findings in the risk classes [fact-check](references/fact-check.md) names, as decisions for Kris.
+2. **Considerations:** at most three architecture findings and at most five style findings, per the caps above and in the assessment guide.
+3. **Unproved:** remaining traced and unverified findings, one line each with the missing evidence. These inform; they leave the code as it is.
+4. **Constraint candidates:** each finding a machine could enforce, with the lint rule, type, test, or guidance line that would make it impossible.
+5. **Disproven:** each claim with the evidence and reasoning that disproved it.
+
+Each finding includes the failing behavior, structural cost, or introduced risk, concrete location, evidence, why it matters to the accepted outcome, and the smallest correct fix direction. Filter tooling-enforced issues, unsupported preferences and duplicates here, never during fact-check. An empty blocker list is a valid result; say what was run to reach it.
 
 Keep correctness and style assessments visible in the combined report, including brief hotspot outcomes and grounded retentions. Before delivering any code review, the coordinator runs the worksheet's [final-comment check](references/style-worksheet.md#final-comment-check) against the actual user-visible draft, including code inside details blocks. The review is complete only when retained style findings survive synthesis as self-contained comments with readable examples; a linked report does not discharge this check. Publication follows the user's authorization; draft-only comments stay in the response.
 
-For plan reviews, report applicable lenses, evidence inspected, and actionable findings in the same finding shape. If no issues remain, say what was inspected. Never publish raw reviewer output.
+For plan reviews, report the questions settled by probes, applicable lenses, evidence inspected, and actionable findings in the same finding shape. If no issues remain, say what was inspected. Never publish raw reviewer output.
 
-When fixes are in scope, settle each finding with [fix disposition](references/fix-disposition.md), implement the in-scope decisions, run focused proof, and perform a clean re-review of the changed risk.
+When fixes are in scope, settle each finding with [fix disposition](references/fix-disposition.md), implement the in-scope decisions, run focused proof, and verify the fix delta as the correctness pass describes.
