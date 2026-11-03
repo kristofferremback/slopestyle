@@ -37,7 +37,7 @@ function fixture(name: string, host = "kristoffer-mbp-galdera"): { home: string;
   return { home, runtime };
 }
 
-type Registry = { schemaVersion: number; hosts: Record<string, { aliases: string[] }>; skills: Record<string, string[]>; subagents: Record<string, string[]>; slots: Record<string, string[]>; backupRecipients: string[] };
+type Registry = { schemaVersion: number; hosts: Record<string, { aliases: string[] }>; skills: Record<string, string[]>; subagents: Record<string, string[]>; slots: Record<string, string[]> };
 const registry = (root: string): Registry => JSON.parse(readFileSync(resolve(root, "hosts.json"), "utf8"));
 const writeRegistry = (runtime: string, value: Registry): void => writeFileSync(resolve(runtime, "hosts.json"), `${JSON.stringify(value, null, 2)}\n`);
 
@@ -119,7 +119,6 @@ test("should reject invalid pins and registries before changing links", () => {
     { ...valid, skills: [] },
     { ...valid, subagents: [] },
     { ...valid, slots: [] },
-    { ...valid, backupRecipients: ["not-a-recipient"] },
     { ...valid, hosts: [] },
     { ...valid, extra: true },
     { ...valid, hosts: { ...valid.hosts, homelab: { aliases: [], extra: true } } },
@@ -134,7 +133,6 @@ test("should reject invalid pins and registries before changing links", () => {
     skills: { datadog: [] },
     subagents: {},
     slots: {},
-    backupRecipients: [],
   };
   writeRegistry(runtime, unknownHostRegistry);
   rmSync(resolve(home, ".config/slopestyle/host"));

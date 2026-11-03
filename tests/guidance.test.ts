@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import type { HostRegistry } from "../scripts/lib/hosts.ts";
@@ -8,15 +8,17 @@ import { copySource, sourceRoot, stripEncryptedSlots } from "./lib/source.ts";
 const scratch = realpathSync(mkdtempSync(resolve(tmpdir(), "slopestyle-guidance-test.")));
 interface Result { exitCode: number; stdout: string; stderr: string }
 
-function execute(command: string[], home: string, env: Record<string, string> = {}): Result {
-  const environment: Record<string, string | undefined> = { ...process.env, HOME: home, VISUAL: "", ...env };
-  delete environment.HERMES_HOME;
-  const result = Bun.spawnSync(command, { env: environment, stdout: "pipe", stderr: "pipe" });
+// Only the key a test passes reaches sops; HOME isolates its default key location.
+function execute(command: string[], home: string, env: Record<string, string> = {}, options: { cwd?: string; stdin?: string } = {}): Result {
+  const inherited = Object.entries(process.env).filter(([name]) => !name.startsWith("SOPS_") && name !== "XDG_CONFIG_HOME" && name !== "HERMES_HOME");
+  const environment = { ...Object.fromEntries(inherited), HOME: home, ...env };
+  const stdin = options.stdin === undefined ? "ignore" : Buffer.from(options.stdin);
+  const result = Bun.spawnSync(command, { env: environment, cwd: options.cwd, stdin, stdout: "pipe", stderr: "pipe" });
   return { exitCode: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
 }
 
-function succeeds(command: string[], home: string, env: Record<string, string> = {}): Result {
-  const result = execute(command, home, env);
+function succeeds(command: string[], home: string, env: Record<string, string> = {}, options: { cwd?: string; stdin?: string } = {}): Result {
+  const result = execute(command, home, env, options);
   if (result.exitCode !== 0) throw new Error(`Command failed (${result.exitCode}): ${command.join(" ")}\n${result.stdout}${result.stderr}`);
   return result;
 }
@@ -53,19 +55,6 @@ function editHosts(root: string, change: (value: HostRegistry) => void): void {
   writeFileSync(resolve(root, "hosts.json"), `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function writeEditor(name: string, content: string, exitCode = 0): string {
-  const path = resolve(scratch, `${name}.sh`);
-  writeFileSync(path, `#!/bin/sh\nprintf '%s' '${content}' > "$1"\nexit ${exitCode}\n`);
-  chmodSync(path, 0o755);
-  return path;
-}
-
-function keygen(slots: string, home: string): string {
-  const recipient = succeeds([slots, "keygen"], home).stdout.match(/"ageRecipient": "(age1[0-9a-z]+)"/)?.[1];
-  expect(recipient).toBeDefined();
-  return recipient!;
-}
-
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 test("should render host-selected slots into the installed guidance", () => {
@@ -84,19 +73,16 @@ test("should render host-selected slots into the installed guidance", () => {
   expect(readFileSync(resolve(guidance(home), "CLAUDE.md"), "utf8")).toBe("@AGENTS.md\n");
   expect(statSync(guidance(home)).mode & 0o777).toBe(0o700);
   expect(statSync(resolve(guidance(home), "AGENTS.md")).mode & 0o777).toBe(0o600);
-  const laptop = installed(home);
-  expect(laptop).toContain("## Guidance ownership");
-  expect(laptop).not.toContain("Threa access");
-  expect(laptop).not.toContain("<!-- slot:");
-  expect(laptop.endsWith("same level.\n")).toBe(true);
+  const source = readFileSync(resolve(runtime, "agents/AGENTS.md"), "utf8");
+  const threa = readFileSync(resolve(runtime, "agents/slots/threa-access.md"), "utf8").trim();
+  const marker = "<!-- slot: threa-access -->";
+  expect(installed(home)).toBe(`${source.replace(marker, "").trimEnd()}\n`);
   expect(check(runtime, home).exitCode).toBe(0);
 
   pin(home, "homelab");
-  expect(check(runtime, home).exitCode).not.toBe(0);
+  expect(check(runtime, home).stderr).toContain("Stale rendered guidance");
   install(runtime, home);
-  const homelab = readFileSync(resolve(home, ".codex/AGENTS.md"), "utf8");
-  expect(homelab).toContain("## Threa access\n\nRead-only Threa credentials");
-  expect(homelab).not.toContain("<!-- slot:");
+  expect(readFileSync(resolve(home, ".codex/AGENTS.md"), "utf8")).toBe(`${source.replace(marker, threa).trimEnd()}\n`);
   expect(check(runtime, home).exitCode).toBe(0);
 
   writeFileSync(resolve(guidance(home), "AGENTS.md"), "stale\n");
@@ -127,25 +113,19 @@ test("should reject slots that markers, files, and hosts.json disagree on", () =
   pin(home, "homelab");
   const agents = resolve(runtime, "agents/AGENTS.md");
   const original = readFileSync(resolve(sourceRoot, "agents/AGENTS.md"), "utf8");
-  const encryptedSecret = (content: string): void => {
-    appendMarker(runtime, "secret");
-    writeFileSync(resolve(runtime, "agents/slots/secret.md.age"), content);
-  };
   const mutations: Array<[() => void, string]> = [
     [() => writeFileSync(agents, `${original}\n<!-- slot: missing -->\n`), "Slot marker missing has no file"],
     [() => writeFileSync(agents, `${original}\n<!-- slot: threa-access -->\n`), "repeats a slot marker"],
     [() => writeFileSync(agents, `${original}\n<!-- slot: Threa -->\n`), "Malformed slot marker"],
+    [() => writeFileSync(agents, original.replace("<!-- slot: threa-access -->", "Text\n<!-- slot: threa-access -->")), "needs a blank line above and below"],
     [() => writeFileSync(resolve(runtime, "agents/slots/orphan.md"), "## Orphan\n"), "orphan has no marker"],
-    [() => writeFileSync(resolve(runtime, "agents/slots/threa-access.md.age"), "x"), "both a plaintext and an encrypted file"],
+    [() => writeFileSync(resolve(runtime, "agents/slots/threa-access.sops.md"), "x"), "both a plaintext and an encrypted file"],
     [() => writeFileSync(resolve(runtime, "agents/slots/Bad_Name.md"), "x"), "Invalid slot file name"],
     [() => editHosts(runtime, (value) => { value.slots.unknown = []; }), "Unknown slot in hosts.json"],
-    [() => encryptedSecret("-----BEGIN AGE ENCRYPTED FILE-----\n"), "has no ageRecipient"],
     [() => {
-      encryptedSecret("not armored");
-      editHosts(runtime, (value) => { value.slots.secret = ["homelab"]; value.hosts.homelab!.ageRecipient = "age1example"; });
-    }, "not an armored age file"],
-    [() => editHosts(runtime, (value) => { value.hosts.homelab!.ageRecipient = "AGE1X"; }), "Invalid ageRecipient"],
-    [() => editHosts(runtime, (value) => { value.backupRecipients = ["age1dup", "age1dup"]; }), "Invalid backupRecipients"],
+      appendMarker(runtime, "secret");
+      writeFileSync(resolve(runtime, "agents/slots/secret.sops.md"), "## Plaintext under an encrypted name\n");
+    }, "secret.sops.md is not SOPS-encrypted"],
   ];
   for (const [mutate, message] of mutations) {
     rmSync(runtime, { recursive: true, force: true });
@@ -160,117 +140,61 @@ test("should reject slots that markers, files, and hosts.json disagree on", () =
   }
 });
 
-test("should edit encrypted slots without leaking plaintext or losing input", () => {
-  const home = resolve(scratch, "editing");
-  const developer = checkout(resolve(scratch, "editing-dev"));
-  const slots = resolve(developer, "scripts/slots.ts");
-  const recipient = keygen(slots, home);
-  expect(statSync(resolve(home, ".config/slopestyle/age.key")).mode & 0o777).toBe(0o600);
-  expect(execute([slots, "keygen"], home).exitCode).not.toBe(0);
-  expect(succeeds([slots, "recipient"], home).stdout.trim()).toBe(recipient);
+test("should decrypt encrypted slots with sops only on selected hosts", () => {
+  const { home, runtime } = fixture("encrypted");
+  for (const tool of ["sops", "age-keygen"]) expect(Bun.which(tool), `${tool} must be installed to test encrypted slots`).not.toBeNull();
+  const key = resolve(scratch, "shared-age-key.txt");
+  succeeds(["age-keygen", "-o", key], scratch);
+  const recipient = succeeds(["age-keygen", "-y", key], scratch).stdout.trim();
+  writeFileSync(resolve(runtime, ".sops.yaml"), `creation_rules:\n  - path_regex: ^agents/slots/[^/]+\\.sops\\.md$\n    age: ${recipient}\n`);
+  const withKey = { SOPS_AGE_KEY_FILE: key };
 
-  // Recipients resolve before the editor opens, so nothing typed is lost.
-  editHosts(developer, (value) => { value.slots.work = ["homelab"]; });
-  const opened = resolve(scratch, "editor-opened");
-  const probe = resolve(scratch, "probe.sh");
-  writeFileSync(probe, `#!/bin/sh\ntouch ${opened}\n`);
-  chmodSync(probe, 0o755);
-  expect(execute([slots, "edit", "work"], home, { EDITOR: probe }).stderr).toContain("has no ageRecipient");
-  expect(existsSync(opened)).toBe(false);
-
-  // A failing editor leaves neither a slot nor its plaintext behind.
-  editHosts(developer, (value) => { value.hosts.homelab!.ageRecipient = recipient; });
-  const temporary = resolve(scratch, "editing-tmp");
-  mkdirSync(temporary);
-  const failed = execute([slots, "edit", "work"], home, { EDITOR: writeEditor("failing", "Typed then aborted", 1), TMPDIR: temporary });
-  expect(failed.exitCode).not.toBe(0);
-  expect(failed.stderr).toContain("slot unchanged");
-  expect(readdirSync(temporary)).toEqual([]);
-  expect(existsSync(resolve(developer, "agents/slots/work.md.age"))).toBe(false);
-
-  expect(succeeds([slots, "edit", "work"], home, { EDITOR: writeEditor("writing", "## Work\n\nSecret work guidance.\n") }).stdout).toContain("<!-- slot: work -->");
-  const ciphertext = readFileSync(resolve(developer, "agents/slots/work.md.age"), "utf8");
-  expect(ciphertext).toStartWith("-----BEGIN AGE ENCRYPTED FILE-----");
-  expect(ciphertext).not.toContain("Secret");
-  expect(succeeds([slots, "edit", "work"], home, { EDITOR: "true" }).stdout).toContain("No changes.");
-  expect(readFileSync(resolve(developer, "agents/slots/work.md.age"), "utf8")).toBe(ciphertext);
-
-  succeeds([slots, "encrypt", "threa-access"], home);
-  expect(existsSync(resolve(developer, "agents/slots/threa-access.md"))).toBe(false);
-  expect(readFileSync(resolve(developer, "agents/slots/threa-access.md.age"), "utf8")).toStartWith("-----BEGIN AGE ENCRYPTED FILE-----");
-
-  const { home: runtimeHome, runtime } = fixture("editing-runtime");
-  expect(execute([resolve(runtime, "scripts/slots.ts"), "reencrypt", "work"], runtimeHome).stderr).toContain("development checkout");
-});
-
-test("should decrypt slots only on selected hosts holding their identity", () => {
-  const { home: laptopHome, runtime } = fixture("decrypt-laptop");
-  const homelabHome = resolve(scratch, "decrypt-homelab");
-  pin(homelabHome, "homelab");
-  const developer = checkout(resolve(scratch, "decrypt-dev"));
-  const slots = resolve(developer, "scripts/slots.ts");
-  const homelab = keygen(slots, homelabHome);
-  const laptop = keygen(slots, laptopHome);
-  editHosts(developer, (value) => {
-    value.hosts.homelab!.ageRecipient = homelab;
-    value.hosts["kristoffer-mbp-galdera"]!.ageRecipient = laptop;
-    value.slots.work = ["homelab"];
-  });
-  appendMarker(developer, "work");
-  succeeds([slots, "edit", "work"], homelabHome, { EDITOR: writeEditor("decrypt", "## Work\n\nSecret work guidance.\n") });
-  const publish = (): void => {
-    for (const file of ["hosts.json", "agents/AGENTS.md", "agents/slots/work.md.age"]) cpSync(resolve(developer, file), resolve(runtime, file));
+  // The documented commands: plaintext only ever travels through stdin and stdout.
+  const slot = "agents/slots/work.sops.md";
+  const encrypt = (plaintext: string): void => {
+    succeeds(["sops", "encrypt", "--filename-override", slot, "--output", slot, "/dev/stdin"], home, {}, { cwd: runtime, stdin: plaintext });
   };
-  publish();
+  encrypt("## Work\n\nSecret work guidance.\n");
+  appendMarker(runtime, "work");
+  editHosts(runtime, (value) => { value.slots.work = ["homelab"]; });
+  expect(readFileSync(resolve(runtime, slot), "utf8")).not.toContain("Secret");
+  // Validation needs no key, so CI catches committed plaintext.
+  succeeds([resolve(runtime, "scripts/check.ts")], home);
 
-  // The unselected laptop never decrypts, although its identity could not read the slot.
-  install(runtime, laptopHome);
-  expect(installed(laptopHome)).not.toContain("Secret work guidance");
+  // The unselected laptop renders without the key and never sees the slot.
+  install(runtime, home);
+  const laptop = installed(home);
+  expect(laptop).not.toContain("Secret work guidance");
+  expect(check(runtime, home).exitCode).toBe(0);
 
-  // Selecting the laptop without re-encrypting fails before its guidance changes.
-  editHosts(runtime, (value) => { value.slots.work = ["homelab", "kristoffer-mbp-galdera"]; });
-  const before = installed(laptopHome);
-  const stale = execute([resolve(runtime, "scripts/install.ts")], laptopHome);
-  expect(stale.stderr).toContain("Cannot decrypt slot work");
-  expect(stale.stderr).toContain("reencrypt work");
-  expect(installed(laptopHome)).toBe(before);
+  // A selected host without the key fails install and preflight before its guidance changes.
+  pin(home, "homelab");
+  for (const command of [[resolve(runtime, "scripts/install.ts"), "--preflight-for", runtime], [resolve(runtime, "scripts/install.ts")]]) {
+    expect(execute(command, home).stderr).toContain("sops could not decrypt slot work");
+  }
+  expect(installed(home)).toBe(laptop);
 
-  editHosts(developer, (value) => { value.slots.work = ["homelab", "kristoffer-mbp-galdera"]; });
-  succeeds([slots, "reencrypt", "work"], homelabHome);
-  publish();
-  install(runtime, laptopHome);
-  expect(installed(laptopHome)).toContain("## Work\n\nSecret work guidance.");
-  expect(check(runtime, laptopHome).exitCode).toBe(0);
+  // Without sops on PATH the failure names the missing tool.
+  const bunOnly = resolve(scratch, "bun-only");
+  mkdirSync(bunOnly);
+  symlinkSync(process.execPath, resolve(bunOnly, "bun"));
+  expect(execute([resolve(runtime, "scripts/install.ts")], home, { ...withKey, PATH: bunOnly }).stderr).toContain("Install sops to render encrypted slot work");
 
-  // A backup identity lives only in a password manager and decrypts every slot from any checkout.
-  const backupOutput = succeeds([slots, "keygen", "--backup"], resolve(scratch, "decrypt-nowhere")).stdout;
-  const backupIdentity = backupOutput.match(/AGE-SECRET-KEY-1[0-9A-Z]+/)?.[0];
-  const backupRecipient = backupOutput.match(/"(age1[0-9a-z]+)"/)?.[1];
-  expect(backupIdentity && backupRecipient).toBeTruthy();
-  expect(existsSync(resolve(scratch, "decrypt-nowhere/.config/slopestyle/age.key"))).toBe(false);
-  editHosts(developer, (value) => { value.backupRecipients = [backupRecipient!]; });
-  succeeds([slots, "reencrypt", "work"], homelabHome);
-  const pasted = resolve(scratch, "pasted-backup");
-  writeFileSync(pasted, `${backupIdentity}\n`);
-  const keyless = resolve(scratch, "decrypt-keyless");
-  expect(execute([slots, "reencrypt", "work"], keyless).stderr).toContain("Missing age identity");
-  succeeds([slots, "edit", "work", "--identity", pasted], keyless, { EDITOR: writeEditor("backup", "## Work\n\nEdited with the backup.\n") });
-  succeeds([slots, "reencrypt", "work", "--identity", pasted], keyless);
-  expect(execute([slots, "encrypt", "work", "--identity", pasted], keyless).exitCode).not.toBe(0);
-  publish();
-  install(runtime, laptopHome);
-  expect(installed(laptopHome)).toContain("Edited with the backup.");
+  succeeds([resolve(runtime, "scripts/install.ts")], home, withKey);
+  expect(installed(home)).toContain("## Work\n\nSecret work guidance.\n");
+  expect(execute([resolve(runtime, "scripts/check.ts"), "--installed"], home, withKey).exitCode).toBe(0);
 
-  // A selected host without its identity fails install and preflight before guidance changes.
-  rmSync(resolve(laptopHome, ".config/slopestyle/age.key"));
-  const rendered = installed(laptopHome);
-  expect(execute([resolve(runtime, "scripts/install.ts")], laptopHome).stderr).toContain("Missing age identity");
-  expect(execute([resolve(runtime, "scripts/install.ts"), "--preflight-for", runtime], laptopHome).stderr).toContain("Missing age identity");
-  expect(installed(laptopHome)).toBe(rendered);
+  // Editing is a decrypt, change, and encrypt round trip; check --installed then flags the stale render.
+  const current = succeeds(["sops", "decrypt", slot], home, withKey, { cwd: runtime }).stdout;
+  encrypt(current.replace("Secret work guidance.", "Edited work guidance."));
+  expect(execute([resolve(runtime, "scripts/check.ts"), "--installed"], home, withKey).stderr).toContain("Stale rendered guidance");
+  succeeds([resolve(runtime, "scripts/install.ts")], home, withKey);
+  expect(installed(home)).toContain("Edited work guidance.");
 
   // Test fixtures copied from a source with encrypted slots drop them with their markers and registry entries.
-  stripEncryptedSlots(developer);
-  expect(existsSync(resolve(developer, "agents/slots/work.md.age"))).toBe(false);
-  expect(readFileSync(resolve(developer, "agents/AGENTS.md"), "utf8")).not.toContain("<!-- slot: work -->");
-  succeeds([resolve(developer, "scripts/check.ts")], laptopHome);
+  stripEncryptedSlots(runtime);
+  expect(existsSync(resolve(runtime, slot))).toBe(false);
+  expect(readFileSync(resolve(runtime, "agents/AGENTS.md"), "utf8")).not.toContain("<!-- slot: work -->");
+  expect(JSON.parse(readFileSync(resolve(runtime, "hosts.json"), "utf8")).slots.work).toBeUndefined();
+  succeeds([resolve(runtime, "scripts/check.ts")], home);
 });

@@ -15,12 +15,12 @@ export function copySource(destination: string): void {
   stripEncryptedSlots(destination);
 }
 
-// Test hosts hold no production age identity, so they cannot render real encrypted slots.
+// Test hosts hold no production age key, so they cannot render real encrypted slots.
 export function stripEncryptedSlots(destination: string): void {
   const slots = resolve(destination, "agents/slots");
-  const encrypted = readdirSync(slots).filter((file) => file.endsWith(".md.age")).map((file) => file.slice(0, -".md.age".length));
+  const encrypted = readdirSync(slots).filter((file) => file.endsWith(".sops.md")).map((file) => file.slice(0, -".sops.md".length));
   if (encrypted.length === 0) return;
-  for (const name of encrypted) rmSync(resolve(slots, `${name}.md.age`));
+  for (const name of encrypted) rmSync(resolve(slots, `${name}.sops.md`));
   const agents = resolve(destination, "agents/AGENTS.md");
   const markers = new Set(encrypted.map((name) => `<!-- slot: ${name} -->`));
   writeFileSync(agents, readFileSync(agents, "utf8").split("\n").filter((line) => !markers.has(line)).join("\n"));

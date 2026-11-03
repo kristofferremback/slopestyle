@@ -6,12 +6,9 @@ import { selected, type HostRegistry } from "./hosts.ts";
 const slotName = "[a-z0-9]+(?:-[a-z0-9]+)*";
 // A slot marker is a whole line in agents/AGENTS.md naming one file in agents/slots/.
 const markerPattern = new RegExp(`^<!-- slot: (${slotName}) -->$`);
-const slotFilePattern = new RegExp(`^(${slotName})\\.md(\\.age)?$`);
-const armorHeader = "-----BEGIN AGE ENCRYPTED FILE-----";
+const slotFilePattern = new RegExp(`^(${slotName})(\\.sops)?\\.md$`);
 
-export const isSlotName = (value: string): boolean => new RegExp(`^${slotName}$`).test(value);
-
-export interface Slot {
+interface Slot {
   name: string;
   path: string;
   encrypted: boolean;
@@ -33,12 +30,8 @@ export function guidanceFiles(home: string): GuidanceFiles {
   return { agents: resolve(root, "AGENTS.md"), claude: resolve(root, "CLAUDE.md") };
 }
 
-export function slotFile(name: string, encrypted: boolean, root = repoRoot): string {
-  return resolve(root, "agents/slots", `${name}.md${encrypted ? ".age" : ""}`);
-}
-
-function parseGuidance(root: string): GuidanceLine[] {
-  return readFileSync(resolve(root, "agents/AGENTS.md"), "utf8").split("\n").map((text) => {
+function parseGuidance(): GuidanceLine[] {
+  return readFileSync(resolve(repoRoot, "agents/AGENTS.md"), "utf8").split("\n").map((text) => {
     const slot = text.match(markerPattern)?.[1];
     if (slot !== undefined) return { slot };
     assert(!text.includes("<!-- slot:"), `Malformed slot marker in agents/AGENTS.md: ${JSON.stringify(text)}`);
@@ -46,8 +39,8 @@ function parseGuidance(root: string): GuidanceLine[] {
   });
 }
 
-export function loadSlots(root = repoRoot): Map<string, Slot> {
-  const directory = resolve(root, "agents/slots");
+function loadSlots(): Map<string, Slot> {
+  const directory = resolve(repoRoot, "agents/slots");
   const slots = new Map<string, Slot>();
   if (!existsSync(directory)) return slots;
   for (const file of readdirSync(directory)) {
@@ -61,93 +54,75 @@ export function loadSlots(root = repoRoot): Map<string, Slot> {
   return slots;
 }
 
-// An encrypted slot is readable by the hosts hosts.json selects for it and by every backup recipient.
-export function slotRecipients(name: string, registry: HostRegistry): string[] {
-  const recipients = Object.entries(registry.hosts)
-    .filter(([id]) => selected(name, id, registry.slots))
-    .map(([id, host]) => {
-      assert(host.ageRecipient, `Host ${id} receives slot ${name} but has no ageRecipient in hosts.json`);
-      return host.ageRecipient;
-    });
-  assert(recipients.length > 0, `Slot ${name} is disabled on every host; nothing would render it`);
-  return [...recipients, ...registry.backupRecipients];
+// SOPS stores Markdown as a JSON envelope, so plaintext committed under a .sops.md name fails without the key.
+function isSopsEnvelope(content: string): boolean {
+  try {
+    const envelope = JSON.parse(content) as { data?: unknown; sops?: unknown } | null;
+    return typeof envelope?.data === "string" && envelope.data.startsWith("ENC[") && typeof envelope.sops === "object" && envelope.sops !== null;
+  } catch {
+    return false;
+  }
 }
 
-function validateSlots(registry: HostRegistry, root: string, lines: GuidanceLine[]): Map<string, Slot> {
-  const slots = loadSlots(root);
+function validateSlots(registry: HostRegistry, lines: GuidanceLine[]): Map<string, Slot> {
+  const slots = loadSlots();
   const markers = lines.flatMap((line) => ("slot" in line ? [line.slot] : []));
+  for (const [index, line] of lines.entries()) {
+    if (!("slot" in line)) continue;
+    const isolated = [lines[index - 1], lines[index + 1]].every((neighbor) => neighbor === undefined || ("text" in neighbor && neighbor.text === ""));
+    assert(isolated, `Slot marker ${line.slot} needs a blank line above and below it in agents/AGENTS.md`);
+  }
   const marked = new Set(markers);
   assert(marked.size === markers.length, "agents/AGENTS.md repeats a slot marker");
   for (const name of markers) assert(slots.has(name), `Slot marker ${name} has no file in agents/slots/`);
   for (const name of slots.keys()) assert(marked.has(name), `agents/slots/ file for ${name} has no marker in agents/AGENTS.md`);
   for (const name of Object.keys(registry.slots)) assert(slots.has(name), `Unknown slot in hosts.json: ${name}`);
   for (const slot of slots.values()) {
-    if (!slot.encrypted) continue;
-    slotRecipients(slot.name, registry);
-    assert(readFileSync(slot.path, "utf8").startsWith(armorHeader), `Encrypted slot ${slot.name} is not an armored age file`);
+    if (slot.encrypted) assert(isSopsEnvelope(readFileSync(slot.path, "utf8")), `agents/slots/${slot.name}.sops.md is not SOPS-encrypted`);
   }
   return slots;
 }
 
-export function checkSlots(registry: HostRegistry, root = repoRoot): void {
-  validateSlots(registry, root, parseGuidance(root));
+export function checkSlots(registry: HostRegistry): void {
+  validateSlots(registry, parseGuidance());
 }
 
-export function identityPath(home: string): string {
-  return resolve(home, ".config/slopestyle/age.key");
+// sops finds the shared age key through SOPS_AGE_KEY_FILE or its own default location.
+function readSlot(slot: Slot): string {
+  if (!slot.encrypted) return readFileSync(slot.path, "utf8");
+  assert(Bun.which("sops"), `Install sops to render encrypted slot ${slot.name}.`);
+  const result = Bun.spawnSync(["sops", "decrypt", slot.path], { stdout: "pipe", stderr: "pipe" });
+  assert(result.exitCode === 0, `sops could not decrypt slot ${slot.name}:\n${result.stderr.toString().trim()}`);
+  return result.stdout.toString();
 }
 
-// The file uses the age CLI identity format, so `age -d -i` reads it too.
-export function readIdentity(path: string): string {
-  assert(existsSync(path), `Missing age identity ${path}. Each host creates its own with scripts/slots.ts keygen.`);
-  const identity = readFileSync(path, "utf8").split("\n").find((line) => line.startsWith("AGE-SECRET-KEY-"));
-  assert(identity, `No age identity in ${path}`);
-  return identity;
-}
-
-// Imported lazily so plaintext-only renders work before dependencies are installed.
-const loadAge = () => import("age-encryption");
-
-export async function decryptSlot(slot: Slot, identity: string): Promise<string> {
-  const age = await loadAge();
-  const decrypter = new age.Decrypter();
-  decrypter.addIdentity(identity);
-  try {
-    return await decrypter.decrypt(age.armor.decode(readFileSync(slot.path, "utf8")), "text");
-  } catch (error) {
-    throw new Error(`Cannot decrypt slot ${slot.name} with this host's age identity. If this host was added to the slot, run scripts/slots.ts reencrypt ${slot.name} on a host that can read it.`, { cause: error });
-  }
-}
-
-export async function encryptSlot(plaintext: string, recipients: string[]): Promise<string> {
-  const age = await loadAge();
-  const encrypter = new age.Encrypter();
-  for (const recipient of recipients) encrypter.addRecipient(recipient);
-  return age.armor.encode(await encrypter.encrypt(plaintext));
-}
-
-async function readSlot(slot: Slot, home: string): Promise<string> {
-  return slot.encrypted ? decryptSlot(slot, readIdentity(identityPath(home))) : readFileSync(slot.path, "utf8");
-}
-
-export async function renderGuidance(host: string, registry: HostRegistry, home: string, root = repoRoot): Promise<GuidanceFiles> {
-  const lines = parseGuidance(root);
-  const slots = validateSlots(registry, root, lines);
+export function renderGuidance(host: string, registry: HostRegistry): GuidanceFiles {
+  const lines = parseGuidance();
+  const slots = validateSlots(registry, lines);
   const output: string[] = [];
-  for (const [index, line] of lines.entries()) {
-    if ("text" in line) {
-      // An omitted slot takes its following blank line with it.
-      const previous = lines[index - 1];
-      if (line.text === "" && previous && "slot" in previous && !selected(previous.slot, host, registry.slots)) continue;
-      output.push(line.text);
-    } else if (selected(line.slot, host, registry.slots)) {
-      output.push((await readSlot(slots.get(line.slot)!, home)).trimEnd());
+  // An omitted slot takes its following blank line with it.
+  let omitted = false;
+  for (const line of lines) {
+    if ("slot" in line) {
+      omitted = !selected(line.slot, host, registry.slots);
+      if (!omitted) output.push(readSlot(slots.get(line.slot)!).trim());
+      continue;
     }
+    if (!(omitted && line.text === "")) output.push(line.text);
+    omitted = false;
   }
   return {
     agents: `${output.join("\n").trimEnd()}\n`,
-    claude: readFileSync(resolve(root, "agents/CLAUDE.md"), "utf8"),
+    claude: readFileSync(resolve(repoRoot, "agents/CLAUDE.md"), "utf8"),
   };
+}
+
+export function assertGuidanceCurrent(host: string, registry: HostRegistry, home: string): void {
+  const rendered = renderGuidance(host, registry);
+  const files = guidanceFiles(home);
+  for (const file of ["agents", "claude"] as const) {
+    assert(existsSync(files[file]) && readFileSync(files[file], "utf8") === rendered[file], `Stale rendered guidance: ${files[file]}`);
+  }
 }
 
 export function writeGuidance(home: string, rendered: GuidanceFiles): void {

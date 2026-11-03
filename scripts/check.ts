@@ -18,7 +18,7 @@ import {
 } from "./lib/core.ts";
 import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
 import { loadHosts, resolveHost, selected, validateManagedNames } from "./lib/hosts.ts";
-import { checkSlots, guidanceFiles, renderGuidance } from "./lib/guidance.ts";
+import { assertGuidanceCurrent, checkSlots, guidanceFiles } from "./lib/guidance.ts";
 
 const args = process.argv.slice(2);
 const installed = args.length === 1 && args[0] === "--installed";
@@ -45,7 +45,6 @@ const entryPoints = [
   "scripts/install.ts",
   "scripts/ports.ts",
   "scripts/schedule-sync.ts",
-  "scripts/slots.ts",
   "scripts/subagents.ts",
   "scripts/sync.ts",
   "scripts/usage.ts",
@@ -160,11 +159,8 @@ if (installed) {
     assert(isSymlink(target), `Expected installed symlink: ${target}`);
     assert(resolvedPath(target) === resolvedPath(source), `Wrong installed target: ${target}`);
   };
+  assertGuidanceCurrent(selectedHost!, hosts, home);
   const guidance = guidanceFiles(home);
-  const rendered = await renderGuidance(selectedHost!, hosts, home);
-  for (const file of ["agents", "claude"] as const) {
-    assert(pathExists(guidance[file]) && readFileSync(guidance[file], "utf8") === rendered[file], `Stale rendered guidance: ${guidance[file]}`);
-  }
   checkLink(resolve(home, ".pi/agent/AGENTS.md"), guidance.agents);
   checkLink(resolve(home, ".claude/AGENTS.md"), guidance.agents);
   checkLink(resolve(home, ".claude/CLAUDE.md"), guidance.claude);
