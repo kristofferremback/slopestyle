@@ -55,6 +55,12 @@ function editHosts(root: string, change: (value: HostRegistry) => void): void {
   writeFileSync(resolve(root, "hosts.json"), `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function addSlot(root: string, name: string, content: string, hosts?: string[]): void {
+  appendMarker(root, name);
+  writeFileSync(resolve(root, `agents/slots/${name}.md`), content);
+  if (hosts) editHosts(root, (value) => { value.slots[name] = hosts; });
+}
+
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 test("should render host-selected slots into the installed guidance", () => {
@@ -63,6 +69,7 @@ test("should render host-selected slots into the installed guidance", () => {
   mkdirSync(resolve(home, ".claude"), { recursive: true });
   symlinkSync(resolve(runtime, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
   symlinkSync(resolve(runtime, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
+  addSlot(runtime, "homelab-only", "## Homelab only\n\nSynthetic homelab guidance.\n", ["homelab"]);
   succeeds([resolve(runtime, "scripts/install.ts"), "--preflight-for", runtime], home);
 
   install(runtime, home);
@@ -74,15 +81,14 @@ test("should render host-selected slots into the installed guidance", () => {
   expect(statSync(guidance(home)).mode & 0o777).toBe(0o700);
   expect(statSync(resolve(guidance(home), "AGENTS.md")).mode & 0o777).toBe(0o600);
   const source = readFileSync(resolve(runtime, "agents/AGENTS.md"), "utf8");
-  const threa = readFileSync(resolve(runtime, "agents/slots/threa-access.md"), "utf8").trim();
-  const marker = "<!-- slot: threa-access -->";
+  const marker = "<!-- slot: homelab-only -->";
   expect(installed(home)).toBe(`${source.replace(marker, "").trimEnd()}\n`);
   expect(check(runtime, home).exitCode).toBe(0);
 
   pin(home, "homelab");
   expect(check(runtime, home).stderr).toContain("Stale rendered guidance");
   install(runtime, home);
-  expect(readFileSync(resolve(home, ".codex/AGENTS.md"), "utf8")).toBe(`${source.replace(marker, threa).trimEnd()}\n`);
+  expect(readFileSync(resolve(home, ".codex/AGENTS.md"), "utf8")).toBe(`${source.replace(marker, "## Homelab only\n\nSynthetic homelab guidance.").trimEnd()}\n`);
   expect(check(runtime, home).exitCode).toBe(0);
 
   writeFileSync(resolve(guidance(home), "AGENTS.md"), "stale\n");
@@ -98,7 +104,6 @@ test("should place mid-document slots and drop omitted ones with their spacing",
   writeFileSync(resolve(runtime, "agents/slots/dropped.md"), "## Dropped\n");
   writeFileSync(resolve(runtime, "agents/slots/disabled.md"), "## Disabled\n");
   writeFileSync(resolve(runtime, "agents/slots/.DS_Store"), "ignored");
-  rmSync(resolve(runtime, "agents/slots/threa-access.md"));
   editHosts(runtime, (value) => { value.slots = { dropped: ["homelab"], disabled: [] }; });
   install(runtime, home);
   expect(installed(home)).toBe("# Top\n\n## Kept\n\nShared.\n\n## Bottom\n");
@@ -112,14 +117,14 @@ test("should reject slots that markers, files, and hosts.json disagree on", () =
   const runtime = resolve(home, ".local/share/slopestyle");
   pin(home, "homelab");
   const agents = resolve(runtime, "agents/AGENTS.md");
-  const original = readFileSync(resolve(sourceRoot, "agents/AGENTS.md"), "utf8");
+  const append = (text: string): void => writeFileSync(agents, `${readFileSync(agents, "utf8")}${text}`);
   const mutations: Array<[() => void, string]> = [
-    [() => writeFileSync(agents, `${original}\n<!-- slot: missing -->\n`), "Slot marker missing has no file"],
-    [() => writeFileSync(agents, `${original}\n<!-- slot: threa-access -->\n`), "repeats a slot marker"],
-    [() => writeFileSync(agents, `${original}\n<!-- slot: Threa -->\n`), "Malformed slot marker"],
-    [() => writeFileSync(agents, original.replace("<!-- slot: threa-access -->", "Text\n<!-- slot: threa-access -->")), "needs a blank line above and below"],
+    [() => appendMarker(runtime, "missing"), "Slot marker missing has no file"],
+    [() => { addSlot(runtime, "sample", "x"); appendMarker(runtime, "sample"); }, "repeats a slot marker"],
+    [() => append("\n<!-- slot: Threa -->\n"), "Malformed slot marker"],
+    [() => { addSlot(runtime, "sample", "x"); append("Text\n"); }, "needs a blank line above and below"],
     [() => writeFileSync(resolve(runtime, "agents/slots/orphan.md"), "## Orphan\n"), "orphan has no marker"],
-    [() => writeFileSync(resolve(runtime, "agents/slots/threa-access.sops.md"), "x"), "both a plaintext and an encrypted file"],
+    [() => { addSlot(runtime, "sample", "x"); writeFileSync(resolve(runtime, "agents/slots/sample.sops.md"), "x"); }, "both a plaintext and an encrypted file"],
     [() => writeFileSync(resolve(runtime, "agents/slots/Bad_Name.md"), "x"), "Invalid slot file name"],
     [() => editHosts(runtime, (value) => { value.slots.unknown = []; }), "Unknown slot in hosts.json"],
     [() => {

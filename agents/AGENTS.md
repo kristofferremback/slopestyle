@@ -73,3 +73,5 @@ Life is complicated. I'll sometimes contradict myself, you'll also get contradic
 Remember, newer decisions win within the same level.
 
 <!-- slot: threa-access -->
+
+<!-- slot: decision-records -->
