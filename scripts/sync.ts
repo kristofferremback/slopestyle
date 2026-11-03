@@ -129,6 +129,8 @@ try {
     const validationRepo = resolve(validationDirectory, "repo");
     git(["worktree", "add", "--detach", validationRepo, target]);
     scriptOrThrow(resolve(validationRepo, "scripts/check.ts"));
+    // Preflight decrypts this host's slots, which needs the fetched commit's pinned dependencies.
+    runOrThrow([process.execPath, "install", "--frozen-lockfile"], { ...commandOptions, cwd: validationRepo });
     scriptOrThrow(resolve(validationRepo, "scripts/install.ts"), ["--preflight-for", runtimeRoot]);
     git(["worktree", "remove", "--force", validationRepo], true);
     rmSync(validationDirectory, { recursive: true, force: true });

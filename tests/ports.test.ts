@@ -1,9 +1,10 @@
 import { afterAll, expect, test } from "bun:test";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import { isLoopback, parseLsof, parseServeStatus, parseSs } from "../scripts/lib/ports.ts";
 import { usagePort } from "../scripts/lib/usage/port.ts";
+import { copySource } from "./lib/source.ts";
 
 const sourceRoot = resolve(import.meta.dir, "..");
 const portsCli = resolve(sourceRoot, "scripts/ports.ts");
@@ -456,13 +457,7 @@ test("installs the CLI as a linked executable", () => {
   writeFileSync(resolve(installHome, ".config/slopestyle/host"), "kristoffer-mbp-galdera\n");
   const runtime = resolve(installHome, ".local/share/slopestyle");
   mkdirSync(runtime, { recursive: true });
-  cpSync(sourceRoot, runtime, {
-    recursive: true,
-    filter: (path) => {
-      const local = relative(sourceRoot, path);
-      return local !== ".git" && !local.startsWith(".git/") && local !== "node_modules" && !local.startsWith("node_modules/");
-    },
-  });
+  copySource(runtime);
   git(runtime, "init", "-q", "-b", "main");
   git(runtime, "add", "-A");
   git(runtime, "commit", "-q", "-m", "runtime");
@@ -473,7 +468,7 @@ test("installs the CLI as a linked executable", () => {
   const link = resolve(installHome, ".local/bin/slopestyle-ports");
   expect(readlinkSync(link)).toBe(resolve(runtime, "scripts/ports.ts"));
   expect(existsSync(link)).toBe(true);
-  expect(readlinkSync(resolve(installHome, ".codex/AGENTS.md"))).toBe(resolve(runtime, "agents/AGENTS.md"));
+  expect(readlinkSync(resolve(installHome, ".codex/AGENTS.md"))).toBe(resolve(installHome, ".local/state/slopestyle/guidance/AGENTS.md"));
   expect(readlinkSync(resolve(installHome, ".agents/skills/build"))).toBe(resolve(runtime, "skills/build"));
   const help = Bun.spawnSync([link, "--help"], { env: environmentForInstall, stdout: "pipe", stderr: "pipe" });
   expect(help.exitCode).toBe(0);

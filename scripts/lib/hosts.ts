@@ -5,6 +5,7 @@ import { assert, pathExists, repoRoot } from "./core.ts";
 
 export interface HostConfig {
   aliases: string[];
+  ageRecipient?: string;
 }
 
 export interface HostRegistry {
@@ -12,8 +13,10 @@ export interface HostRegistry {
   hosts: Record<string, HostConfig>;
   skills: Record<string, string[]>;
   subagents: Record<string, string[]>;
+  slots: Record<string, string[]>;
 }
 
+const hostKeys = new Set(["aliases", "ageRecipient"]);
 const hostName = (value: string): string => value.replace(/\.$/, "").toLowerCase();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -22,14 +25,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function loadHosts(path = resolve(repoRoot, "hosts.json")): HostRegistry {
   const config: unknown = JSON.parse(readFileSync(path, "utf8"));
-  assert(isRecord(config) && config.schemaVersion === 1 && Object.keys(config).sort().join(",") === "hosts,schemaVersion,skills,subagents", "hosts.json must use schemaVersion 1 and contain only hosts, skills, and subagents");
+  assert(isRecord(config) && config.schemaVersion === 1 && Object.keys(config).sort().join(",") === "hosts,schemaVersion,skills,slots,subagents", "hosts.json must use schemaVersion 1 and contain only hosts, skills, subagents, and slots");
   assert(isRecord(config.hosts), "Invalid hosts map in hosts.json");
   const ids = Object.keys(config.hosts);
   assert(ids.length > 0 && ids.every((id) => hostName(id) === id && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)), "hosts.json contains invalid host IDs");
   const seen = new Map<string, string>();
   for (const id of ids) {
     const host = config.hosts[id];
-    assert(isRecord(host) && Object.keys(host).join(",") === "aliases", `Invalid fields for host ${id}`);
+    assert(isRecord(host) && Object.hasOwn(host, "aliases") && Object.keys(host).every((key) => hostKeys.has(key)), `Invalid fields for host ${id}`);
+    assert(host.ageRecipient === undefined || (typeof host.ageRecipient === "string" && /^age1[0-9a-z]+$/.test(host.ageRecipient)), `Invalid ageRecipient for host ${id}`);
     const aliases = host.aliases;
     assert(Array.isArray(aliases) && aliases.every((alias) => typeof alias === "string" && /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.?$/i.test(alias)), `Invalid aliases for host ${id}`);
     for (const value of [id, ...aliases]) {
@@ -47,6 +51,7 @@ export function loadHosts(path = resolve(repoRoot, "hosts.json")): HostRegistry 
   };
   validateMap(config.skills, "skill");
   validateMap(config.subagents, "subagent");
+  validateMap(config.slots, "slot");
   return config as unknown as HostRegistry;
 }
 

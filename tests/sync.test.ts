@@ -1,10 +1,11 @@
 import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
-import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 
-const sourceRoot = resolve(import.meta.dir, "..");
+import { copySource, sourceRoot } from "./lib/source.ts";
+
 const scratch = realpathSync(mkdtempSync(resolve(tmpdir(), "slopestyle-sync-test.")));
 const home = resolve(scratch, "home");
 const publisher = resolve(scratch, "publisher");
@@ -63,16 +64,6 @@ function writeStub(name: string): void {
   const path = resolve(fakeBin, name);
   writeFileSync(path, `#!${process.execPath}\nimport { appendFileSync } from "node:fs";\nimport { basename } from "node:path";\nconst name = basename(process.argv[1]);\nconst log = name === "notify-send" || name === "osascript" ? process.env.SLOPESTYLE_TEST_NOTIFY_LOG : process.env.SLOPESTYLE_TEST_COMMAND_LOG;\nappendFileSync(log!, name + " " + process.argv.slice(2).join(" ") + "\\n");\nif (name === "launchctl" && process.argv[2] === "print") process.exit(1);\n`);
   chmodSync(path, 0o755);
-}
-
-function copySource(destination: string): void {
-  cpSync(sourceRoot, destination, {
-    recursive: true,
-    filter: (path) => {
-      const local = relative(sourceRoot, path);
-      return local !== ".git" && !local.startsWith(".git/") && local !== "node_modules" && !local.startsWith("node_modules/");
-    },
-  });
 }
 
 mkdirSync(fakeBin, { recursive: true });

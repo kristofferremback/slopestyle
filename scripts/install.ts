@@ -22,6 +22,7 @@ import { serviceInstalled } from "./lib/usage/service.ts";
 import { serviceInstalled as workServiceInstalled } from "./lib/work/service.ts";
 import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
 import { loadHosts, resolveHost, selected, validateManagedNames } from "./lib/hosts.ts";
+import { guidanceFiles, guidanceRoot, renderGuidance, writeGuidance } from "./lib/guidance.ts";
 
 const args = process.argv.slice(2);
 let replace = false;
@@ -69,6 +70,15 @@ const hosts = loadHosts();
 validateManagedNames(hosts, manifest.skills.map((entry) => entry.name), subagentMatrix().map((entry) => entry.name));
 const selectedHost = resolveHost(home, hosts);
 console.log(`Selected host: ${selectedHost}`);
+if (mode === "install") {
+  // Slot decryption and slopestyle-usage's page bundle need the pinned dependencies.
+  // Preflight relies on sync installing them in its validation worktree.
+  runOrThrow([process.execPath, "install", "--frozen-lockfile"], { cwd: repoRoot });
+  console.log("Installed pinned dependencies.");
+}
+// Rendering validates slots and decrypts this host's encrypted slots before any link changes.
+const guidance = await renderGuidance(selectedHost, hosts, home);
+const guidancePaths = guidanceFiles(home);
 
 const legacyThrea = [
   resolve(home, ".pi/agent/skills/threa-cli"),
@@ -92,7 +102,7 @@ function isExactLegacyUnslop(target: string): boolean {
 }
 
 function ownedPrefixes(root: string): string[] {
-  return [`${resolve(root, "skills")}/`, `${resolve(root, "subagents")}/`];
+  return [`${resolve(root, "agents")}/`, `${resolve(root, "skills")}/`, `${resolve(root, "subagents")}/`, `${guidanceRoot(home)}/`];
 }
 
 function canLink(source: string, target: string): void {
@@ -105,11 +115,11 @@ function canLink(source: string, target: string): void {
 }
 
 if (mode === "preflight") {
-  canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".pi/agent/AGENTS.md"));
-  canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
-  canLink(resolve(preflightRoot!, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
+  canLink(guidancePaths.agents, resolve(home, ".pi/agent/AGENTS.md"));
+  canLink(guidancePaths.agents, resolve(home, ".claude/AGENTS.md"));
+  canLink(guidancePaths.claude, resolve(home, ".claude/CLAUDE.md"));
   canLink(resolve(preflightRoot!, "scripts/heavy-check.ts"), heavyCheckTarget);
-  canLink(resolve(preflightRoot!, "agents/AGENTS.md"), resolve(home, ".codex/AGENTS.md"));
+  canLink(guidancePaths.agents, resolve(home, ".codex/AGENTS.md"));
   canLink(resolve(preflightRoot!, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
   canLink(resolve(preflightRoot!, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
   canLink(resolve(preflightRoot!, "scripts/work.ts"), resolve(binRoot(home), "slopestyle-work"));
@@ -173,19 +183,15 @@ for (const target of [
   }
 }
 
-linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".pi/agent/AGENTS.md"));
-linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".claude/AGENTS.md"));
-linkOwned(resolve(repoRoot, "agents/CLAUDE.md"), resolve(home, ".claude/CLAUDE.md"));
+writeGuidance(home, guidance);
+linkOwned(guidancePaths.agents, resolve(home, ".pi/agent/AGENTS.md"));
+linkOwned(guidancePaths.agents, resolve(home, ".claude/AGENTS.md"));
+linkOwned(guidancePaths.claude, resolve(home, ".claude/CLAUDE.md"));
 linkOwned(resolve(repoRoot, "scripts/heavy-check.ts"), heavyCheckTarget);
-linkOwned(resolve(repoRoot, "agents/AGENTS.md"), resolve(home, ".codex/AGENTS.md"));
+linkOwned(guidancePaths.agents, resolve(home, ".codex/AGENTS.md"));
 linkOwned(resolve(repoRoot, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
 linkOwned(resolve(repoRoot, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
 linkOwned(resolve(repoRoot, "scripts/work.ts"), resolve(binRoot(home), "slopestyle-work"));
-
-// slopestyle-usage bundles its page from node_modules, so the runtime checkout
-// needs the pinned dependencies installed.
-runOrThrow([process.execPath, "install", "--frozen-lockfile"], { cwd: repoRoot });
-console.log("Installed pinned dependencies.");
 
 const expected = new Map<Target, Set<string>>(targets.map((target) => [target, new Set()]));
 for (const skill of manifest.skills) {

@@ -2,7 +2,7 @@
 
 This repository is the source of truth for Kris's cross-machine agent setup.
 
-- Shared global guidance belongs in `agents/`.
+- Shared global guidance belongs in `agents/`. Host-specific guidance goes in `agents/slots/`, selected by `hosts.json` `slots`. Edit encrypted slots only through `scripts/slots.ts`.
 - Reusable skills live in one self-contained `skills/<name>/` directory.
 - Vendor skills remain external unless a documented incompatibility requires adaptation.
 - Claude Code subagents in `subagents/` are generated. Edit the matrix in `scripts/lib/subagents.ts`, then run `scripts/subagents.ts`.
