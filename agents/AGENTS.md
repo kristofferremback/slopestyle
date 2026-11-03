@@ -35,6 +35,7 @@ Treat your implementation as provisional. Optimize for the smallest coherent des
 - Build the smallest complete, correct solution, measured across the whole codebase rather than the diff. Prefer correctness, simplicity, reuse, reversibility, then cost. More code means more maintenance.
 - Take on necessary complexity so users don't have to. Contain it inside a clear, testable boundary.
 - Avoid speculative features, configuration, abstractions, compatibility layers, and unrelated cleanup.
+- Trust what an owner already guarantees: a tool's reported result, a committed transaction, a queue lease, a validated value, applied infrastructure. A check, guard, or test claims that guarantee can fail, so add one for a failure that has happened or a guarantee nobody owns, and name it. A check you would withdraw when asked "why?" is speculative.
 - Seek prior art before designing. Read nearby code, history, docs, conventions, components, and dependencies. Reuse established paths unless evidence contradicts them.
 - Never silently change path, provider, source, semantics, or guarantees. Defaults must not hide failure. Intentional fallbacks are explicit, observable, and reasonable to users without system knowledge.
 - Before implementing, restate the agreeed design in a few, simple sentences. If the code later needs to depart from the agreed upon plan materially, stop and ask for guidance.

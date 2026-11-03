@@ -43,7 +43,8 @@ The coordinating agent owns one verification plan across implementers, reviewers
 - Prefer whole-object comparisons over scattered property assertions.
 - Run generated SQL against a real compatible database rather than snapshotting the string.
 - Mock only at a real production boundary when practical integration is unavailable.
-- Add regression tests for reported regressions or behavior important enough to protect. Do not test that deleted behavior is absent merely because code was removed.
+- Add regression tests for reported regressions or behavior important enough to protect.
+- Test what the code decides. A test that restates a config value, a literal, or source text passes by construction, and a test that removed code stays removed guards a change git already records.
 
 ## Real-product verification
 
