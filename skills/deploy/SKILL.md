@@ -26,8 +26,8 @@ If approval is ambiguous about any PR, environment, migration, or rollout step, 
 - Keep operations retryable and observable. Stop on unknown partial state.
 - Apply activated backfills only after compatible code is live, using `migrate` and the repository runbook.
 
-## Hand off to monitoring
+## Watch for the unexpected
 
-Invoke `monitor` with the expected revision, environment, behavior, rollout time, and relevant risks. A green merge or deployment pipeline is not proof that production is correct.
+A merge or deployment pipeline that reports success has shipped the revision it names. Then invoke `monitor` with that revision, the environment, the behavior the change touched, and the rollout time, so failures nobody predicted surface early.
 
-Report direct links, revisions, rollout status, and caveats. Do not claim success until `monitor` proves it.
+Report direct links, revisions, rollout status, what monitoring saw, and caveats.
