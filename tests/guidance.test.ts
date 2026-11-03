@@ -145,6 +145,7 @@ test("should reject slots that markers, files, and hosts.json disagree on", () =
       editHosts(runtime, (value) => { value.slots.secret = ["homelab"]; value.hosts.homelab!.ageRecipient = "age1example"; });
     }, "not an armored age file"],
     [() => editHosts(runtime, (value) => { value.hosts.homelab!.ageRecipient = "AGE1X"; }), "Invalid ageRecipient"],
+    [() => editHosts(runtime, (value) => { value.backupRecipients = ["age1dup", "age1dup"]; }), "Invalid backupRecipients"],
   ];
   for (const [mutate, message] of mutations) {
     rmSync(runtime, { recursive: true, force: true });
@@ -240,6 +241,25 @@ test("should decrypt slots only on selected hosts holding their identity", () =>
   install(runtime, laptopHome);
   expect(installed(laptopHome)).toContain("## Work\n\nSecret work guidance.");
   expect(check(runtime, laptopHome).exitCode).toBe(0);
+
+  // A backup identity lives only in a password manager and decrypts every slot from any checkout.
+  const backupOutput = succeeds([slots, "keygen", "--backup"], resolve(scratch, "decrypt-nowhere")).stdout;
+  const backupIdentity = backupOutput.match(/AGE-SECRET-KEY-1[0-9A-Z]+/)?.[0];
+  const backupRecipient = backupOutput.match(/"(age1[0-9a-z]+)"/)?.[1];
+  expect(backupIdentity && backupRecipient).toBeTruthy();
+  expect(existsSync(resolve(scratch, "decrypt-nowhere/.config/slopestyle/age.key"))).toBe(false);
+  editHosts(developer, (value) => { value.backupRecipients = [backupRecipient!]; });
+  succeeds([slots, "reencrypt", "work"], homelabHome);
+  const pasted = resolve(scratch, "pasted-backup");
+  writeFileSync(pasted, `${backupIdentity}\n`);
+  const keyless = resolve(scratch, "decrypt-keyless");
+  expect(execute([slots, "reencrypt", "work"], keyless).stderr).toContain("Missing age identity");
+  succeeds([slots, "edit", "work", "--identity", pasted], keyless, { EDITOR: writeEditor("backup", "## Work\n\nEdited with the backup.\n") });
+  succeeds([slots, "reencrypt", "work", "--identity", pasted], keyless);
+  expect(execute([slots, "encrypt", "work", "--identity", pasted], keyless).exitCode).not.toBe(0);
+  publish();
+  install(runtime, laptopHome);
+  expect(installed(laptopHome)).toContain("Edited with the backup.");
 
   // A selected host without its identity fails install and preflight before guidance changes.
   rmSync(resolve(laptopHome, ".config/slopestyle/age.key"));

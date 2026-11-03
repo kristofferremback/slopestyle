@@ -8,16 +8,19 @@ import { assert, repoRoot, resolvedPath, stableRoot, writeAtomic } from "./lib/c
 import { loadHosts } from "./lib/hosts.ts";
 import { decryptSlot, encryptSlot, identityPath, isSlotName, loadSlots, readIdentity, slotFile, slotRecipients, type Slot } from "./lib/guidance.ts";
 
-const usage = `Usage: scripts/slots.ts COMMAND
+const usage = `Usage: scripts/slots.ts COMMAND [--identity PATH]
 
   keygen           Create this host's age identity and print its recipient
+  keygen --backup  Print a new backup identity for a password manager; writes nothing
   recipient        Print this host's age recipient for hosts.json
   edit NAME        Decrypt agents/slots/NAME.md.age into $VISUAL or $EDITOR, then re-encrypt (creates it when missing)
   encrypt NAME     Replace plaintext agents/slots/NAME.md with NAME.md.age
-  reencrypt NAME   Re-encrypt NAME.md.age to the hosts hosts.json currently selects
+  reencrypt NAME   Re-encrypt NAME.md.age to the recipients hosts.json currently selects
 
 Encrypted slots are readable by the hosts selected for them in hosts.json "slots",
-using each host's "ageRecipient". Run edit and reencrypt on a host that can decrypt the slot.`;
+using each host's "ageRecipient", and by every "backupRecipients" entry. edit and
+reencrypt decrypt with this host's identity, or with --identity PATH, for example
+--identity <(pbpaste) after copying the backup identity.`;
 
 function fail(message: string, exitCode = 2): never {
   console.error(message);
@@ -57,7 +60,7 @@ function slotCommand(home: string, name: string | undefined): SlotCommand {
     recipients,
     write: async (plaintext) => {
       writeAtomic(slotFile(name, true), await encryptSlot(plaintext, recipients));
-      console.log(`Encrypted agents/slots/${name}.md.age to ${recipients.length} host(s).`);
+      console.log(`Encrypted agents/slots/${name}.md.age to ${recipients.length} recipient(s).`);
     },
   };
 }
@@ -65,14 +68,32 @@ function slotCommand(home: string, name: string | undefined): SlotCommand {
 async function main(args: string[]): Promise<void> {
   const home = process.env.HOME;
   if (!home) throw new Error("HOME is required.");
-  const [command, name, ...extra] = args;
-  if (extra.length > 0) fail(usage);
+  const positional: string[] = [];
+  let identityFile: string | undefined;
+  let backup = false;
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === "--identity") {
+      identityFile = args[++index];
+      if (!identityFile) fail(usage);
+    } else if (args[index] === "--backup") {
+      backup = true;
+    } else {
+      positional.push(args[index]!);
+    }
+  }
+  const [command, name, ...extra] = positional;
+  if (extra.length > 0 || (backup && command !== "keygen") || (identityFile && command !== "edit" && command !== "reencrypt")) fail(usage);
+  const decryptionIdentity = (): string => readIdentity(identityFile ?? identityPath(home));
   switch (command) {
     case "keygen": {
       if (name) fail(usage);
-      const path = identityPath(home);
       const identity = await generateX25519Identity();
       const recipient = await identityToRecipient(identity);
+      if (backup) {
+        console.log(`Store this identity in your password manager. It is not saved anywhere:\n${identity}\n\nAdd its recipient to "backupRecipients" in hosts.json, then reencrypt each slot:\n"${recipient}"`);
+        return;
+      }
+      const path = identityPath(home);
       mkdirSync(dirname(path), { recursive: true });
       // "wx" refuses an existing identity; replacing one would lock this host out of its slots.
       writeFileSync(path, `# created: ${new Date().toISOString()}\n# public key: ${recipient}\n${identity}\n`, { mode: 0o600, flag: "wx" });
@@ -81,12 +102,12 @@ async function main(args: string[]): Promise<void> {
     }
     case "recipient":
       if (name) fail(usage);
-      console.log(await identityToRecipient(readIdentity(home)));
+      console.log(await identityToRecipient(decryptionIdentity()));
       return;
     case "edit": {
       const slot = slotCommand(home, name);
       assert(!slot.current || slot.current.encrypted, `agents/slots/${slot.name}.md is plaintext; run encrypt first.`);
-      const before = slot.current ? await decryptSlot(slot.current, readIdentity(home)) : "";
+      const before = slot.current ? await decryptSlot(slot.current, decryptionIdentity()) : "";
       const after = editInEditor(before);
       if (after === undefined) fail("Editor failed; slot unchanged.", 1);
       if (after === before) {
@@ -107,7 +128,7 @@ async function main(args: string[]): Promise<void> {
     case "reencrypt": {
       const slot = slotCommand(home, name);
       assert(slot.current?.encrypted, `No encrypted slot agents/slots/${slot.name}.md.age.`);
-      await slot.write(await decryptSlot(slot.current, readIdentity(home)));
+      await slot.write(await decryptSlot(slot.current, decryptionIdentity()));
       return;
     }
     case "-h":

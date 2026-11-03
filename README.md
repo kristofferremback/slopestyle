@@ -142,7 +142,14 @@ From a development checkout (`edit` of an existing slot and `reencrypt` need a h
 ./scripts/slots.ts reencrypt work     # after changing which hosts receive the slot
 ```
 
-A slot encrypts to every host selected for it, and an unlisted slot selects every registered host. Changing who receives a slot, including registering a new host for an unlisted one, requires `reencrypt`. Until then the new host fails to install. Validation requires a recipient for every selected host and an armored age file. Removing a host does not revoke its access to earlier versions in Git history. A selected host without its identity fails install and sync preflight before guidance changes. Unselected hosts never decrypt. Rendered guidance holds the plaintext, which agents on that host read.
+A backup identity, kept only in a password manager, recovers slots after a lost host key and edits them from any checkout. `keygen --backup` prints a new identity and its recipient without saving either. Add the recipient to the top-level `backupRecipients` list, run `reencrypt` for each encrypted slot, and pass the identity when editing elsewhere:
+
+```bash
+./scripts/slots.ts keygen --backup
+./scripts/slots.ts edit work --identity <(pbpaste)
+```
+
+Installs only use the host's own identity. A slot encrypts to every host selected for it and every backup recipient, and an unlisted slot selects every registered host. Changing who receives a slot, including registering a new host for an unlisted one, requires `reencrypt`. Until then the new host fails to install. Validation requires a recipient for every selected host and an armored age file. Removing a host does not revoke its access to earlier versions in Git history. A selected host without its identity fails install and sync preflight before guidance changes. Unselected hosts never decrypt. Rendered guidance holds the plaintext, which agents on that host read.
 
 Installation, preflight, and `check.ts --installed` use the same host selection. Sync removes excluded Slopestyle symlinks and installs newly enabled entries. Unrelated local files, vendor skills, unslotted global guidance, and command-line tools remain outside these restrictions. Host selection controls discovery through managed installations, not filesystem access to skill sources.
 
@@ -227,7 +234,7 @@ cd "$HOME/dev/slopestyle"
 Repository layout:
 
 - `agents/`: shared global guidance loaded by Pi, Claude Code, and Codex, with host-selected `slots/`. Hermes Agent gets skills only, so its `SOUL.md` stays its own.
-- `hosts.json`: registered machines, their age recipients, and restrictions for managed skills, subagents, and guidance slots
+- `hosts.json`: registered machines, their age recipients, backup recipients, and restrictions for managed skills, subagents, and guidance slots
 - `skills/`: canonical Slop(e)style skills and their target manifest. Hermes Agent skills install under `$HERMES_HOME/skills`, or `~/.hermes/skills` when `HERMES_HOME` is unset.
 - `subagents/`: generated Claude Code subagent definitions, one per model and effort
 - `scripts/install.ts`: safe runtime installation

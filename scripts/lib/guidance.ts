@@ -61,7 +61,7 @@ export function loadSlots(root = repoRoot): Map<string, Slot> {
   return slots;
 }
 
-// An encrypted slot is readable by exactly the hosts hosts.json selects for it.
+// An encrypted slot is readable by the hosts hosts.json selects for it and by every backup recipient.
 export function slotRecipients(name: string, registry: HostRegistry): string[] {
   const recipients = Object.entries(registry.hosts)
     .filter(([id]) => selected(name, id, registry.slots))
@@ -69,8 +69,8 @@ export function slotRecipients(name: string, registry: HostRegistry): string[] {
       assert(host.ageRecipient, `Host ${id} receives slot ${name} but has no ageRecipient in hosts.json`);
       return host.ageRecipient;
     });
-  assert(recipients.length > 0, `Slot ${name} is disabled on every host; nothing could decrypt it`);
-  return recipients;
+  assert(recipients.length > 0, `Slot ${name} is disabled on every host; nothing would render it`);
+  return [...recipients, ...registry.backupRecipients];
 }
 
 function validateSlots(registry: HostRegistry, root: string, lines: GuidanceLine[]): Map<string, Slot> {
@@ -98,9 +98,8 @@ export function identityPath(home: string): string {
 }
 
 // The file uses the age CLI identity format, so `age -d -i` reads it too.
-export function readIdentity(home: string): string {
-  const path = identityPath(home);
-  assert(existsSync(path), `Missing age identity ${path}. Run scripts/slots.ts keygen on this host.`);
+export function readIdentity(path: string): string {
+  assert(existsSync(path), `Missing age identity ${path}. Each host creates its own with scripts/slots.ts keygen.`);
   const identity = readFileSync(path, "utf8").split("\n").find((line) => line.startsWith("AGE-SECRET-KEY-"));
   assert(identity, `No age identity in ${path}`);
   return identity;
@@ -128,7 +127,7 @@ export async function encryptSlot(plaintext: string, recipients: string[]): Prom
 }
 
 async function readSlot(slot: Slot, home: string): Promise<string> {
-  return slot.encrypted ? decryptSlot(slot, readIdentity(home)) : readFileSync(slot.path, "utf8");
+  return slot.encrypted ? decryptSlot(slot, readIdentity(identityPath(home))) : readFileSync(slot.path, "utf8");
 }
 
 export async function renderGuidance(host: string, registry: HostRegistry, home: string, root = repoRoot): Promise<GuidanceFiles> {
