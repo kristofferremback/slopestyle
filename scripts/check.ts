@@ -18,6 +18,7 @@ import {
 } from "./lib/core.ts";
 import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
 import { loadHosts, resolveHost, selected, validateManagedNames } from "./lib/hosts.ts";
+import { assertGuidanceCurrent, checkSlots, guidanceFiles } from "./lib/guidance.ts";
 
 const args = process.argv.slice(2);
 const installed = args.length === 1 && args[0] === "--installed";
@@ -67,6 +68,7 @@ const hosts = loadHosts();
 const selectedHost = installed ? resolveHost(home, hosts) : undefined;
 if (selectedHost) console.log(`Selected host: ${selectedHost}`);
 validateManagedNames(hosts, manifest.skills.map((entry) => entry.name), subagentMatrix().map((entry) => entry.name));
+checkSlots(hosts);
 assert(manifest.schemaVersion === 1, "skills/manifest.json must use schemaVersion 1");
 
 const allowedProvenance = new Set<Provenance>(["original", "adapted", "forked", "pointer", "synchronized"]);
@@ -157,11 +159,13 @@ if (installed) {
     assert(isSymlink(target), `Expected installed symlink: ${target}`);
     assert(resolvedPath(target) === resolvedPath(source), `Wrong installed target: ${target}`);
   };
-  checkLink(resolve(home, ".pi/agent/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
-  checkLink(resolve(home, ".claude/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
-  checkLink(resolve(home, ".claude/CLAUDE.md"), resolve(repoRoot, "agents/CLAUDE.md"));
+  assertGuidanceCurrent(selectedHost!, hosts, home);
+  const guidance = guidanceFiles(home);
+  checkLink(resolve(home, ".pi/agent/AGENTS.md"), guidance.agents);
+  checkLink(resolve(home, ".claude/AGENTS.md"), guidance.agents);
+  checkLink(resolve(home, ".claude/CLAUDE.md"), guidance.claude);
   checkLink(resolve(binRoot(home), "slopestyle-heavy"), resolve(repoRoot, "scripts/heavy-check.ts"));
-  checkLink(resolve(home, ".codex/AGENTS.md"), resolve(repoRoot, "agents/AGENTS.md"));
+  checkLink(resolve(home, ".codex/AGENTS.md"), guidance.agents);
   checkLink(resolve(binRoot(home), "slopestyle-ports"), resolve(repoRoot, "scripts/ports.ts"));
   checkLink(resolve(binRoot(home), "slopestyle-usage"), resolve(repoRoot, "scripts/usage.ts"));
   checkLink(resolve(binRoot(home), "slopestyle-work"), resolve(repoRoot, "scripts/work.ts"));

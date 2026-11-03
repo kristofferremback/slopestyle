@@ -1,0 +1,5 @@
+# Encrypted guidance slots use one shared age key, kept in Kris's password manager.
+# It hides their content from this public repository; every machine with the key reads every slot.
+creation_rules:
+  - path_regex: ^agents/slots/[^/]+\.sops\.md$
+    age: age178uallj3205qrupdnvwz5hznvyuasya4qyn07eh3qzywz97zpchq87e7wk

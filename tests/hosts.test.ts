@@ -1,10 +1,10 @@
 import { afterAll, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { loadHosts, resolveHost, selected } from "../scripts/lib/hosts.ts";
+import { copySource, sourceRoot } from "./lib/source.ts";
 
-const sourceRoot = resolve(import.meta.dir, "..");
 const scratch = realpathSync(mkdtempSync(resolve(tmpdir(), "slopestyle-hosts-test.")));
 interface Result { exitCode: number; stdout: string; stderr: string }
 
@@ -30,17 +30,14 @@ function fixture(name: string, host = "kristoffer-mbp-galdera"): { home: string;
   const home = resolve(scratch, name);
   const runtime = resolve(home, ".local/share/slopestyle");
   mkdirSync(runtime, { recursive: true });
-  cpSync(sourceRoot, runtime, { recursive: true, filter: (path) => {
-    const local = relative(sourceRoot, path);
-    return local !== ".git" && !local.startsWith(".git/") && local !== "node_modules" && !local.startsWith("node_modules/");
-  } });
+  copySource(runtime);
   mkdirSync(resolve(runtime, ".git"));
   symlinkSync(resolve(sourceRoot, "node_modules"), resolve(runtime, "node_modules"));
   pin(home, host);
   return { home, runtime };
 }
 
-type Registry = { schemaVersion: number; hosts: Record<string, { aliases: string[] }>; skills: Record<string, string[]>; subagents: Record<string, string[]> };
+type Registry = { schemaVersion: number; hosts: Record<string, { aliases: string[] }>; skills: Record<string, string[]>; subagents: Record<string, string[]>; slots: Record<string, string[]> };
 const registry = (root: string): Registry => JSON.parse(readFileSync(resolve(root, "hosts.json"), "utf8"));
 const writeRegistry = (runtime: string, value: Registry): void => writeFileSync(resolve(runtime, "hosts.json"), `${JSON.stringify(value, null, 2)}\n`);
 
@@ -108,6 +105,7 @@ test("should reject invalid pins and registries before changing links", () => {
     (value: Registry) => { value.skills.datadog = ["missing-host"]; },
     (value: Registry) => { value.skills["missing-skill"] = ["homelab"]; },
     (value: Registry) => { value.subagents["missing-subagent"] = []; },
+    (value: Registry) => { value.slots["missing-slot"] = []; },
     (value: Registry) => { value.hosts.homelab.aliases = ["KRISTOFFERS-MACBOOK-PRO."]; },
   ]) {
     const value = registry(sourceRoot);
@@ -120,6 +118,7 @@ test("should reject invalid pins and registries before changing links", () => {
   for (const malformed of [
     { ...valid, skills: [] },
     { ...valid, subagents: [] },
+    { ...valid, slots: [] },
     { ...valid, hosts: [] },
     { ...valid, extra: true },
     { ...valid, hosts: { ...valid.hosts, homelab: { aliases: [], extra: true } } },
@@ -133,6 +132,7 @@ test("should reject invalid pins and registries before changing links", () => {
     hosts: { "unregistered-fixture-node": { aliases: [] } },
     skills: { datadog: [] },
     subagents: {},
+    slots: {},
   };
   writeRegistry(runtime, unknownHostRegistry);
   rmSync(resolve(home, ".config/slopestyle/host"));

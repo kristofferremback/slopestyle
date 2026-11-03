@@ -30,6 +30,23 @@ jobs:
           bun-version-file: .bun-version
       - name: Install development dependencies
         run: bun install --frozen-lockfile
+      - name: Install sops and age for encrypted slot tests
+        env:
+          SOPS_VERSION: 3.13.3
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            asset=sops-v$SOPS_VERSION.linux.amd64
+            checksum=e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b
+            sudo apt-get update
+            sudo apt-get install -y age
+          else
+            asset=sops-v$SOPS_VERSION.darwin.arm64
+            checksum=b97c0d434aab577dc40310e8d22ff9e45eef4c80638ab978daae9b4681c59286
+            brew install age
+          fi
+          curl -fsSL -o "$RUNNER_TEMP/sops" "https://github.com/getsops/sops/releases/download/v$SOPS_VERSION/$asset"
+          echo "$checksum  $RUNNER_TEMP/sops" | shasum -a 256 -c -
+          sudo install -m 0755 "$RUNNER_TEMP/sops" /usr/local/bin/sops
       - name: Type-check scripts
         run: bun run typecheck
       - name: Validate source

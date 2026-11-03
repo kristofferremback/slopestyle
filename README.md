@@ -50,7 +50,7 @@ Raise the minimum Bun version only after every machine can run it. CI reads the 
 
 ## Synchronization behavior
 
-`scripts/sync.ts` keeps the runtime checkout identical to `origin/main`. Before changing the runtime, it validates the fetched commit in a temporary worktree and checks local installation conflicts. It then checks out `main` at that commit, removes untracked files that are not ignored, reconciles local links, and checks installed state.
+`scripts/sync.ts` keeps the runtime checkout identical to `origin/main`. Before changing the runtime, it validates the fetched commit in a temporary worktree, renders this host's guidance, and checks local installation conflicts. It then checks out `main` at that commit, removes untracked files that are not ignored, reconciles local links, and checks installed state.
 
 The runtime is a mirror, not a workspace. Sync discards local edits, untracked files, and local commits, switches a detached HEAD or another branch back to `main`, and logs what it replaced to `sync.log`. Replaced commits remain in the reflog. Ignored files such as `node_modules/` survive. A fetched commit that fails validation leaves the runtime unchanged.
 
@@ -118,9 +118,26 @@ The registry's `skills` and `subagents` maps restrict managed entries by name. A
 }
 ```
 
-This example shows the two restriction maps. The checked-in registry restricts Datadog to the laptop and slopshare to homelab. Its `hosts` map defines machine IDs and their `aliases`. Unknown skill, subagent, or host names and ambiguous aliases fail validation.
+This example shows the two restriction maps. The checked-in registry restricts Datadog to the laptop and slopshare to homelab. Its `hosts` map defines machine IDs and their `aliases`. Unknown skill, subagent, slot, or host names and ambiguous aliases fail validation.
 
-Installation, preflight, and `check.ts --installed` use the same host selection. Sync removes excluded Slopestyle symlinks and installs newly enabled entries. Unrelated local files, vendor skills, shared global guidance, and command-line tools remain outside these restrictions. Host selection controls discovery through managed installations, not filesystem access to skill sources.
+### Guidance slots
+
+A line `<!-- slot: NAME -->` in `agents/AGENTS.md` marks where host-specific guidance goes. Its content lives in `agents/slots/NAME.md`, or `agents/slots/NAME.sops.md` when encrypted. The registry's `slots` map selects hosts with the same rules as skills, so `"threa-access": ["homelab"]` keeps Threa credentials guidance on homelab. The installer renders each host's guidance into `~/.local/state/slopestyle/guidance/` (owner-only) and links Pi, Claude Code, and Codex there. Every marker needs exactly one slot file, and every slot file and registry entry needs a marker.
+
+Encrypted slots hide their content from this public repository. They are `agents/slots/NAME.sops.md` files encrypted with [SOPS](https://github.com/getsops/sops) to one shared [age](https://github.com/FiloSottile/age) key, whose public half is in `.sops.yaml`. This is not access control: every machine with the key can read every slot, and `slots` only decides which guidance each host loads. Rendering runs `sops decrypt` only for encrypted slots selected for the host, so other hosts need neither `sops` nor the key. A selected host without them fails install and sync preflight before its guidance changes. `check.ts` requires every `.sops.md` file to be a SOPS envelope, so committed plaintext fails validation without the key.
+
+The private key lives in Kris's password manager. To give a host access, install `sops` and paste the key where SOPS looks for it: `~/.config/sops/age/keys.txt` on Linux, `~/Library/Application Support/sops/age/keys.txt` on macOS, or a file named by `SOPS_AGE_KEY_FILE`. From the repository root, plaintext only travels through pipes, never into the checkout:
+
+```bash
+slot=agents/slots/work.sops.md
+printf '## Work\n\n...\n' | sops encrypt --filename-override "$slot" --output "$slot" /dev/stdin   # create or replace
+sops decrypt "$slot"                                                                                 # read
+text=$(sops decrypt "$slot") && printf '%s\n' "$text" | sed 's/old/new/' | sops encrypt --filename-override "$slot" --output "$slot" /dev/stdin   # edit
+```
+
+Editing decrypts into a variable first, so a failed decrypt never encrypts empty text over the slot. A new slot also needs its marker in `agents/AGENTS.md`, on its own line between blank lines.
+
+Installation, preflight, and `check.ts --installed` use the same host selection. Sync removes excluded Slopestyle symlinks and installs newly enabled entries. Unrelated local files, vendor skills, unslotted global guidance, and command-line tools remain outside these restrictions. Host selection controls discovery through managed installations, not filesystem access to skill sources.
 
 ## Usage dashboard
 
@@ -202,8 +219,8 @@ cd "$HOME/dev/slopestyle"
 
 Repository layout:
 
-- `agents/`: shared global guidance loaded by Pi, Claude Code, and Codex. Hermes Agent gets skills only, so its `SOUL.md` stays its own.
-- `hosts.json`: registered machines and restrictions for managed skills and subagents
+- `agents/`: shared global guidance loaded by Pi, Claude Code, and Codex, with host-selected `slots/`. Hermes Agent gets skills only, so its `SOUL.md` stays its own.
+- `hosts.json`: registered machines and restrictions for managed skills, subagents, and guidance slots
 - `skills/`: canonical Slop(e)style skills and their target manifest. Hermes Agent skills install under `$HERMES_HOME/skills`, or `~/.hermes/skills` when `HERMES_HOME` is unset.
 - `subagents/`: generated Claude Code subagent definitions, one per model and effort
 - `scripts/install.ts`: safe runtime installation
