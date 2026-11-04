@@ -5,7 +5,7 @@ description: Use after a pull request opens, or when the user asks to watch CI, 
 
 # Shepherd
 
-Monitor each opened PR with a background script or event subscription. Write watch output to a temporary file and return a sparse completion report to the owning agent, which decides and acts. Keep the PR or stack moving until it is genuinely ready. Never merge.
+Monitor each opened PR with the harness's native PR watch tools when available. Otherwise use a background script or event subscription. Keep the PR or stack moving until it is genuinely ready. Never merge.
 
 ## Watcher authority
 
@@ -23,7 +23,11 @@ Record the PR head SHA, base, stack relationships, current checks, reviews, comm
 
 ## Wait without model turns
 
-The script does the watching. A model may launch it and interpret its result, but stays out of the polling loop. Choose the model for the interpretation needed; a stronger model is reasonable when it receives only sparse results. If delegating, give the watcher a fresh, bounded brief containing only the PR, head SHA, run identifiers, reporting criteria, and read-only authority. Do not fork the conversation history.
+Use native watch notifications to resume the owning agent when action is needed. Follow the tool's lifecycle and turn-ending instructions. In T3 Code, read [native PR watching](references/t3code.md). Keep one watch mechanism per PR; use the script fallback only when native watching is unavailable.
+
+### Script fallback
+
+The script does the watching. A model may launch it and interpret its sparse completion report, but stays out of the polling loop. Choose the model for the interpretation needed; a stronger model is reasonable when it receives only sparse results. If delegating, give the watcher a fresh, bounded brief containing only the PR, head SHA, run identifiers, reporting criteria, and read-only authority. Do not fork the conversation history.
 
 - Use one background process per PR head. Keep polling, backoff, deduplication, and the last observed state inside that process. Redirect stdout and stderr to a temporary file rather than streaming them into model context. Prefer the harness's completion notification over repeated tool waits that wake the model.
 - Poll compact status metadata: head SHA, check identifiers and conclusions, and review/comment identifiers and update times. Finish on success, failure, or another event requiring attention, such as new review feedback, a changed head, or a watcher error. Return only the outcome, affected check/review identifiers, and log path. Unchanged state, routine progress, and tool timeout/keepalive messages stay silent.
