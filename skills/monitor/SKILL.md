@@ -5,7 +5,7 @@ description: Use after deployment, or when the user asks to verify production, c
 
 # Monitor
 
-Be proactive about failure: look for what went wrong that nobody predicted. The deploy tool's reported success settles which revision shipped, and monitoring watches how it behaves.
+Be proactive about failure: look for what went wrong that nobody predicted. The deploy tool's report settles which revision is live, and monitoring watches how it behaves.
 
 ## Look
 
