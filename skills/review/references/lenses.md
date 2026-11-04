@@ -20,6 +20,8 @@ Explain the mechanism from entry point through state changes to observable outco
 
 Ground architectural findings in a concrete structural cost, such as duplicated policy, leaked implementation knowledge, or coordinated edits across unrelated modules. These are valid findings without a reproduced functional defect or an invented future failure. Distinguish observed structure from predicted consequences. Suggest the smallest coherent improvement connected to the change, preserve accepted requirements, and name the tradeoff; keep unrelated redesign outside the review.
 
+Report at most three architecture findings, ranked by the structural cost they remove. Each names machinery this change introduced or worsened. They are considerations; when a proved finding shares their root cause, fold them into that blocker's fix direction.
+
 State whether the change improves, preserves, or worsens code health and architecture, with source evidence and any unresolved gaps. Explain mixed effects when boundaries improve in one place and deteriorate in another. Correct behavior alone does not establish a sound implementation.
 
 ## 3. Where can it fail, and what evidence supports our confidence?
@@ -27,7 +29,7 @@ State whether the change improves, preserves, or worsens code health and archite
 Follow the material behavior through its lifecycle, including boundaries outside the changed files. Select applicable lenses below and investigate concrete failure scenarios. Tie confidence to inspected source, existing tests, or focused probes. State what those checks establish and what remains unproved, even when no defect is found.
 
 - **Correctness:** state transitions, edge cases, error paths, reverse actions, and cleanup.
-- **Data lifecycle:** creation, transformation, persistence, transport, retries, cancellation, deletion, and races.
+- **Data lifecycle:** creation, transformation, persistence, transport, retries, cancellation, deletion, and races. A cache, dedup, or reuse key covers every input that changes the output, including moving tags and version ranges.
 - **Contracts:** schemas, APIs, wire formats, versions, compatibility, and one source of truth.
 - **Security and privacy:** trust boundaries, authorization, secrets, destructive actions, and data exposure.
 - **Failure:** operations are atomic and retryable, fallbacks are explicit, and blast radius stays contained.
