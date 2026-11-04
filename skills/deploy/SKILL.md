@@ -28,6 +28,6 @@ If approval is ambiguous about any PR, environment, migration, or rollout step, 
 
 ## Watch for the unexpected
 
-A merge or deployment pipeline reports what it did: the revision it applied, or that a newer one was already live. Trust that report, then invoke `monitor` with the revision now live, the environment, the behavior the change touched, and the rollout time, so failures nobody predicted surface early.
+A merge or deployment pipeline reports what it did: the revision it applied, or that a newer one was already live. Trust that report and flag a run that applied nothing, then invoke `monitor` with the revision now live, the environment, the behavior the change touched, and the rollout time, so failures nobody predicted surface early.
 
 Report direct links, revisions, rollout status, what monitoring saw, and caveats.
