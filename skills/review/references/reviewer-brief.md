@@ -13,7 +13,7 @@ Start where changes like this break:
 - **Feed the readers:** when the change writes a file, message, record, or configuration that other code reads, run that reader on what the change writes, including readers in another language or repository.
 - **Diff the guarantees:** list what the base did for this trigger, including side effects, records, notifications, environments, and checks, and confirm each survives at the head or is an accepted removal.
 
-Prefer the most production-like run the repository supports, such as its sandbox, emulators, or integration suite, over a test of your own model of the code.
+Prefer the most production-like run the repository supports, such as its sandbox, emulators, or integration suite, over a test of your own model of the code. For a guarantee enforced by persistent identities, ownership records or validation, trace whether the fixture reaches that owner with representative state. Use the real creation path or representative persisted records when needed; report what a bypass or stub leaves unverified.
 
 ## Context
 
@@ -39,7 +39,7 @@ Prefer the most production-like run the repository supports, such as its sandbox
 
 ## Plan
 
-Before reviewing, list the group's risk points, highest severity first. For each, give its location, the nature of the problem, its impact, and the run that would show it. Write "none" when the change carries no identifiable risk. Then run each risk point and keep reviewing past the list, since the plan is a starting point.
+Before reviewing, list the group's risk points, highest severity first. For each, give its location, the nature of the problem, its impact, and the run that would show it. Write "none" when the change carries no identifiable risk. Then run each risk point and keep reviewing past the list, since the plan is a starting point. Account for every material risk point in the output with its evidence or the exact behavior still unverified, even when it yields no proved finding.
 
 ## Output
 
