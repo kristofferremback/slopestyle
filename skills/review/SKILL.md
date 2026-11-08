@@ -20,7 +20,7 @@ Use the [assessment guide and review lenses](references/lenses.md) to investigat
 ## Frame
 
 1. Pin the exact scope and fixed point. For a PR, capture base and head SHAs. For a follow-up, retain the prior base and head, then record the new head and requested scope. Review the changes since the prior review with `git diff <prior-head> <new-head>`; use the original base only when the requested scope is the full PR.
-2. Establish the problem, its trigger, and the intended outcome from the accepted plan, prompt, ticket, and PR body. Distinguish accepted requirements from inferred rationale.
+2. Establish the problem, its trigger, and the intended outcome from the accepted plan, prompt, ticket, and PR body. Distinguish accepted requirements from inferred rationale: a producer storing a value or a read-only helper reconstructing it establishes current behavior, not the intended write contract.
 3. Read repository guidance and relevant specialist skills.
 4. For code, read the [coding style workflow](references/style-review.md) and the applicable `CODINGSTYLE.md`. The workflow lives in this skill; a separate `coding-style-review` installation or invocation is unnecessary. A missing guide limits compliance claims, not the review of readability and design.
 5. Read the assessment guide. Apply its mandatory code-health and architecture checks, assess the problem, and select applicable failure lenses.
@@ -69,7 +69,7 @@ The review reports at most five style findings, ranked by the reading or mainten
 
 Capture and fact-check that independent assessment, then supply proved correctness findings to the relevant style reviewer for the workflow's bug-to-design reconciliation. When there are none, record that reconciliation had no new input. Retain style improvements without corresponding bugs. Reconciliation may add or revise a design suggestion; it cannot certify an untested refactor.
 
-After both passes finish, the orchestrator traces material behavior across group boundaries and reconciles their assessments against the whole requested change. Group findings alone cannot establish that the parts work together.
+After both passes finish, the orchestrator traces material behavior across group boundaries and reconciles their assessments against the whole requested change. Carry forward each material risk raised in the plans or reports, including risks outside the finding lists. Settle cheap, reachable cases with focused probes; classify the evidence with [fact-check](references/fact-check.md) and retain each unresolved behavior and its missing evidence in the assessment. Group findings alone cannot establish that the parts work together.
 
 Done when every correctness group finished its round, style groups met their completion checks, both ledger states have no `pending` row, reconciliation is recorded, and all three questions have an evidence-backed answer or an explicit unresolved gap. Unresolved gaps remain limits on the verdict.
 
@@ -79,7 +79,7 @@ Locate each surviving finding by its quoted `code` in the new version of its `pa
 
 ## Report
 
-Write the report for Kris reading on a phone. It opens with the verdict: the blocker count and what was run to reach it. An empty blocker list is a valid result.
+Write the report for Kris reading on a phone. It opens with the verdict: the blocker count, what was run to reach it, and any material unresolved behavior. An empty blocker list is a valid result; when a material behavior remains unverified, state that the review is inconclusive for that behavior. File coverage establishes inspection, not behavioral assurance.
 
 Then, in this order:
 
