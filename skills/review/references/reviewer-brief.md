@@ -10,6 +10,7 @@ Start where changes like this break:
 
 - **Replay the trigger:** twice in a row, overlapping, out of order, and retried after a partial failure. Watch what a later run sees, waits for, or overwrites.
 - **Run it where it executes:** the branch, environment, and deploy order that will run it, which can differ from the head.
+- **Vary the workload:** apply the assessment guide's resource-cost lens to repeated paths and data-dependent operations, following reused helpers through their expensive branches.
 - **Feed the readers:** when the change writes a file, message, record, or configuration that other code reads, run that reader on what the change writes, including readers in another language or repository.
 - **Diff the guarantees:** list what the base did for this trigger, including side effects, records, notifications, environments, and checks, and confirm each survives at the head or is an accepted removal.
 
