@@ -1,6 +1,6 @@
 # Slicing
 
-A slice is a unit of delivery: one ticket tracks it, one PR reviews it. Give each slice a focused review goal and a reason to land independently while the complete set delivers the accepted outcome.
+A slice is a unit of delivery: one ticket tracks it, and its own commit or short commit series carries it. Slices of one accepted scope share a PR unless a slice must land or deploy on its own. Give each slice a focused review goal while the complete set delivers the accepted outcome.
 
 ## Vertical slice
 

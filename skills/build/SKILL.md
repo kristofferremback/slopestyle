@@ -27,7 +27,7 @@ Load required specialist skills while planning. UI work requires `frontend`; beh
 
 ## 2. Shape reviewable delivery
 
-Each planned slice becomes a PR. A PR is a review unit, not an implementation step. Every boundary needs one focused review goal and a reason to land independently.
+The accepted scope ships as one PR by default, each planned slice as its own commit so reviewers can read it slice by slice. Split off a separate PR only when part of the work must land or deploy on its own; that PR needs one focused review goal and a reason to land independently.
 
 A blank repository, local-only task, or explicit developer direction may use focused commits without PR ceremony. Preserve the same review logic.
 
@@ -64,10 +64,10 @@ At each completed review boundary:
 3. Run one fresh verifier that wrote none of the change. It drives the change the way a user would, parent against head, with `test` and the repository's `verify-<app>` skill when one exists, and records `PASS` or `FAIL` with its evidence. Green checks and an approving review are inputs to that verdict, never the verdict.
 4. Load `ship` to verify, commit owned work, push, and open or update the PR. Put the verifier's verdict and evidence in the PR.
 5. Start `shepherd` in the background for each opened PR.
-6. Continue the next unblocked slice while shepherding runs. Opened PRs are reviewed in parallel, not used as checkpoints between slices. A dependent slice joins its parent's PR or waits on a local branch, per the global pull-request rule. Waiting is not a blocker: build and verify it locally, then rebase and open it once the parent merges.
+6. Continue any remaining split-off PR while shepherding runs. Opened PRs are reviewed in parallel, not used as checkpoints. A PR that depends on an unmerged one waits on a local branch: build and verify it, then rebase and open it once the parent merges. Waiting is not a blocker.
 
 Background shepherding is part of the contract. If the harness cannot run it concurrently, report that limitation. Do not silently turn the workflow into a blocking watch loop.
 
 ## 5. Finish at ready
 
-Reconcile every slice against the agreed outcome and blueprint. Report what is ready, how it was proved, direct links, and real caveats. The work ends when every slice is ready to merge or verified locally and waiting only on its parent's merge, not when one PR is ready. Never merge or deploy without explicit developer approval.
+Reconcile every slice against the agreed outcome and blueprint. Report what is ready, how it was proved, direct links, and real caveats. The work ends when every PR of the accepted scope is ready to merge or verified locally and waiting only on its parent's merge, not when one PR is ready. Never merge or deploy without explicit developer approval.
