@@ -76,3 +76,5 @@ Remember, newer decisions win within the same level.
 <!-- slot: threa-access -->
 
 <!-- slot: decision-records -->
+
+<!-- slot: seer-access -->
