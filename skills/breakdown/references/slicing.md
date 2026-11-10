@@ -1,6 +1,6 @@
 # Slicing
 
-A slice is a unit of delivery: one ticket tracks it, one PR or a short stack reviews it. Give each slice a focused review goal and a reason to land independently while the complete set delivers the accepted outcome.
+A slice is a unit of delivery: one ticket tracks it, and its own commit or short commit series carries it. `build` decides which work shares a PR. Give each slice a focused review goal while the complete set delivers the accepted outcome.
 
 ## Vertical slice
 
@@ -20,4 +20,4 @@ Keep an agreed enabling refactor separately reviewable from the behavior it enab
 
 ## Boundary test
 
-A boundary holds when a reviewer can exercise what the slice delivers and answer one review question. Splits by layer, by file count, or into scaffolding with no independent value fail that test, as do slices whose only proof arrives with a later slice. Approval, verification, and cleanup travel inside the slice they gate. A dependent slice may rely on its parent, but it still needs a coherent review question and its own proof.
+A boundary holds when a reviewer can exercise what the slice delivers and answer one review question. Splits by layer, by file count, or into scaffolding with no independent value fail that test, as do slices whose only proof arrives with a later slice. Approval, verification, and cleanup travel inside the slice they gate. A dependent slice may rely on an earlier slice, but it still needs a coherent review question and its own proof.

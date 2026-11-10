@@ -13,11 +13,11 @@ Planning is required unless the work is dead obvious or explicitly exploratory.
 
 When the intended change or its boundaries are unclear, or a material scope reset needs resolving, use `scope`. Carry its established decisions and evidence into the plan.
 
-1. Investigate prior art in code, history, docs, components, conventions, and dependencies. When continuing existing work, distinguish approved foundations, including unmerged stack parents, from proposals superseded by the current scope. Classify inherited work as retain, rework, remove, or defer; coordinate changes to work owned by others. Discovery is scoped to the first slice: read the files that slice touches yourself and dispatch one explorer per open question at medium breadth. Findings land in the blueprint; the explorer's transcript does not.
+1. Investigate prior art in code, history, docs, components, conventions, and dependencies. When continuing existing work, distinguish approved foundations, including unmerged parent PRs, from proposals superseded by the current scope. Classify inherited work as retain, rework, remove, or defer; coordinate changes to work owned by others. Discovery is scoped to the first slice: read the files that slice touches yourself and dispatch one explorer per open question at medium breadth. Findings land in the blueprint; the explorer's transcript does not.
 2. Resolve facts yourself. Before proposing the first slice, explain the current flow, intended change, existing owners, and verified gap with concrete evidence. Distinguish observations from assumptions; investigate assumptions that could materially change the plan. Ask Kris only for decisions, in ordinary text, and ask early.
 3. Propose a high-level plan covering outcome, scope, product contract, architecture, risks, and delivery slices cut by [slicing](../breakdown/references/slicing.md). State the intended before and after behavior, including existing guarantees the change retains. Each slice names one behavior a user can exercise end to end, the product surface where it is proved, and its expected effort or size as a hypothesis to check. For each significant new state store, mechanism, service, or dependency, name the accepted requirement it serves and why an existing owner cannot serve it. Where the direct change would scatter edits, add special cases, duplicate a rule, or be hard to prove, compare it with [refactor first](../breakdown/references/slicing.md#refactor-first). Propose the refactor when the combined work is simpler, safer, or faster to deliver and verify for this change; name its payoff, preserved behavior, and proof.
 4. Wait for agreement on that high-level plan.
-5. Write the implementer blueprint: numbered steps in execution order, each naming its owned files, the existing owners it reuses, extends, or reshapes, one bounded outcome, a checkable completion criterion, and exact focused proof commands selected with `test`. Split steps that still require broad discovery before implementation. Steps may cut finer than PR slices. The plan persists where the project keeps plans (decision records, test plans, tickets). The blueprint is ephemeral: it lives on local disk for the duration of the work and is never committed.
+5. Write the implementer blueprint: numbered steps in execution order, each naming its owned files, the existing owners it reuses, extends, or reshapes, one bounded outcome, a checkable completion criterion, and exact focused proof commands selected with `test`. Split steps that still require broad discovery before implementation. Steps may cut finer than slices. The plan persists where the project keeps plans (decision records, test plans, tickets). The blueprint is ephemeral: it lives on local disk for the duration of the work and is never committed.
 
 Agreement is the go-ahead for the full accepted scope. Iteration before agreement is planning; feedback that leaves the contract intact refines work in flight. An opened PR or its review does not create a pause. During execution, pause only when Kris asks or remaining work is blocked.
 
@@ -27,7 +27,7 @@ Load required specialist skills while planning. UI work requires `frontend`; beh
 
 ## 2. Shape reviewable delivery
 
-Each planned slice becomes a PR. A PR is a review unit, not an implementation step. Every boundary needs one focused review goal and a reason to land independently.
+The accepted scope ships as one PR by default, each planned slice as its own commit so reviewers can read it slice by slice. Commit each slice locally once its steps are accepted; until the PR opens, fold later fixes into the commit of the slice they belong to. Split off a separate PR only when part of the work must land or deploy on its own, such as the contract phase of an expand-and-contract migration; that PR needs one focused review goal and a reason to land independently.
 
 A blank repository, local-only task, or explicit developer direction may use focused commits without PR ceremony. Preserve the same review logic.
 
@@ -49,7 +49,7 @@ You plan it, you own it. Run the blueprint steps in order. Each step has two pas
 1. **Implement.** Give it the step's blueprint entry, owned files, constraints, and focused proof commands. Finish when the completion criterion is met and the proof passes.
 2. **Verify and fix.** Give it the diff, completion criterion, and evidence handoff. Independently inspect the behavior, use `test` to select checks and reuse valid evidence, fix what a criterion proves wrong, and report anything larger back instead of redesigning.
 
-Passes hand off directly; avoid repeating their code verification between passes. Review each completed PR at the lifecycle boundary below, then verify the whole stack against the plan and blueprint when every step is done. Fixes smaller than a step you make by hand; larger ones become new steps through these two passes. The coordinating agent owns integrated verification under `test`. Run implementers serially and keep only lightweight review and shepherding concurrent. Concurrent workers own disjoint files and mutable state. Delegation never transfers accountability.
+Passes hand off directly; avoid repeating their code verification between passes. Review each completed PR at the lifecycle boundary below, then verify the complete set against the plan and blueprint when every step is done. Fixes smaller than a step you make by hand; larger ones become new steps through these two passes. The coordinating agent owns integrated verification under `test`. Run implementers serially and keep only lightweight review and shepherding concurrent. Concurrent workers own disjoint files and mutable state. Delegation never transfers accountability.
 
 Operational supervision continues between passes. Check progress and update Kris at least every 20 minutes while work runs long, using available status or log tools without repeating the code review. If the harness cannot surface progress during a pass, split assignments so agents return at that checkpoint with completed work, evidence, and the next action. After two unsuccessful attempts at the same problem without new evidence, reassess the approach and report the blocker rather than repeat it. A checkpoint is not authorization to stop a session or waive a failing check.
 
@@ -57,17 +57,17 @@ For long, ambitious, or unattended work, keep the decision trail described in [d
 
 ## 4. Compose the lifecycle
 
-At each completed review boundary:
+When every slice of a PR is committed:
 
 1. Run one fresh low-effort subagent with `simplify` over the complete PR diff, even for a small PR. This pass belongs to the PR, not each implementation step. Hand it the accepted scope and accumulated proof evidence. Later review fixes get focused simplification of their delta, not another full-PR pass unless they materially change the design.
 2. Load `review` for self-review and the completed PR's coverage ledger, grouped fresh review, fact-check, anchoring, and report.
 3. Run one fresh verifier that wrote none of the change. It drives the change the way a user would, parent against head, with `test` and the repository's `verify-<app>` skill when one exists, and records `PASS` or `FAIL` with its evidence. Green checks and an approving review are inputs to that verdict, never the verdict.
-4. Load `ship` to verify, commit owned work, push, and open or update the PR or stack. Put the verifier's verdict and evidence in the PR.
+4. Load `ship` to verify, commit owned work, push, and open or update the PR. Put the verifier's verdict and evidence in the PR.
 5. Start `shepherd` in the background for each opened PR.
-6. Continue the next unblocked slice while shepherding runs. Opened PRs are reviewed in parallel, not used as checkpoints between slices. A dependent slice stacks on its unmerged parent; waiting for the parent to merge is not a blocker.
+6. Continue any remaining split-off PR while shepherding runs. A split-off PR that cannot land yet waits on a local branch until its gate holds: the parent merging, or for a contract phase, the condition `migrate` names. Build and verify it meanwhile; waiting is not a blocker.
 
 Background shepherding is part of the contract. If the harness cannot run it concurrently, report that limitation. Do not silently turn the workflow into a blocking watch loop.
 
 ## 5. Finish at ready
 
-Reconcile every slice against the agreed outcome and blueprint. Report what is ready, how it was proved, direct links, and real caveats. The work ends when the complete accepted scope is ready to merge as a stack, not when one PR is ready. Never merge or deploy without explicit developer approval.
+Reconcile every slice against the agreed outcome and blueprint. Report what is ready, how it was proved, direct links, and real caveats. The work ends when each PR of the accepted scope is either ready to merge or verified on its local branch and waiting only on its gate. Name each waiting branch, its head SHA, and its gate in the report and the parent PR body so the follow-up outlives the session. Never merge or deploy without explicit developer approval.
