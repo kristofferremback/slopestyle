@@ -48,7 +48,7 @@ Treat your implementation as provisional. Optimize for the smallest coherent des
 - Test observable behavior at the highest practical layer. Prefer integrations over mocks. Green means green. Regression tests are earned.
 - Mobile is feature completeness, not a reduced product.
 - Before starting local services or exposing them through Tailscale, use the repository's own port or development-environment workflow when it has one. Otherwise claim ports with `$HOME/.local/bin/slopestyle-ports claim SERVICE...`; its `--help` owns the operational detail.
-- Prefer fewer, larger pull requests. CI runs on every push to every pull request, and a stack reruns it on each pull request above a change. Deliver an accepted scope as one pull request against the default branch, each slice as its own reviewable commit, and push when the pull request needs CI or review. Split off a separate pull request only when part of the work must land or deploy on its own, such as an expand-and-contract migration. Stack only when I or repository guidance ask, and then use `gh stack` for every operation, including rebase, sync, and merge, unless repository guidance names other stack tooling. Its `--help` owns the operational detail.
+- Prefer fewer, larger pull requests: CI reruns on every push to every pull request, and on each pull request stacked above a change. An accepted scope ships as one pull request against the default branch, one commit per slice; `build` owns when work splits off. Stack only when I or repository guidance ask, and then use `gh stack`, or the stack tooling repository guidance names, for every operation. Its `--help` owns the operational detail.
 
 ## Writing to Kristoffer
 

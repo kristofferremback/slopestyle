@@ -33,14 +33,14 @@ If a merge or rebase conflicts, follow [conflict resolution](references/conflict
 
 - Never open an issue, pull request, comment, or maintainer message in someone else's repository unless Kristoffer explicitly asked while working on that repository.
 - Check whether the branch already has a PR before creating one.
-- Preserve the stack and review shape chosen by `build`.
-- Package the accepted scope as one PR against the default branch, each slice as its own commit, unless `build` split off work that must land on its own. Create a stack only when Kris or repository guidance asks, and then submit it with `gh stack` so bases and ordering stay correct.
+- Package the work in the PR shape `build` chose; without `build`, use one PR against the default branch with one commit per slice. Create a stack only when Kris or repository guidance asks, and submit it with `gh stack` so bases and ordering stay correct.
+- Push when the PR needs CI or review; each push reruns CI.
 - Open a ready PR by default so checks and reviewers run. Use draft only when requested or when the review contract is genuinely incomplete.
 - Read recent merged PRs and git history before choosing title and body conventions.
 - Follow [PR writing](references/pr-writing.md).
 - Push only owned commits. Never force-push unless the repository workflow requires it and the affected remote history is understood.
 
-When invoked by `build`, return the PR identity immediately so `shepherd` can start in the background while the next slice continues.
+When invoked by `build`, return the PR identity immediately so `shepherd` can start in the background while any remaining split-off work continues.
 
 ## Finish
 
