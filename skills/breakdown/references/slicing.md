@@ -1,6 +1,6 @@
 # Slicing
 
-A slice is a unit of delivery: one ticket tracks it, one PR or a short stack reviews it. Give each slice a focused review goal and a reason to land independently while the complete set delivers the accepted outcome.
+A slice is a unit of delivery: one ticket tracks it, one PR reviews it. Give each slice a focused review goal and a reason to land independently while the complete set delivers the accepted outcome.
 
 ## Vertical slice
 

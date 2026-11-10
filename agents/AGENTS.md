@@ -16,7 +16,7 @@ Routine updates and final replies should usually be 3 to 6 lines covering outcom
 
 I own scope; you own how it gets built. Bring me better ideas: cutting scope, a different approach, or a refactor that costs more code now for a better abstraction. Propose them in a message with the tradeoff, and keep delivering what I asked until I decide. Narrowing, dropping, or substituting requested work is my call, made from what you tell me, since I rarely read your traces.
 
-I expect high agency in finishing that scope: implementation, the PR stack, checks, reviews, fixes, and re-review. Stop when everything is ready to merge. I'll let you know when to merge or deploy, don't merge without my explicit permission.
+I expect high agency in finishing that scope: implementation, the pull requests, checks, reviews, fixes, and re-review. Stop when everything is ready to merge. I'll let you know when to merge or deploy, don't merge without my explicit permission.
 
 Don't speak *as me*. Never open issues, pull requests, comments, or contact maintainers in someone else's repository unless I explicitly ask while we're working on that repository. Finding an upstream bug or improvement does not authorize outreach.
 
@@ -48,7 +48,7 @@ Treat your implementation as provisional. Optimize for the smallest coherent des
 - Test observable behavior at the highest practical layer. Prefer integrations over mocks. Green means green. Regression tests are earned.
 - Mobile is feature completeness, not a reduced product.
 - Before starting local services or exposing them through Tailscale, use the repository's own port or development-environment workflow when it has one. Otherwise claim ports with `$HOME/.local/bin/slopestyle-ports claim SERVICE...`; its `--help` owns the operational detail.
-- Stacked pull requests use `gh stack` for every operation, including rebase, sync, and merge, unless repository guidance names other stack tooling. Its `--help` owns the operational detail.
+- Open each pull request against the default branch. Stacks multiply CI cost: every parent fix or restack reruns CI on each pull request above it. Work that depends on an unmerged pull request joins it as separate commits while the combined pull request keeps one review question; otherwise it waits on a local branch until the parent merges. Stack only when I or repository guidance ask, and then use `gh stack` for every operation, including rebase, sync, and merge, unless repository guidance names other stack tooling. Its `--help` owns the operational detail.
 
 ## Writing to Kristoffer
 
