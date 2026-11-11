@@ -52,6 +52,7 @@ The parent (project, epic, or issue) holds the destination, the agreed scope, co
 - Every sentence changes what the implementer does or how they prove it. Link context.
 - Name behaviors, contracts, interfaces, and domain concepts. Where and how to build stays with the implementer unless it is an agreed decision. Evidence that points at code, such as a stack trace or a bug narrowed to a function, belongs in the ticket as evidence.
 - Each criterion is checkable on its own by someone who did not write the code. Name what an observer sees, the way a reviewer would verify it, in the ticket itself.
+- Criteria cover only what shipping to production leaves unproven. A change it fully proves, such as a refactor or ownership handoff, has one criterion: the changed state.
 - Metadata lives in the tracker's fields: parent, blocking relations, labels, estimate.
 - The body is the current contract. Progress, rulings, and delivery evidence go in comments and PRs; when scope changes, rewrite the body.
 - A ticket fits on a phone screen. One that needs more is two slices or is restating its parent.
