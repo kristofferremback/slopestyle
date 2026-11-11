@@ -28,7 +28,7 @@ Then use these sections, keeping only the ones the change earns:
 
 Keep the prose above the proof to one screen, at most about 250 words not counting screenshots, code, tables or deploy and after-merge steps. Say each thing once, and cut nuance before facts a reviewer needs. A horizontal rule closes it. Where the host renders `<details>`, collapse proof, files and size under summary lines that state the headline result:
 
-- **Proof:** at most five observed results: tests, screenshots, traces, runs. Leave out routine checks and process narration, such as who reviewed or how many rounds it took. End with what was not verified.
+- **Proof:** at most five observed results: tests, screenshots, traces, runs. Leave out routine checks and process narration, such as who reviewed or how many rounds it took. Name something unverified only when an experienced reviewer would ask about it.
 - **Files:** one row per changed file or directory, saying what changed in it.
 
 Link tickets, stacked dependencies, artifacts, and relevant product context directly. Make every claim true at the pushed head.

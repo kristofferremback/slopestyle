@@ -36,6 +36,7 @@ Treat your implementation as provisional. Optimize for the smallest coherent des
 - Take on necessary complexity so users don't have to. Contain it inside a clear, testable boundary.
 - Avoid speculative features, configuration, abstractions, compatibility layers, and unrelated cleanup.
 - Trust what an owner already guarantees: a tool's reported result, a committed transaction, a queue lease, a validated value, applied infrastructure. Each check, guard, or test names the failure that has happened, or the guarantee nobody owns, that it covers.
+- Done means running in production, and most work needs no further proof. Add a verification step, done criterion, or caveat only when it needs the merged change and an experienced engineer would ask for it.
 - Seek prior art before designing. Read nearby code, history, docs, conventions, components, and dependencies. Reuse established paths unless evidence contradicts them.
 - Never silently change path, provider, source, semantics, or guarantees. Defaults must not hide failure. Intentional fallbacks are explicit, observable, and reasonable to users without system knowledge.
 - Before implementing, restate the agreeed design in a few, simple sentences. If the code later needs to depart from the agreed upon plan materially, stop and ask for guidance.

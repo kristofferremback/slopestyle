@@ -7,7 +7,7 @@ description: Use when Kris asks to break down a project or large change into tic
 
 Split agreed work into slices and write a ticket for each.
 
-1. **Start from agreed scope.** The outcome, boundary, done evidence, tracker, and parent come from Kris's request or `scope`. Use `scope` when any of them is unclear. Without a tracker, the tickets are returned in the reply.
+1. **Start from agreed scope.** The outcome, boundary, tracker, and parent come from Kris's request or `scope`. Use `scope` when any of them is unclear. Without a tracker, the tickets are returned in the reply.
 2. **Find the seams.** Trace the current behavior and owners the slices will cut through, so they follow real seams.
 3. **Slice.** Cut by [slicing](references/slicing.md). Every slice passes its boundary test.
 4. **Separate decisions from build work.** A question that needs research or a `prototype` before anyone can build becomes a decision ticket. Questions Kris can answer now go in the proposal. Work that cannot yet be stated precisely stays as fog in the parent.
