@@ -46,6 +46,7 @@ Treat your implementation as provisional. Optimize for the smallest coherent des
 - Give each rule one owner. Before writing logic, find where the codebase already does it and reuse or extend that owner. When the same logic appears a second time, extract one owner and point every caller at it. Abstract real repetition, not anticipated repetition. When a better owner means refactoring beyond the request, propose it, even when it costs more code now.
 - Prefer race-safe writes, short scarce-resource lifetimes, boundary validation, one source of truth, and workflow state separate from domain state.
 - Comments explain what code cannot. Dead code is deleted. Good code is boring, explicit, and typed.
+- Tickets and documentation state the outcome, the contract, and the reasons. Leave out implementation detail until someone implements it; the code owns it from then on.
 - Test observable behavior at the highest practical layer. Prefer integrations over mocks. Green means green. Regression tests are earned.
 - Mobile is feature completeness, not a reduced product.
 - Before starting local services or exposing them through Tailscale, use the repository's own port or development-environment workflow when it has one. Otherwise claim ports with `$HOME/.local/bin/slopestyle-ports claim SERVICE...`; its `--help` owns the operational detail.
