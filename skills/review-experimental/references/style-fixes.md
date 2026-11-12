@@ -18,7 +18,7 @@ Use the repository's test workflow and the available `test` skill to select focu
 
 Run applicable formatting, lint, type and behavior checks. Report failures and evidence gaps honestly. Preserve valid earlier evidence, but identify the changed scope it does not cover. Revisit the [style pass](style-review.md)'s responsibility audit against the final implementation.
 
-Use the available `review-experimental` workflow for a fresh review of the completed change. Keep its coverage and fact-checking in one place. Resolve proved findings, verify their fixes and re-review the affected delta. Honor explicit limits on delegation and report the resulting review coverage.
+Within a combined review, return fixes to its coordinator for focused verification of the affected delta; reuse unaffected evidence and coverage. A fix does not restart the full review workflow. For a standalone style change, use the available review workflow at the scope warranted by that change. Honor explicit limits on delegation and report the resulting coverage.
 
 ## Deliver within the request
 

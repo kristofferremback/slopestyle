@@ -30,3 +30,5 @@ Local experiment v17 draft: reconcile supported comments into one working report
 V17 draft refinement: place input-contract comparison in the initial style workflow and separate composed-result membership, numerical meaning and presentation during behavior discovery.
 
 Local experiment v18 draft: explicit full-report final-response delivery; preserve published state/receipt guarantees from evidence; distinguish local claim clarity from whole-document truth.
+
+November 2026 calibration: challenge the whole design against original requirements before local review and fixes, select feedback by net benefit, and deliver concise actionable reports with supported omissions.
