@@ -26,7 +26,9 @@
       "requires": [
         "use-slack skill",
         "Bun",
-        "connected Slack tools with existing authentication"
+        "connected Slack tools with existing authentication",
+        "use-github skill and authenticated gh for GitHub review requests",
+        "use-linear skill and connected Linear tools for direct Linear actions"
       ],
       "source": "slopestyle",
       "provenance": "original"
