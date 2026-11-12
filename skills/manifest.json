@@ -312,8 +312,8 @@
       "provenance": "adapted"
     },
     {
-      "name": "review-beta",
-      "path": "skills/review-beta",
+      "name": "review-experimental",
+      "path": "skills/review-experimental",
       "targets": [
         "pi",
         "claude-code",
@@ -321,8 +321,8 @@
         "hermes"
       ],
       "requires": [],
-      "source": "slopestyle",
-      "provenance": "original"
+      "source": "https://github.com/alibaba/open-code-review",
+      "provenance": "adapted"
     },
     {
       "name": "scope",

@@ -74,6 +74,12 @@ Remove the scheduler without removing guidance or the checkout:
 
 Start fresh Pi, Claude Code, Codex, and Hermes Agent sessions after an update. Existing sessions retain the guidance loaded at startup.
 
+## Experimental reviews
+
+Invoke `review-experimental` by name to try the experimental V19 review workflow. It adds independent product-behavior review, adversarial checks, and final-report fidelity auditing. Ordinary review requests continue to use `review`.
+
+The variant has not passed a repeated full-suite benchmark, and its cost is not established. It can run focused tests and application probes when the repository environment supports them; it does not provision an application sandbox itself.
+
 ## Daily work check-in
 
 Invoke `daily-check-in` manually to review work commitments across projects, discuss priorities, and publish a private laptop HTML report. The skill and its Bun helper live in `skills/daily-check-in/`. Version 1 snapshots are immutable numbered directories under `~/.local/share/galdera-check-in`, each with `report.json` and `index.html`; the local server provides a calendar and `/days/YYYY-MM-DD/` views. Each date shows its latest published update, with earlier revisions retained. Rerun the skill for fresh source research during the day, then reload the dated page to see progress. The workflow has no scheduler and does not change source systems.
