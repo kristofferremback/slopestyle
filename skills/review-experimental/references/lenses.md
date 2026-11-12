@@ -8,7 +8,19 @@ Trace a concrete user or operator scenario from its trigger to the expected outc
 
 ## 2. Is this a sensible implementation, including how it fits the existing system?
 
-Explain the mechanism from entry point through state changes to observable outcome. Inspect nearby implementations and established interfaces for prior art. Assess code health and architecture in every review, even when behavior is correct. Apply these checks to the changed responsibilities and their surrounding boundaries:
+Explain the mechanism from entry point through state changes to observable outcome. Inspect nearby implementations and established interfaces for prior art. Assess code health and architecture in every review, even when behavior is correct.
+
+### Challenge the design
+
+Before dividing the diff into assignments, compare the complete proposed design with the smallest coherent alternative that delivers the accepted outcome. Read the original requirements; distinguish the user's required behavior and guarantees from implementation choices in plans, briefs and code. An author's summary, passing tests, an earlier review or the existence of a mechanism does not make that mechanism a requirement. An explicitly chosen design can still be challenged with new evidence; changing the accepted direction remains Kris's decision.
+
+Identify what the change adds beyond its core domain work: new state, switches, policy engines, inventories, configuration, tests and operational obligations. Hold the required outcome fixed while comparing an existing owner, direct implementation or finite rollout step with the proposed mechanism. Comparing only alternatives already ruled out by the requirements leaves this assessment incomplete. Separate a needed capability from its chosen strength and permanence: a required CI guard does not by itself require a general proof engine, and a staged rollout does not by itself require permanent phase configuration. Show where the simpler design would live, what machinery it removes, what guarantee it retains, and any residual gap. Preserve security, compatibility and availability requirements; if the simpler path cannot meet one, cite that specific constraint. Fewer lines alone does not establish a better design.
+
+The coordinator owns this whole-change assessment. Delegated groups may find local issues, but individually reasonable components do not establish a reasonable combined design. Keep the comparison in the existing assessment, and revisit it when proposed fixes materially increase the cost. Recommend keeping, simplifying or reconsidering the design, with the burden removed and the required behavior retained. A recommendation to simplify is actionable without inventing a runtime defect or an automatic merge gate.
+
+### Inspect the implementation
+
+Apply these checks to changed responsibilities and their surrounding boundaries:
 
 - **Abstraction quality:** Does the interface express intent and hide implementation decisions? A boundary earns its existence by owning a current concept, invariant, or complexity, even with one caller. Check both missing boundaries and wrappers that merely forward implementation details.
 - **Responsibility and cohesion:** Does each function or module own a coherent operation? Identify business decisions mixed with persistence, transport, or presentation, and place new behavior with its rightful owner.
@@ -21,7 +33,7 @@ Explain the mechanism from entry point through state changes to observable outco
 
 Ground architectural findings in a concrete structural cost, such as duplicated policy, leaked implementation knowledge, or coordinated edits across unrelated modules. These are valid findings without a reproduced functional defect or an invented future failure. Distinguish observed structure from predicted consequences. Suggest the smallest coherent improvement connected to the change, preserve accepted requirements, and name the tradeoff; keep unrelated redesign outside the review.
 
-Report confirmed architecture findings, ranked by the structural cost they remove. Each names machinery this change introduced or worsened. They are considerations; when a proved finding shares their root cause, fold them into that blocker's fix direction.
+Report architecture findings whose benefit earns the remedy's reach and verification cost, ranked by the burden they remove. Each names machinery this change introduced or worsened. They are considerations; when a proved finding shares their root cause, fold them into that blocker's fix direction.
 
 State whether the change improves, preserves, or worsens code health and architecture, with source evidence and any unresolved gaps. Explain mixed effects when boundaries improve in one place and deteriorate in another. Correct behavior alone does not establish a sound implementation.
 

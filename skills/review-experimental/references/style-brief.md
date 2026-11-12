@@ -10,7 +10,7 @@ Review **how the code is written**, assuming functional correctness is handled s
 - Assignment: explicit files and their diffs, assigned hotspots, and the group's role in the change.
 - Supporting context: other changed paths and relevant callers/tests, labelled separately from assigned files.
 - Guidance: the Code and ownership section in sibling adversarial-checks.md, plus absolute paths to applicable repository guidance, `CODINGSTYLE.md` (or note its absence), and this skill's `references/style-review.md` and `references/style-worksheet.md`. Read and follow those workflows.
-- Requirements: problem, intended outcome and accepted constraints, with inferred rationale labelled.
+- Requirements: original requirement record, intended outcome and accepted constraints, plus the whole-change design context. Label inferred rationale and implementation choices separately; a prepared mechanism is open to challenge.
 - Delivery: suggestions to the coordinator only. Preserve its requested scope and publication limits.
 
 Read supporting context as needed to understand the assigned responsibilities. Return concerns in another group as cross-group leads, with the affected path and reason; the coordinator owns reassignment. Count only assigned paths in your coverage, even when supporting files were read in full.
