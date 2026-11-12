@@ -312,19 +312,6 @@
       "provenance": "adapted"
     },
     {
-      "name": "review-beta",
-      "path": "skills/review-beta",
-      "targets": [
-        "pi",
-        "claude-code",
-        "codex",
-        "hermes"
-      ],
-      "requires": [],
-      "source": "slopestyle",
-      "provenance": "original"
-    },
-    {
       "name": "review-experimental",
       "path": "skills/review-experimental",
       "targets": [
