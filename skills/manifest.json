@@ -325,6 +325,19 @@
       "provenance": "original"
     },
     {
+      "name": "review-experimental",
+      "path": "skills/review-experimental",
+      "targets": [
+        "pi",
+        "claude-code",
+        "codex",
+        "hermes"
+      ],
+      "requires": [],
+      "source": "https://github.com/alibaba/open-code-review",
+      "provenance": "adapted"
+    },
+    {
       "name": "scope",
       "path": "skills/scope",
       "targets": [
