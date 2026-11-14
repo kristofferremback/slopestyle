@@ -13,6 +13,7 @@ Build feature-complete product behavior for every applicable surface. Start from
 - Reuse established primitives unless evidence shows a real gap.
 - Identify desktop, mobile, keyboard, screen-reader, dark-mode, light-mode, loading, empty, error, and reverse-action behavior that applies.
 - For a novel interaction with no prior art, use `prototype` to compare meaningfully different options before production code.
+- When the work sets or replaces a look (a new product, a redesign, a theme, game UI, style mockups), follow [art direction](references/art-direction.md) before drawing anything.
 
 ## Visual language
 
