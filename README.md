@@ -76,7 +76,7 @@ Start fresh Pi, Claude Code, Codex, and Hermes Agent sessions after an update. E
 
 ## Experimental reviews
 
-Invoke `review-experimental` by name to try the experimental V19 review workflow. It adds independent product-behavior review, adversarial checks, and final-report fidelity auditing. Ordinary review requests continue to use `review`.
+Invoke `review-experimental` by name to try the experimental review workflow. It adds independent product-behavior review, adversarial checks, and captured proof of the behavior a change claims. Ordinary review requests continue to use `review`.
 
 The variant has not passed a repeated full-suite benchmark, and its cost is not established. It can run focused tests and application probes when the repository environment supports them; it does not provision an application sandbox itself.
 

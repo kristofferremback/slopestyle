@@ -16,13 +16,13 @@ Use the [Review worksheet](style-worksheet.md) to make the scope, significance, 
 
 Read the applicable repository guidance and `CODINGSTYLE.md`, using a supplied guide when specified. If the guide is unavailable, report that limitation and distinguish observations from claims of compliance. The guide owns style rules; this skill owns the process.
 
-Within a larger review, use the assigned portion of its inventory and retain a distinct style assessment. Read other paths as supporting context and return cross-group concerns to the coordinator; assignment boundaries still govern findings and coverage. Its `review-experimental` workflow owns delegation and fact-checking; the style pass owns its design criteria and completion check below. A demonstrated reading or maintenance burden is evidence for a style finding, including a non-blocking one.
+Within a larger review, use the assigned portion of its inventory and retain a distinct style assessment. Read other paths as supporting context and return cross-group concerns to the coordinator; assignment boundaries still govern findings and coverage. Its `review` workflow owns delegation and fact-checking; the style pass owns its design criteria and completion check below. A demonstrated reading or maintenance burden is evidence for a style finding, including a non-blocking one.
 
 ## Understand before proposing
 
 For a module review, inventory the scope and read every source, test and fixture in full; sampling key files is not a complete module review. For a diff, read each changed hunk with the function or type that contains it, plus the callers and tests it affects; read the whole file when the change reshapes its structure. Record unread paths and reasons, including generated or vendored exclusions.
 
-Start with the [design challenge](lenses.md#challenge-the-design) for the assigned responsibility, using the original requirements and the whole-change context. Compare removing unnecessary new mechanisms before refining their internals. Then rank complexity hotspots: mixed responsibilities, repeated policies, nested cases, mutable bookkeeping and opaque test setup. Size directs attention; the responsibilities and reading burden establish the problem. In a diff, a hotspot is code the change creates or adds a responsibility to; a large supporting file is context. Record concrete friction before proposing edits, then complete the rest of the scope.
+Start with the complexity hotspots. Rank the largest changed files and functions alongside mixed responsibilities, repeated policies, nested cases, mutable bookkeeping and opaque test setup. Size directs attention; the responsibilities and reading burden establish the problem. In a diff, a hotspot is code the change creates or adds a responsibility to; a large file the diff only calls into, or touches with a one-line edit, is context. Record each hotspot's location and concrete friction before proposing edits, then complete the rest of the scope.
 
 When delegating, give each major hotspot a focused assignment with its relevant callers and tests. Keep a large coordinator or migration out of a catch-all style assignment spanning the entire PR. Use the requested model and effort; structural design comparisons need reasoning capacity appropriate to that task.
 
@@ -80,7 +80,7 @@ When fixes are authorized, continue with [Applying findings](style-fixes.md).
 
 ## Return a useful result
 
-Lead with whether meaningful changes are needed and why. Distinguish **fix here**, **refactor first**, and **non-blocking follow-up** recommendations. Select findings by net design and readability benefit, including the effort and risk of changing and verifying them. A true observation can still be too small or costly to recommend; record that disposition in the notes. Include examples for retained findings, justified hotspot retentions and coverage gaps. A clean style result makes no claim about functional correctness; earn it through the concrete comparisons above. Finding count is not a quality target.
+Lead with whether meaningful changes are needed and why. Distinguish **fix here**, **refactor first**, and **non-blocking follow-up** recommendations. Prioritize by design and readability benefit, distinguish facts from uncertainty, and include examples, justified retentions and coverage gaps. Include a brief disposition of the major hotspots, including retained ones, so their assessment survives synthesis with correctness findings. A clean style result makes no claim about functional correctness; earn it through the concrete comparisons above. There is no finding quota. Rank findings after completing the structural and local passes; a short report is not permission to discard confirmed feedback.
 
 Before delivering the review, apply the worksheet's [final-comment check](style-worksheet.md#final-comment-check) to the actual comments. In a combined review, the coordinator owns this check after synthesis.
 
