@@ -30,15 +30,11 @@ Write the analysis for each finding before its outcome.
 
 Evaluate a protection against the exact claimed consequence. A bound, refusal, exception or cleanup guard can preserve safety while making an otherwise valid user journey fail. Trace what the user receives after the guard fires; distinguish prevention of the trigger from detection of its consequence. Do not replace a concrete availability or meaning claim with a stronger security claim and then dismiss both when the stronger one is disproven.
 
-## Mandatory acceptance gates
+## Validation gates
 
-Keep repository-mandated pre-merge validation separate from proof of a code defect. Inventory the exact required checks, scenario/slice union, modes, model configurations and accepted waivers. For a changed shared prompt, tool, validator or eval judge, trace its users to determine that union rather than choosing one convenient slice. Match completion receipts to the reviewed commit and configuration. Each mandatory gate names its authority in repository guidance, an accepted requirement or a required check, along with its exact coverage and receipt status. A reviewer-created test matrix does not acquire that authority from a “required” heading.
+Checks that CI enforces block the merge on their own. Never report them, their receipts or their absence as a finding, a blocker or a readiness condition, and never ask for current-head receipts.
 
-Resolve conflicting authorities before declaring a gate mandatory. Apply the applicable precedence and chronology to what each requirement actually covers. A newer accepted direction can change an older policy without waiving unrelated guarantees; implementation alone does not establish that acceptance. A proposed policy change or missing completion receipt does not suspend a gate whose current applicability is established. Distinguish that case from uncertainty about whether an older authority still applies. When the supplied records leave that applicability unresolved, retain a policy consideration and its missing authority rather than requiring an invented waiver.
-
-A known failing or unfulfilled mandatory gate blocks readiness without proving a code defect. When receipts are unavailable, readiness is unverified: state the exact green receipts required before merge, and distinguish that requirement from a claim that nobody ran the checks. Missing local dependencies establishes only that this review could not execute them. Existing current-head receipts and explicit accepted waivers count; generic test-unavailability prose cannot discharge a mandatory gate.
-
-Keep targeted proof for a retained finding attached to that finding, with the property it settles and the strongest appropriate test surface. Distinguish that proof from exploratory coverage and additional confidence checks. Recommend those additional checks in the assessment; their absence alone does not create an independent merge requirement. Preserve the real policy-required suites and model/mode coverage, and the finding’s own proved or traced decision disposition.
+Keep targeted proof for a retained finding attached to that finding, with the property it settles and the strongest appropriate test surface. Distinguish that proof from exploratory coverage and additional confidence checks. Recommend those additional checks in the assessment; their absence alone does not create an independent merge requirement. Preserve the finding’s own proved or traced decision disposition.
 
 ## Style evidence
 

@@ -30,7 +30,7 @@ For search, follow a displayed label through request construction, server matchi
 
 ## Feature and machine interfaces
 
-For each feature-controlled operation, inspect enabled, disabled, pending and failed feature resolution at the client and server. Check schema/tool advertisement against the handler's accepted capabilities in each mode. Identify model/tool changes even when most of the diff is ordinary application code. Read the owning eval policy and account for its specific slices/scenarios, feature variants and default model matrix before reporting validation complete.
+For each feature-controlled operation, inspect enabled, disabled, pending and failed feature resolution at the client and server. Check schema/tool advertisement against the handler's accepted capabilities in each mode. Identify model/tool changes even when most of the diff is ordinary application code.
 
 ## Code and ownership
 

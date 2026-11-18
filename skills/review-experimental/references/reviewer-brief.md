@@ -59,11 +59,12 @@ Then each finding, fields in this order:
 1. `path`: the file the finding is about.
 2. `code`: lines copied verbatim from the new version of that file, added or modified lines only, without diff markers. Quote the smallest contiguous range the claim targets.
 3. `run`: the exact command, the output it printed, and the output the intent requires. Write `none` when no run was possible and say why.
-4. `evidence`: what you read, with `file:line` references.
-5. `claim`: the behavior that fails, the structural cost, or the risk introduced.
-6. `fix`: the smallest correct direction.
-7. `category`: bug, security, performance, maintainability, test, or other.
-8. `severity`, following the impact once the change runs as intended, including behind its flag:
+4. `proof`: when the run has an effect a user or operator sees, such as a page state or an API response, the capture you saved in the proof directory, named after the finding, and one line on what it shows. Write `none` otherwise. Save files only; the coordinator decides what is published.
+5. `evidence`: what you read, with `file:line` references.
+6. `claim`: the behavior that fails, the structural cost, or the risk introduced.
+7. `fix`: the smallest correct direction.
+8. `category`: bug, security, performance, maintainability, test, or other.
+9. `severity`, following the impact once the change runs as intended, including behind its flag:
    - critical: data loss, security breach, or an outage on a common path.
    - high: incorrect behavior, crash, or a broken contract on a reachable path.
    - medium: edge-case failure on a reachable trigger, performance regression, or a maintainability cost with a concrete consequence.
