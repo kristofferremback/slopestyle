@@ -40,9 +40,9 @@ Combine these into natural prose in author-facing comments. Small findings may n
 
 ## Place comments on the code
 
-When publishing the review is authorized, prefer inline PR review comments attached to the relevant code over a report that merely references line numbers. Anchor each finding to the smallest useful line range at the reviewed revision. Use a native code-suggestion block for an exact, safe replacement when the review tool supports it; show broader refactors with the examples below.
+When publishing the review is authorized, post each finding as an inline PR review comment on the relevant code. An inline comment is a thread the author can reply to and resolve; a top-level comment has no replies. Anchor each finding to the smallest useful line range at the reviewed revision: the code itself when the diff shows it, otherwise the changed line whose behavior leads to it. Use a native code-suggestion block for an exact, safe replacement when the review tool supports it; show broader refactors with the examples below.
 
-If inline placement is unsupported or the finding spans the overall design, use a self-contained review comment with precise file/line references. Recheck locations if the head changes. Keep draft-only requests as drafts, and report publication failures honestly. This means review annotations, not adding reviewer notes to source files.
+When no changed line leads to the finding, comment on the changed file it concerns. A finding that spans the overall design, or one the review tool cannot place, goes in the review body with precise file/line references. Recheck locations if the head changes. Keep draft-only requests as drafts, and report publication failures honestly. This means review annotations, not adding reviewer notes to source files.
 
 ## Expandable comments
 
