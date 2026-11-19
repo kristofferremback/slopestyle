@@ -92,7 +92,7 @@ Before post-merge sync installs this managed skill, move the existing standalone
 
 ## Code and coding style review
 
-`review` includes independent correctness and coding-style passes for code and PRs, then reconciles their findings into one report. Style uses the project's `CODINGSTYLE.md`, gives major complexity hotspots focused attention, and includes concrete examples and local readability checks. Invoke just `$review`; an explicit one-pass request still limits the scope.
+`review` gives fresh reviewers independent correctness, product-behavior and coding-style passes for code and PRs, then reports every actionable finding ranked by severity. Style uses the project's `CODINGSTYLE.md` and keeps at most five findings. Invoke just `$review`; an explicit one-pass request still limits the scope.
 
 `coding-style-review` remains a standalone entry point into the same canonical workflow under `skills/review/references/`. Its worksheet covers significance, comments, direct fixes to Kris's own PRs and optional cherry-pick commits for other authors. This standalone entry remains laptop-only through `hosts.json`; the combined workflow ships with `review` on every host that installs it.
 
