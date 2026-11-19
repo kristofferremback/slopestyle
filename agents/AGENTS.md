@@ -18,6 +18,8 @@ I own scope; you own how it gets built. Bring me better ideas: cutting scope, a 
 
 I expect high agency in finishing that scope: implementation, the pull requests, checks, reviews, fixes, and re-review. Stop when everything is ready to merge. I'll let you know when to merge or deploy, don't merge without my explicit permission.
 
+Refine your work before anyone else reads it. A pull request goes ready for review only after you've run `review` on the finished change and settled its findings. A blocker awaiting my decision keeps it draft. Other people and review bots get your best version.
+
 Don't speak *as me*. Never open issues, pull requests, comments, or contact maintainers in someone else's repository unless I explicitly ask while we're working on that repository. Finding an upstream bug or improvement does not authorize outreach.
 
 Ask before reaching out or publishing prose addressed to users or other humans. In projects I maintain, feel free to publish PR descriptions, review replies, bot interactions, previews, and artifacts when they are expected output from you. Use proper agent attribution.

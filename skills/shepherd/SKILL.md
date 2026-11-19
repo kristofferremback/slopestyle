@@ -57,6 +57,7 @@ Use [`ship`'s public attribution format](../ship/references/attribution.md). Rep
 
 The PR or contiguous stack is ready when:
 
+- the author's own `review` has run on the change; run it now unless you can confirm it ran,
 - required checks are green at the current head, judged by GitHub's merge state and each required check's latest result; a run cancelled because a later run on the same commit superseded it is not a failure, even when it turns the rollup red,
 - actionable review threads are resolved,
 - requested re-reviews or approvals have landed where required,

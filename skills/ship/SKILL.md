@@ -34,8 +34,8 @@ If a merge or rebase conflicts, follow [conflict resolution](references/conflict
 - Never open an issue, pull request, comment, or maintainer message in someone else's repository unless Kristoffer explicitly asked while working on that repository.
 - Check whether the branch already has a PR before creating one.
 - Package the work in the PR shape `build` chose; without `build`, use one PR against the default branch with one commit per slice. Create a stack only when Kris or repository guidance asks, and submit it with `gh stack` so bases and ordering stay correct.
+- Before a PR first goes ready, whether opened ready or marked with `gh pr ready`, run `review` on the finished change unless this session already did, and settle each finding with its [fix disposition](../review/references/fix-disposition.md). Keep the PR draft while a blocker awaits Kris's decision or Kris asked for a draft. Open a draft first only when Kris asks or the review needs the pushed PR, such as a preview deploy or CI-only proof. Fixes for findings and later follow-up commits get focused proof, not another `review`.
 - Push when the PR needs CI or review; each push reruns CI.
-- Open a ready PR by default so checks and reviewers run. Use draft only when requested or when the review contract is genuinely incomplete.
 - Read recent merged PRs and git history before choosing title and body conventions.
 - Follow [PR writing](references/pr-writing.md).
 - Push only owned commits. Never force-push unless the repository workflow requires it and the affected remote history is understood.
