@@ -116,6 +116,7 @@ if (mode === "preflight") {
   canLink(guidance.agents, resolve(home, ".codex/AGENTS.md"));
   canLink(resolve(preflightRoot!, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
   canLink(resolve(preflightRoot!, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
+  canLink(resolve(preflightRoot!, "scripts/actions.ts"), resolve(binRoot(home), "slopestyle-actions"));
   canLink(resolve(preflightRoot!, "scripts/work.ts"), resolve(binRoot(home), "slopestyle-work"));
   for (const skill of manifest.skills) {
     if (!selected(skill.name, selectedHost, hosts.skills)) continue;
@@ -185,6 +186,7 @@ linkOwned(resolve(repoRoot, "scripts/heavy-check.ts"), heavyCheckTarget);
 linkOwned(guidance.agents, resolve(home, ".codex/AGENTS.md"));
 linkOwned(resolve(repoRoot, "scripts/ports.ts"), resolve(binRoot(home), "slopestyle-ports"));
 linkOwned(resolve(repoRoot, "scripts/usage.ts"), resolve(binRoot(home), "slopestyle-usage"));
+linkOwned(resolve(repoRoot, "scripts/actions.ts"), resolve(binRoot(home), "slopestyle-actions"));
 linkOwned(resolve(repoRoot, "scripts/work.ts"), resolve(binRoot(home), "slopestyle-work"));
 
 // slopestyle-usage bundles its page from node_modules, so the runtime checkout

@@ -40,6 +40,7 @@ for (const pattern of ["scripts/**/*.ts", "tests/**/*.ts"]) {
 }
 
 const entryPoints = [
+  "scripts/actions.ts",
   "scripts/check.ts",
   "scripts/heavy-check.ts",
   "scripts/install.ts",
@@ -168,6 +169,7 @@ if (installed) {
   checkLink(resolve(home, ".codex/AGENTS.md"), guidance.agents);
   checkLink(resolve(binRoot(home), "slopestyle-ports"), resolve(repoRoot, "scripts/ports.ts"));
   checkLink(resolve(binRoot(home), "slopestyle-usage"), resolve(repoRoot, "scripts/usage.ts"));
+  checkLink(resolve(binRoot(home), "slopestyle-actions"), resolve(repoRoot, "scripts/actions.ts"));
   checkLink(resolve(binRoot(home), "slopestyle-work"), resolve(repoRoot, "scripts/work.ts"));
   assert(existsSync(resolve(repoRoot, "node_modules/echarts/package.json")), "Missing installed dependencies; run bun install --frozen-lockfile in the runtime checkout.");
 
