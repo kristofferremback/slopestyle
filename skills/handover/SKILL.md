@@ -18,7 +18,7 @@ Write the handover outside the repository unless the user explicitly requests a 
 - **Evidence:** observed tests, checks, artifacts, links, and what remains unverified
 - **Implementation:** files and behavior changed, not a line-by-line inventory
 - **Git:** repository, worktree, branch, base, commits, dirty owned paths, unrelated dirty state, PRs, and stack relationships
-- **Review:** checks, comments, accepted findings, re-review, and ready status
+- **Review:** checks, comments, the head your own `review` covered, accepted findings, re-review, and ready status
 - **Exceptions:** deviations, failed approaches, blockers, risks, and caveats
 - **Next action:** one exact, immediately executable step
 
