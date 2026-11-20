@@ -6,9 +6,10 @@ import { bunExecutable, launchdDomain, launchdLoad, launchdLoaded, launchdUnload
 export const serviceActions = ["install", "refresh", "status", "uninstall"] as const;
 export type ServiceAction = (typeof serviceActions)[number];
 
-export type UserService = "usage" | "work";
+const descriptions = { usage: "usage dashboard", work: "work service", actions: "GitHub Actions dashboard" };
+export type UserService = keyof typeof descriptions;
 function definition(name: UserService) {
-  return { label: `dev.slopestyle.${name}`, unitName: `slopestyle-${name}.service`, description: name === "usage" ? "usage dashboard" : "work service" };
+  return { label: `dev.slopestyle.${name}`, unitName: `slopestyle-${name}.service`, description: descriptions[name] };
 }
 
 export function servicePaths(name: UserService, home: string): { plist: string; unit: string; log: string } {
@@ -25,7 +26,7 @@ export function serviceInstalled(name: UserService, home: string): boolean {
   return process.platform === "linux" ? existsSync(paths.unit) : process.platform === "darwin" && existsSync(paths.plist);
 }
 
-// Keeps the usage dashboard and work collector running in the login session as a systemd
+// Keeps the dashboards and work collector running in the login session as a systemd
 // user service or a macOS LaunchAgent. Refresh rewrites the unit for the
 // current checkout and restarts the server so it runs the current code.
 export function manageUserService(name: UserService, action: ServiceAction, home: string, args: string[] = ["serve"]): void {

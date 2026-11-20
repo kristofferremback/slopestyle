@@ -164,6 +164,9 @@ test("synchronizes a stable runtime safely", () => {
 
   expect(execute([resolve(sourceRoot, "scripts/usage.ts"), "service", "install"]).exitCode).not.toBe(0);
   succeeds([resolve(runtime, "scripts/usage.ts"), "service", "install"]);
+  expect(execute([resolve(runtime, "scripts/actions.ts"), "service", "install"]).exitCode).toBe(2);
+  writeFileSync(resolve(state, "actions.json"), JSON.stringify({ repo: "example/app", pipelines: [{ name: "Dev", workflow: "deploy.yaml" }] }));
+  succeeds([resolve(runtime, "scripts/actions.ts"), "service", "install"]);
   const commandsBeforeServiceRefresh = readFileSync(commandLog, "utf8");
   succeeds([resolve(runtime, "scripts/install.ts")]);
   const serviceRefreshCommands = readFileSync(commandLog, "utf8").slice(commandsBeforeServiceRefresh.length);
@@ -175,6 +178,8 @@ test("synchronizes a stable runtime safely", () => {
     if (Bun.which("systemd-analyze")) succeeds(["systemd-analyze", "verify", unitPath]);
     expect(commandsBeforeServiceRefresh).toContain("systemctl --user enable --now slopestyle-usage.service");
     expect(serviceRefreshCommands).toContain("systemctl --user try-restart slopestyle-usage.service");
+    expect(serviceRefreshCommands).toContain("systemctl --user try-restart slopestyle-actions.service");
+    succeeds([resolve(runtime, "scripts/actions.ts"), "service", "uninstall"]);
     succeeds([resolve(runtime, "scripts/usage.ts"), "service", "uninstall"]);
     expect(existsSync(unitPath)).toBe(false);
   } else {
@@ -186,6 +191,8 @@ test("synchronizes a stable runtime safely", () => {
     expect(plist).toContain("usage.log");
     expect(commandsBeforeServiceRefresh).toContain(`launchctl bootstrap gui/${process.getuid!()} ${plistPath}`);
     expect(serviceRefreshCommands).toContain("launchctl bootstrap");
+    expect(serviceRefreshCommands).toContain(`launchctl bootstrap gui/${process.getuid!()} ${resolve(home, "Library/LaunchAgents/dev.slopestyle.actions.plist")}`);
+    succeeds([resolve(runtime, "scripts/actions.ts"), "service", "uninstall"]);
     succeeds([resolve(runtime, "scripts/usage.ts"), "service", "uninstall"]);
     expect(existsSync(plistPath)).toBe(false);
   }

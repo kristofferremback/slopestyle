@@ -19,6 +19,7 @@ import {
   type Target,
 } from "./lib/core.ts";
 import { serviceInstalled } from "./lib/usage/service.ts";
+import { serviceInstalled as userServiceInstalled } from "./lib/user-service.ts";
 import { serviceInstalled as workServiceInstalled } from "./lib/work/service.ts";
 import { subagentMatrix, subagentsRoot, subagentsTargetRoot } from "./lib/subagents.ts";
 import { loadHosts, resolveHost, selected, validateManagedNames } from "./lib/hosts.ts";
@@ -238,6 +239,10 @@ if (schedulerInstalled) {
 }
 if (serviceInstalled(home)) {
   runOrThrow([process.execPath, resolve(repoRoot, "scripts/usage.ts"), "service", "refresh"]);
+}
+
+if (userServiceInstalled("actions", home)) {
+  runOrThrow([process.execPath, resolve(repoRoot, "scripts/actions.ts"), "service", "refresh"]);
 }
 
 if (workServiceInstalled(home)) {

@@ -2,6 +2,7 @@
 
 import { resolve } from "node:path";
 import { runOrThrow } from "./lib/core.ts";
+import { manageUserService, type ServiceAction, serviceActions } from "./lib/user-service.ts";
 import { defaultConfigPath, loadActionsConfig } from "./lib/actions/config.ts";
 import { createGithubClient } from "./lib/actions/github.ts";
 import { createActionsServer, createPoller } from "./lib/actions/server.ts";
@@ -18,6 +19,10 @@ Commands:
       127.0.0.1. Without --port the port comes from "slopestyle-ports claim actions".
   snapshot [--config PATH]
       Poll once and print the JSON the page renders.
+  service install|refresh|status|uninstall
+      Keep "serve" running in the login session as a macOS LaunchAgent or a
+      systemd user service, with the default config. The installer refreshes
+      it after every sync.
 
 Defaults:
   --config  $HOME/.local/state/slopestyle/actions.json
@@ -33,6 +38,14 @@ if (!home) throw new Error("HOME is required.");
 
 const args = process.argv.slice(2);
 const command = args.shift();
+if (command === "service") {
+  const action = args[0];
+  if (args.length !== 1 || !(serviceActions as readonly string[]).includes(action)) usage(2, "service needs exactly one of install, refresh, status, or uninstall");
+  // A service started without a valid config would only restart and fail, so install refuses one.
+  if (action === "install") config(defaultConfigPath(home));
+  manageUserService("actions", action as ServiceAction, home);
+  process.exit(0);
+}
 const options = { port: undefined as number | undefined, config: defaultConfigPath(home) };
 for (let index = 0; index < args.length; index += 1) {
   const value = () => {
@@ -57,9 +70,9 @@ for (let index = 0; index < args.length; index += 1) {
   }
 }
 
-function config() {
+function config(path = options.config) {
   try {
-    return loadActionsConfig(options.config);
+    return loadActionsConfig(path);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(2);
