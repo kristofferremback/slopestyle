@@ -75,8 +75,9 @@ test("should refuse to replace an unrelated service file", () => {
   expect(readFileSync(artifact, "utf8")).toBe("unrelated service\n");
 });
 
-test("should keep work and usage port leases distinct and reusable in the same installation", async () => {
+test("should keep work, usage and actions port leases distinct and reusable in the same installation", async () => {
   const { workPort } = await import("../scripts/lib/work/port.ts");
+  const { privateServicePort } = await import("../scripts/lib/service-port.ts");
   const { usagePort } = await import("../scripts/lib/usage/port.ts");
   const { repoRoot } = await import("../scripts/lib/core.ts");
   const portHome = resolve(scratch, "port-home");
@@ -93,13 +94,15 @@ test("should keep work and usage port leases distinct and reusable in the same i
   const env = { ...process.env, HOME: portHome, SLOPESTYLE_WORK_TEST_ROUTES: routes, PATH: `${portBin}:${process.env.PATH}` };
   const usage = usagePort({ env });
   const work = workPort({ env });
-  expect(work).not.toBe(usage);
+  const actions = privateServicePort("slopestyle-actions", "actions", { env });
+  expect(new Set([usage, work, actions]).size).toBe(3);
   writeFileSync(routes, JSON.stringify({
-    TCP: { [usage]: { HTTPS: true }, [work]: { HTTPS: true } },
-    Web: Object.fromEntries([usage, work].map((port) => [`service-test.example:${port}`, { Handlers: { "/": { Proxy: `http://127.0.0.1:${port}` } } }])),
+    TCP: { [usage]: { HTTPS: true }, [work]: { HTTPS: true }, [actions]: { HTTPS: true } },
+    Web: Object.fromEntries([usage, work, actions].map((port) => [`service-test.example:${port}`, { Handlers: { "/": { Proxy: `http://127.0.0.1:${port}` } } }])),
   }));
   expect(usagePort({ env })).toBe(usage);
   expect(workPort({ env })).toBe(work);
+  expect(privateServicePort("slopestyle-actions", "actions", { env })).toBe(actions);
   const privateDirectory = resolve(portHome, ".local/state/slopestyle/work-port");
   expect(statSync(privateDirectory).mode & 0o777).toBe(0o700);
   const shown = Bun.spawnSync([process.execPath, resolve(repoRoot, "scripts/ports.ts"), "show", "--all", "--format", "json"], {
