@@ -1,5 +1,7 @@
+import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { repoRoot, runOrThrow } from "./core.ts";
+import { repoRoot, runOrThrow, stateRoot } from "./core.ts";
 
 interface PortsService {
   name: string;
@@ -47,4 +49,12 @@ export function servicePort(
       `slopestyle-ports did not return a port for ${name}: ${JSON.stringify(claimed)}`,
     );
   return port!;
+}
+
+// A checkout holds one app's port block, and slopestyle-usage holds the runtime checkout's. Other services run from
+// that checkout claim their block from a private state directory instead.
+export function privateServicePort(app: string, name: string, options: PortOptions = {}): number {
+  const cwd = options.cwd ?? resolve(stateRoot(options.env?.HOME ?? process.env.HOME ?? homedir()), `${name}-port`);
+  if (!options.cwd) mkdirSync(cwd, { recursive: true, mode: 0o700 });
+  return servicePort(app, name, { ...options, cwd });
 }

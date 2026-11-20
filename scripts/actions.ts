@@ -6,7 +6,7 @@ import { manageUserService, type ServiceAction, serviceActions } from "./lib/use
 import { defaultConfigPath, loadActionsConfig } from "./lib/actions/config.ts";
 import { createGithubClient } from "./lib/actions/github.ts";
 import { createActionsServer, createPoller } from "./lib/actions/server.ts";
-import { servicePort } from "./lib/service-port.ts";
+import { privateServicePort } from "./lib/service-port.ts";
 import homepage from "./actions/index.html";
 
 function usage(exitCode: number, message?: string): never {
@@ -16,7 +16,8 @@ function usage(exitCode: number, message?: string): never {
 Commands:
   serve [--port N] [--config PATH]
       Poll GitHub Actions for the configured pipelines and serve the page on
-      127.0.0.1. Without --port the port comes from "slopestyle-ports claim actions".
+      127.0.0.1. Without --port the port is a slopestyle-ports lease claimed
+      from ~/.local/state/slopestyle/actions-port.
   snapshot [--config PATH]
       Poll once and print the JSON the page renders.
   service install|refresh|status|uninstall
@@ -88,7 +89,7 @@ function githubClient() {
 switch (command) {
   case "serve": {
     const loaded = config();
-    const server = createActionsServer({ config: loaded, client: githubClient(), port: options.port ?? servicePort("slopestyle-actions", "actions"), homepage });
+    const server = createActionsServer({ config: loaded, client: githubClient(), port: options.port ?? privateServicePort("slopestyle-actions", "actions"), homepage });
     console.log(`slopestyle-actions serving ${loaded.repo} at http://127.0.0.1:${server.port}/`);
     break;
   }
