@@ -167,6 +167,22 @@ slopestyle-usage service uninstall
 
 The service starts at login and restarts after a crash. The installer restarts it after every sync so it serves the current code. On macOS it runs in the login session, which is what the Keychain needs for the limit percentages.
 
+## Actions dashboard
+
+`scripts/actions.ts` installs as `~/.local/bin/slopestyle-actions`. It shows the GitHub Actions runs of chosen workflows in one repository, one lane per workflow, because GitHub's Actions tab mixes every workflow and event together. `~/.local/state/slopestyle/actions.json` names the repository and its pipelines:
+
+```json
+{ "repo": "example/app", "pipelines": [{ "name": "Dev", "workflow": "deploy.yaml" }, { "name": "Prod", "workflow": "promote.yaml" }] }
+```
+
+```bash
+slopestyle-actions serve       # page on a slopestyle-ports port, bound to 127.0.0.1
+slopestyle-actions snapshot    # poll once and print the page's JSON
+slopestyle-actions service install    # keep serve running: LaunchAgent on macOS, systemd user service on Linux
+```
+
+The server polls GitHub with the `gh auth token` at most every 15 seconds, and only while the page is open in a visible tab, so a server left running as a service spends none of the rate limit while nobody looks. It keeps nothing on disk. The installer restarts the service after every sync so it serves the current code. Each lane lists the 20 most recent runs, active ones first. A run folds its jobs into the reusable workflows that called them, plots them on the run's timeline, and links failing jobs to their logs. A run still in progress with a failed job shows as failing. Active runs load first and older runs fill in over the next few polls. When GitHub fails to list a run's jobs, the card says so and keeps the jobs it last saw. Runs in different lanes that built the same commit link to each other.
+
 ## Local development ports
 
 `scripts/ports.ts` installs as `~/.local/bin/slopestyle-ports`. It leases aligned blocks of ten ports from the managed range `20000`-`29999` so every checkout keeps one stable set of numbers, and so a browser origin is never reused by a different application.
