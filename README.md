@@ -180,7 +180,7 @@ slopestyle-actions serve       # page on a slopestyle-ports port, bound to 127.0
 slopestyle-actions snapshot    # poll once and print the page's JSON
 ```
 
-The server polls GitHub every 15 seconds with the `gh auth token` and keeps nothing on disk. Each lane lists the 20 most recent runs, active ones first. A run folds its jobs into the reusable workflows that called them, plots them on the run's timeline, and links failing jobs to their logs. A run still in progress with a failed job shows as failing. Active runs load first and older runs fill in over the next few polls. When GitHub fails to list a run's jobs, the card says so and keeps the jobs it last saw. Runs in different lanes that built the same commit link to each other.
+The server polls GitHub with the `gh auth token` at most every 15 seconds, and only while the page is open in a visible tab, so an unwatched server spends none of the rate limit. It keeps nothing on disk. Each lane lists the 20 most recent runs, active ones first. A run folds its jobs into the reusable workflows that called them, plots them on the run's timeline, and links failing jobs to their logs. A run still in progress with a failed job shows as failing. Active runs load first and older runs fill in over the next few polls. When GitHub fails to list a run's jobs, the card says so and keeps the jobs it last saw. Runs in different lanes that built the same commit link to each other.
 
 ## Local development ports
 

@@ -159,20 +159,26 @@ function githubFake() {
   return { fetcher, requests, fail: (value: boolean) => (failing = value) };
 }
 
-test("should serve the snapshot and refetch jobs only for active runs when polling again", async () => {
+test("should poll GitHub only when a page asks for stale data and refetch jobs only for active runs", async () => {
   const fake = githubFake();
   const server = createActionsServer({ config, client: createGithubClient({ token: "t", fetch: fake.fetcher, retryDelayMs: 0 }), port: 0, pollIntervalMs: 3_600_000 });
   try {
     const base = `http://127.0.0.1:${server.port}`;
-    const first = await (await fetch(`${base}/api/snapshot`)).json();
-    expect(first.loading === true || first.polledAt !== null).toBe(true);
+    await Bun.sleep(20);
+    expect(fake.requests).toHaveLength(0);
+    expect((await (await fetch(`${base}/api/snapshot`)).json()).loading).toBe(true);
     const refreshed = await (await fetch(`${base}/api/refresh`, { method: "POST" })).json();
     expect(refreshed.error).toBeNull();
     expect(refreshed.pipelines[0].runs.map((entry: { id: number }) => entry.id)).toEqual([1002, 1001]);
     expect(refreshed.pipelines[0].runs[0].groups[0].name).toBe("Build");
+    const polled = fake.requests.length;
+    await fetch(`${base}/api/snapshot`);
+    await Bun.sleep(20);
+    expect(fake.requests).toHaveLength(polled);
     const jobRequests = (id: number) => fake.requests.filter((url) => url.includes(`/runs/${id}/jobs`)).length;
-    expect(jobRequests(1001)).toBe(1);
-    expect(jobRequests(1002)).toBe(2);
+    const before = [jobRequests(1001), jobRequests(1002)];
+    await fetch(`${base}/api/refresh`, { method: "POST" });
+    expect([jobRequests(1001) - before[0]!, jobRequests(1002) - before[1]!]).toEqual([0, 1]);
     expect((await fetch(`${base}/api/refresh`)).status).toBe(405);
   } finally {
     server.stop(true);

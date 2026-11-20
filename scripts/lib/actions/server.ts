@@ -66,6 +66,7 @@ export function createActionsServer(options: ActionsServerOptions) {
   const poller = createPoller(options.config, options.client);
   let state: SnapshotResponse = { repo: options.config.repo, pipelines: [], polledAt: null, error: null };
   let inflight: Promise<void> | null = null;
+  let lastPoll = -Infinity;
   const poll = (): Promise<void> =>
     (inflight ??= poller()
       .then((snapshot) => {
@@ -75,12 +76,16 @@ export function createActionsServer(options: ActionsServerOptions) {
         state = { ...state, error: { message: error instanceof Error ? error.message : String(error), at: new Date().toISOString() } };
       })
       .finally(() => {
+        lastPoll = Date.now();
         inflight = null;
       }));
   const snapshot = () => Response.json(state.polledAt === null && state.error === null ? { ...state, loading: true } : state);
-  void poll();
-  const timer = setInterval(() => void poll(), options.pollIntervalMs ?? 15_000);
-  timer.unref();
+  // GitHub is polled only while a page asks for data, which it does only while visible, so an unwatched
+  // server spends none of the token's rate limit. A request answers at once and starts a poll when the data is stale.
+  const view = () => {
+    if (Date.now() - lastPoll >= (options.pollIntervalMs ?? 15_000)) void poll();
+    return snapshot();
+  };
   // The snapshot names private runs, so a page that rebinds its own hostname to 127.0.0.1 must not read it.
   type Handler = (request: Request) => Response | Promise<Response>;
   const local =
@@ -88,7 +93,7 @@ export function createActionsServer(options: ActionsServerOptions) {
     (request) =>
       [`127.0.0.1:${server.port}`, `localhost:${server.port}`].includes(request.headers.get("host") ?? "") ? handler(request) : Response.json({ error: "Forbidden" }, { status: 403 });
   const routes: Record<string, Handler> = {
-    "/api/snapshot": local(snapshot),
+    "/api/snapshot": local(view),
     "/api/refresh": local(async (request) => {
       if (request.method !== "POST") return Response.json({ error: "Use POST" }, { status: 405 });
       await poll();
@@ -101,13 +106,6 @@ export function createActionsServer(options: ActionsServerOptions) {
     development: false,
     routes: options.homepage ? { "/": options.homepage, ...routes } : routes,
     fetch: () => Response.json({ error: "Not found" }, { status: 404 }),
-  });
-  const stop = server.stop.bind(server);
-  Object.defineProperty(server, "stop", {
-    value: (closeActiveConnections?: boolean) => {
-      clearInterval(timer);
-      return stop(closeActiveConnections);
-    },
   });
   return server;
 }
