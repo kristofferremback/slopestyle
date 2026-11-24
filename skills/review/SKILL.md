@@ -43,6 +43,8 @@ Severity grades each finding alone. Merge safety grades the whole change: does i
 
 Approve at 4 or 5. Below that, name what raises the rating.
 
+Before rating, challenge every P1 as Kris would: is it proved at the head, introduced by this change, and does holding this approval prevent the harm? A harm that merge order, another open PR or the base already accounts for is a note, not a hold.
+
 An open P1, including one awaiting Kris's decision, caps the rating at 3: good bones when the fix leaves the design standing, lower when it does not. Many weak P2s scattered in corners can stay a 4. P2s on the path the change exists to deliver, or that together leave users seeing wrong results, make it a 3. Most changes land on 3 to 5, 2 is rare, and 1 is reserved for the truly bad.
 
 ## Report
