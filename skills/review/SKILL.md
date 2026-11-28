@@ -25,7 +25,7 @@ Rerun every finding yourself and keep what reproduces. A finding is **proved** w
 
 ## Severity
 
-- **P1, blocks:** proved, introduced by this change, and breaks the accepted outcome. Proof makes a finding real; harm makes it P1. Wrong or lost data, a failed or half-applied operation, or a blocked user flow is P1, legacy records included. A blank or missing cell, a cosmetic gap, or a limit the base already had is P2 or P3. A traced risk to security, tenant isolation, data loss, migrations or concurrency is a P1 decision for Kris.
+- **P1, blocks:** proved, introduced by this change, and breaks the accepted outcome. Proof makes a finding real; harm makes it P1. Wrong or lost data, a failed or half-applied operation, or a blocked user flow is P1, legacy records included. A blank or missing cell, a cosmetic gap, or a limit the base already had is P2 or P3. A traced risk to security, tenant isolation, data loss, migrations or concurrency is a P1 decision for Kris. A risk that needs a rollout window (old and new releases side by side, a flag reaching instances unevenly, a flag turned off, a rollback) is P2: its fix is a compatibility guarantee in the shared owner or a proposal for one, per [migrate](../migrate/SKILL.md#plan-compatibility).
 - **P2:** a real defect short of that, including behavior the intent discloses or the base already has.
 - **P3:** minor.
 
